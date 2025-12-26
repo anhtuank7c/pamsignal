@@ -32,7 +32,7 @@ PAMSignal tập trung vào giám sát truy cập (Access Monitoring) vậy nên 
 * Bạn có server cấu hình tối thiểu nhưng vẫn muốn giám sát.
 * Bạn cần một công cụ giám sát truy cập vừa đủ đơn giản, nhỏ nhẹ, không cần backend, hoàn toàn miễn phí.
 * Bạn ưu tiên sự tối giản, cài đặt là dùng (plug & play), không cần tốn thời gian đọc hàng trăm trang tài liệu.
-* Bạn cần công cụ có thể gửi cảnh báo lên hệ thống web sẵn có của mình.
+* Bạn cần công cụ có thể gửi cảnh báo tới Telegram/Slack/custom webhook (tích hợp thẳng vào web của bạn).
 * Bạn cần công cụ miễn phí phân phối sử dụng giấy phép mã nguồn mở MIT.
 
 **Vì sao dùng C làm ngôn ngữ chính lập trình PAMSignal?**
