@@ -36,7 +36,8 @@ PAMSignal tập trung vào giám sát truy cập (Access Monitoring) vậy nên 
 * Bạn cần công cụ miễn phí phân phối sử dụng giấy phép mã nguồn mở MIT.
 
 **Vì sao dùng C làm ngôn ngữ chính lập trình PAMSignal?**
-PAMSignal được viết bằng C thuần túy để đảm bảo không phụ thuộc vào các runtime cồng kềnh (như Python hay Java), giúp giảm thiểu tối đa diện tích tấn công (attack surface) cho chính nó, và cũng đơn giản hóa quá trình cài đặt, luôn giữ dung lượng cài đặt ở mức tối thiểu.
+
+PAMSignal được viết bằng C thuần để đảm bảo không phụ thuộc vào các runtime cồng kềnh (như Python hay Java), giúp giảm thiểu tối đa diện tích tấn công (attack surface) cho chính nó, và cũng đơn giản hóa quá trình cài đặt, luôn giữ dung lượng cài đặt ở mức tối thiểu.
 
 ## Project Roadmap
 
