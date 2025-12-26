@@ -14,7 +14,7 @@ Các quản trị viên thường bị động trước các cuộc xâm nhập 
 - Mong muốn thực hành lập trình C nhiều hơn, thành thục và giỏi kỹ năng này.
 - Mong muốn kết nối, học hỏi từ những chuyên gia trong ngành (gồm cả trong và ngoài nước).
 - Muốn tìm hiểu sâu hơn về Linux.
-- Tạo ra sản phẩm mã nguồn mở Make in Vietnam.
+- Tạo ra sản phẩm mã nguồn mở Made in Vietnam.
 
 **PAMSignal là gì?**
 
