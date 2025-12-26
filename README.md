@@ -10,7 +10,7 @@ Các quản trị viên thường bị động trước các cuộc xâm nhập 
 
 **Lý do tôi tạo ra PAMSignal**
 
-- Bản thân mình cũng gặp khá nhiều rắc rối cũng như trở ngại khi phải quản lý một số lượng tương đối máy chủ linux với **nguồn lực hạn chế**.
+- Bản thân tôi cũng gặp khá nhiều rắc rối cũng như trở ngại khi phải quản lý một số lượng tương đối máy chủ linux với **nguồn lực hạn chế**.
 - Mong muốn thực hành lập trình C nhiều hơn, thành thục và giỏi kỹ năng này.
 - Mong muốn kết nối, học hỏi từ những chuyên gia trong ngành (gồm cả trong và ngoài nước).
 - Muốn tìm hiểu sâu hơn về Linux.
@@ -22,11 +22,11 @@ PAMSignal là một ứng dụng dành riêng cho Linux dùng giám sát và c�
 
 **Có chạy được trên Mac không?**
 
-Hiện tại mình ưu tiên tối ưu tuyệt đối cho **Linux Server** – nơi mà mỗi giây mỗi phút đều đối mặt với hàng ngàn đợt tấn công. Mình muốn PAMSignal phải là 'lưỡi dao sắc nhất' trên Linux trước khi nghĩ đến việc mang nó sang các hệ điều hành khác như MacOS. Với mình, bảo mật server là ưu tiên số 1!
+Hiện tại tôi ưu tiên tối ưu tuyệt đối cho **Linux Server** – nơi mà mỗi giây mỗi phút đều đối mặt với hàng ngàn đợt tấn công. Tôi muốn PAMSignal phải là 'lưỡi dao sắc nhất' trên Linux trước khi nghĩ đến việc mang nó sang các hệ điều hành khác như MacOS. Với tôi, bảo mật server là ưu tiên số 1!
 
 **Ai cần dùng PAMSignal?**
 
-Nhiều anh em hỏi mình: Sao không dùng Wazuh hay cài EDR, XDR cho chuyên nghiệp?
+Nhiều anh em hỏi tôi: Sao không dùng Wazuh hay cài EDR, XDR cho chuyên nghiệp?
 
 Câu trả lời đơn giản là: **Chiếc xe tải không phải lúc nào cũng tốt hơn chiếc xe máy khi bạn chỉ cần đi chợ.**
 
