@@ -52,7 +52,7 @@ Tôi chia dự án thành 3 giai đoạn chính để đảm bảo tính khả t
 ### Giai đoạn 1: The Core Observer (Nền tảng hệ thống)
 
 - [x] [Initialize: Cấu trúc dự án C, quản lý dependency bằng Makefile.](./docs/phase-1-initialize.md)
-- [ ] Journal Subscriber: Sử dụng *libsystemd* để lắng nghe luồng sự kiện auth.
+- [ ] [Journal Subscriber: Sử dụng *libsystemd* để lắng nghe luồng sự kiện auth.](./docs/phase1-systemd-jounal.md)
 - [ ] PAM Logic: Lọc chính xác các sự kiện *session opened* và *session closed*.
 - [ ] Information Extractor: Trích xuất các trường dữ liệu: User, Remote IP, Service (sshd/sudo/su).
 
