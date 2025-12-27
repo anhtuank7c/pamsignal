@@ -26,20 +26,20 @@ Hiện tại tôi ưu tiên tối ưu tuyệt đối cho **Linux Server** – n�
 
 **Ai cần dùng PAMSignal?**
 
-Nhiều anh em hỏi tôi: Sao không dùng Wazuh hay cài EDR, XDR cho chuyên nghiệp?
+Nhiều anh em hỏi tôi: Sao không dùng **Wazuh** hay cài **EDR**, **XDR** cho chuyên nghiệp?
 
-Câu trả lời đơn giản là: **Chiếc xe tải không phải lúc nào cũng tốt hơn chiếc xe máy khi bạn chỉ cần đi chợ.**
+Câu trả lời đơn giản là: **Không cần dùng dao mổ trâu để gi*t gà.**
 
 Vậy **PAMSignal** phù hợp với ai?
 
 PAMSignal tập trung vào giám sát truy cập (Access Monitoring) vậy nên bạn sẽ cần dùng tới PAMSignal nếu như:
 
-- Bạn cần quản trị 1-10 vps/server linux (hoặc hơn thế nữa).
+- Bạn cần quản trị 1-10 vps/server linux (hoặc hơn).
 - Bạn có server cấu hình tối thiểu nhưng vẫn muốn giám sát.
-- Bạn cần một công cụ giám sát truy cập vừa đủ đơn giản, nhỏ nhẹ, không cần backend, hoàn toàn miễn phí.
+- Bạn cần một công cụ giám sát truy cập vừa đủ đơn giản, nhỏ nhẹ, không cần backend.
 - Bạn ưu tiên sự tối giản, cài đặt là dùng (plug & play), không cần tốn thời gian đọc hàng trăm trang tài liệu.
 - Bạn cần công cụ có thể gửi cảnh báo tới Telegram/Slack/custom webhook (tích hợp thẳng vào web của bạn).
-- Bạn cần công cụ miễn phí phân phối sử dụng giấy phép mã nguồn mở MIT.
+- Bạn cần công cụ miễn phí, phân phối dưới dạng [giấy phép mã nguồn mở MIT](./LICENSE).
 
 **Vì sao dùng C làm ngôn ngữ chính lập trình PAMSignal?**
 
