@@ -1,4 +1,6 @@
 archive/
+bin/
+build/
 .claude/
 .vscode/
 *.o
