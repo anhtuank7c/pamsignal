@@ -1,10 +1,16 @@
 #include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 #include <systemd/sd-journal.h>
 #include <unistd.h>
 
 #include "init.h"
 
 int main() {
+    if(geteuid() != 0) {
+        fprintf(stderr, "This program must be run in sudo\n");
+        exit(1);
+    }
     int ret;
 
     ret = ps_daemonize();
@@ -35,7 +41,14 @@ int main() {
     }
 
     // NOTE: A venue for initiating future PAMSignal events
-    while (running) pause();
+    // while (running) pause();
+
+    sd_journal *j = NULL;
+    int r = sd_journal_open(&j, SD_JOURNAL_LOCAL_ONLY);
+    if(r < 0) {
+        fprintf(stderr, "Failed to open journal: %s\n", strerror(-r));
+        exit(1);
+    }
 
     return PS_OK;
 }

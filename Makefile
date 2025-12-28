@@ -1,21 +1,26 @@
-CC = gcc
-CFLAGS = -Wall -Wextra -Iinclude -O2 $(shell pkg-config --cflags libsystemd)
-LDFLAGS = $(shell pkg-config --libs libsystemd)
+# ===== Project settings =====
+BUILD_DIR := build
+BIN_DIR   := bin
+TARGET    := pamsignal
 
-# Source files
-SRCS = $(wildcard src/*.c)
-OBJS = $(SRCS:.c=.o)
-TARGET = pamsignal
+# Default build type
+BUILD_TYPE ?= Release
 
-all: $(TARGET)
+# ===== Targets =====
+all: configure build
 
-$(TARGET): $(OBJS)
-	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
+configure:
+	mkdir -p $(BUILD_DIR)
+	cmake -S . -B $(BUILD_DIR) \
+		-DCMAKE_BUILD_TYPE=$(BUILD_TYPE)
 
-%.o: %.c
-	$(CC) $(CFLAGS) -c $< -o $@
+build:
+	cmake --build $(BUILD_DIR)
 
 clean:
-	rm -f $(OBJS) $(TARGET)
+	rm -rf $(BUILD_DIR) $(BIN_DIR)
 
-.PHONY: all clean
+run: all
+	./$(BIN_DIR)/$(TARGET)
+
+.PHONY: all configure build clean run
