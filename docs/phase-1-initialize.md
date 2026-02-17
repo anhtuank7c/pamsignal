@@ -1,27 +1,27 @@
-# Bước 1 - Initialize (Khởi tạo dự án)
+# Step 1 - Initialize (Project Initialization)
 
-- **Trạng thái**: Hoàn thành
-- **Ngày thực hiện**: 26/12/2025
-- **Ngày hoàn thành**: 26/12/2025
+- **Status**: Completed
+- **Start Date**: 26/12/2025
+- **Completion Date**: 26/12/2025
 
-## 1. Mục tiêu
+## 1. Objective
 
-Thiết lập nền móng cho dự án **PAMSignal**. Đảm bảo mã nguồn được tổ chức khoa học, dễ mở rộng và có quy trình biên dịch tự động hóa, tối ưu hiệu suất.
+Establish the foundation for the **PAMSignal** project. Ensure the source code is scientifically organized, easily extensible, and has an automated build process with optimized performance.
 
-## 2. Yêu cầu
+## 2. Requirements
 
-**Hệ điều hành**
+**Operating System**
 
-Do dự án tập trung vào linux và cần include thư viện *libsystemd*  nên để có thể chạy project này, bạn cần dùng hệ điều hành Linux, chọn đại một distro như Ubuntu chẳng hạn.
+Since the project focuses on Linux and requires the *libsystemd* library, to run this project you need to use a Linux operating system, such as Ubuntu or any other distribution.
 
-**Gói phụ thuộc**
+**Dependencies**
 
 ```bash
 sudo apt update
 sudo apt install libsystemd-dev pkg-config build-essential cmake
 ```
 
-Sau khi cài đặt xong thì bạn có thể clone dự án về máy và chạy thử lệnh `make` , output sẽ là file thực thi `pamsignal`
+After installation, you can clone the project and run the `make` command. The output will be the `pamsignal` executable file.
 
 ```bash
 git clone git@github.com:anhtuank7c/pamsignal.git
@@ -29,31 +29,31 @@ cd pamsignal
 make
 ```
 
-## 3. Cấu trúc thư mục
+## 3. Directory Structure
 
 ```
 pamsignal
-    src/            Chứa mã thực thi (.c)
-    include/        Chứa các file header (.h) để quản lý interface.
-    Makefile        Quản lý quy trình build.
-    docs/           Quản lý tài liệu
+    src/            Contains executable code (.c)
+    include/        Contains header files (.h) for interface management.
+    Makefile        Manages the build process.
+    docs/           Manages documentation
 ```
 
-## 4. Tối ưu hóa biên dịch với Makefile
+## 4. Compilation Optimization with Makefile
 
-Trình biên dịch C có vài options liên quan tới việc tối ưu hóa mã máy [chi tiết xem tại đây](https://gcc.gnu.org/onlinedocs/gcc-15.1.0/gcc/Optimize-Options.html)
+The C compiler has several options related to machine code optimization [see details here](https://gcc.gnu.org/onlinedocs/gcc-15.1.0/gcc/Optimize-Options.html)
 
-Tôi sử dụng flag tối ưu hóa `-O2` trong quá trình biên dịch.
+I use the `-O2` optimization flag during compilation.
 
-**Tại sao -O2?**
+**Why -O2?**
 
-Đây là mức tối ưu giúp trình biên dịch sắp xếp lại các lệnh máy, loại bỏ code thừa, tăng tốc độ xử lý log nhưng không làm phình kích thước file như `-O3`.
+This is an optimization level that helps the compiler rearrange machine instructions, eliminate redundant code, and increase log processing speed without inflating file size like `-O3`.
 
-## 5. Kết quả
+## 5. Results
 
-- [x] Khởi tạo thành công cấu trúc thư mục.
+- [x] Successfully initialized directory structure.
 
-- [x] Makefile hoạt động tốt, nhận diện đúng thư viện `libsystemd`.
+- [x] Makefile works well, correctly detects the `libsystemd` library.
 
-- [x] Biên dịch thành công file thực thi đầu tiên (Sanity Check).
+- [x] Successfully compiled the first executable file (Sanity Check).
 
