@@ -1,72 +1,138 @@
+# PAMSignal
+
 ![License](https://img.shields.io/github/license/anhtuank7c/pamsignal)
 ![Language](https://img.shields.io/badge/Language-C-orange)
 ![Platform](https://img.shields.io/badge/Platform-Linux-lightgrey)
 
-# PAMSignal
+## Introduction
 
-## Giới thiệu
+System administrators are often reactive to unauthorized intrusions because default logging systems are difficult to monitor, easily tampered with, or existing security tools are too heavy and complex to deploy on low-spec servers. Or perhaps you simply don't have the budget or manpower to implement massive systems like EDR (**E**ndpoint **D**etection and **R**esponse) or XDR (**E**xtended **D**etection and **R**esponse), which are designed for large, professional enterprises.
 
-Các quản trị viên thường bị động trước các cuộc xâm nhập trái phép do hệ thống log mặc định quá khó theo dõi, dễ bị xóa bỏ, hoặc các công cụ bảo mật hiện có quá nặng nề và phức tạp để triển khai trên các máy chủ cấu hình thấp, hoặc chỉ đơn giản là bạn không có đủ ngân sách, không đủ nhân lực để ứng dụng các hệ thống khổng lồ như EDR (**E**ndpoint **D**etection and **R**esponse), XDR (**E**xtended **D**etection and **R**esponse) vốn chỉ dành cho doanh nghiệp lớn, chuyên nghiệp.
+**Why I created PAMSignal**
 
-**Lý do tôi tạo ra PAMSignal**
+- I personally encountered many challenges and obstacles managing a considerable number of Linux servers with **limited resources**.
+- I wanted to practice C programming more and master this skill.
+- I wanted to connect with and learn from industry experts.
+- I wanted to dive deeper into Linux.
+- I wanted to create an open-source product Made in Vietnam.
 
-- Bản thân tôi cũng gặp khá nhiều rắc rối cũng như trở ngại khi phải quản lý một số lượng tương đối máy chủ linux với **nguồn lực hạn chế**.
-- Mong muốn thực hành lập trình C nhiều hơn, thành thục và giỏi kỹ năng này.
-- Mong muốn kết nối, học hỏi từ những chuyên gia trong ngành (gồm cả trong và ngoài nước).
-- Muốn tìm hiểu sâu hơn về Linux.
-- Tạo ra sản phẩm mã nguồn mở Made in Vietnam.
+**What is PAMSignal?**
 
-**PAMSignal là gì?**
+PAMSignal is a Linux-specific application for monitoring and alerting immediately when login sessions occur. It ensures you're always proactive in every situation.
 
-PAMSignal là một ứng dụng dành riêng cho Linux dùng giám sát và cảnh báo ngay khi xuất hiện các phiên đăng nhập. Đảm bảo bạn luôn chủ động trong mọi tình huống.
+**Who needs PAMSignal?**
 
-**Có chạy được trên Mac không?**
+Many people ask me: Why not use **Wazuh** or install **EDR**, **XDR** for a more professional solution?
 
-Hiện tại tôi ưu tiên tối ưu tuyệt đối cho **Linux Server** – nơi mà mỗi giây mỗi phút đều đối mặt với hàng ngàn đợt tấn công. Tôi muốn PAMSignal phải là 'lưỡi dao sắc nhất' trên Linux trước khi nghĩ đến việc mang nó sang các hệ điều hành khác như MacOS. Với tôi, bảo mật server là ưu tiên số 1!
+The simple answer is: **Don't use a sledgehammer to crack a nut.**
 
-**Ai cần dùng PAMSignal?**
+So who is **PAMSignal** suitable for?
 
-Nhiều anh em hỏi tôi: Sao không dùng **Wazuh** hay cài **EDR**, **XDR** cho chuyên nghiệp?
+PAMSignal focuses on Access Monitoring, so you'll need PAMSignal if:
 
-Câu trả lời đơn giản là: **Không cần dùng dao mổ trâu để gi*t gà.**
+- You need to manage 1-10 Linux VPS/servers (or more).
+- You have minimal server specs but still want monitoring.
+- You need an access monitoring tool that's simple enough, lightweight, with no backend required.
+- You prioritize minimalism, plug & play installation, without spending time reading hundreds of pages of documentation.
+- You need a tool that can send alerts to Telegram/Slack/custom webhooks (integrate directly into your web application).
+- You need a free tool, distributed under the [MIT open-source license](./LICENSE).
 
-Vậy **PAMSignal** phù hợp với ai?
+**Why use C as the primary programming language for PAMSignal?**
 
-PAMSignal tập trung vào giám sát truy cập (Access Monitoring) vậy nên bạn sẽ cần dùng tới PAMSignal nếu như:
-
-- Bạn cần quản trị 1-10 vps/server linux (hoặc hơn).
-- Bạn có server cấu hình tối thiểu nhưng vẫn muốn giám sát.
-- Bạn cần một công cụ giám sát truy cập vừa đủ đơn giản, nhỏ nhẹ, không cần backend.
-- Bạn ưu tiên sự tối giản, cài đặt là dùng (plug & play), không cần tốn thời gian đọc hàng trăm trang tài liệu.
-- Bạn cần công cụ có thể gửi cảnh báo tới Telegram/Slack/custom webhook (tích hợp thẳng vào web của bạn).
-- Bạn cần công cụ miễn phí, phân phối dưới dạng [giấy phép mã nguồn mở MIT](./LICENSE).
-
-**Vì sao dùng C làm ngôn ngữ chính lập trình PAMSignal?**
-
-PAMSignal được viết bằng C thuần để đảm bảo không phụ thuộc vào các runtime cồng kềnh (như Python hay Java), giúp giảm thiểu tối đa diện tích tấn công (attack surface) cho chính nó, và cũng đơn giản hóa quá trình cài đặt, luôn giữ dung lượng cài đặt ở mức tối thiểu.
+PAMSignal is written in pure C to ensure no dependency on bulky runtimes (like Python or Java), minimizing the attack surface for itself, and simplifying the installation process while keeping the installation footprint minimal.
 
 ## Project Roadmap
 
-Tôi chia dự án thành 3 giai đoạn chính để đảm bảo tính khả thi và bền vững:
+I've divided the project into 4 main phases to ensure feasibility, sustainability, and alignment with Linux security industry standards:
 
-### Giai đoạn 1: The Core Observer (Nền tảng hệ thống)
+### Phase 1: The Core Observer
 
-- [x] [Initialize: Cấu trúc dự án C, quản lý dependency bằng Makefile.](./docs/phase-1-initialize.md)
-- [ ] [Journal Subscriber: Sử dụng *libsystemd* để lắng nghe luồng sự kiện auth.](./docs/phase1-systemd-jounal.md)
-- [ ] PAM Logic: Lọc chính xác các sự kiện *session opened* và *session closed*.
-- [ ] Information Extractor: Trích xuất các trường dữ liệu: User, Remote IP, Service (sshd/sudo/su).
+- [x] [Initialize: C project structure, dependency management with Makefile.](./docs/phase-1-initialize.md)
+- [ ] [Journal Subscriber: Use *libsystemd* to listen to auth event streams.](./docs/phase1-systemd-jounal.md)
+- [ ] **PAM Logic:** Accurately filter *session opened* and *session closed* events.
+- [ ] **Information Extractor:** Extract comprehensive data fields:
+  - User, Remote IP, Service (sshd/sudo/su)
+  - Timestamp, session duration, authentication method (password/key)
+- [ ] **Failed Login Tracking:** Monitor and count failed authentication attempts for brute-force detection.
+- [ ] **Auditd Integration:** Optional support for `pam_tty_audit` to monitor privileged user sessions.
+- [ ] **IPv6 Support:** Parse `/proc/net/tcp6` for complete network coverage.
 
-### Giai đoạn 2: Context Awareness (Làm giàu thông tin)
+### Phase 2: Context Awareness
 
-- [ ] **Network Discovery:**  Liệt kê toàn bộ IP hiện có của máy chủ.
-  - Truy vấn `/proc/net/tcp` để xác định **Destination IP** (IP mà khách đang kết nối tới).
-- [ ] **Provider Identity:** Tích hợp logic nhận diện nhà cung cấp Cloud (AWS, GCP, DigitalOcean, v.v.).
-- [ ] **ASN/Organization Lookup:** Lấy tên ISP của người đang truy cập (Ví dụ: Viettel, FPT, hay một trung tâm dữ liệu lạ ở Nga).
-- [ ] **Message Templating:** Thiết kế cấu trúc thông báo chuyên nghiệp, dễ đọc.
+- [ ] **Network Discovery:** List all existing IPs on the server.
+  - Query `/proc/net/tcp` and `/proc/net/tcp6` to identify **Destination IP** (the IP the client is connecting to).
+  - Support for Unix socket authentication tracking.
+- [ ] **Provider Identity:** Integrate logic to identify Cloud providers (AWS, GCP, DigitalOcean, etc.).
+- [ ] **ASN/Organization Lookup:** Get the ISP name of the accessor (e.g., Viettel, FPT, or a suspicious data center in Russia).
+  - Use offline GeoIP database (MaxMind GeoLite2) to avoid external dependencies.
+- [ ] **Message Templating:** Design professional, easy-to-read notification structure.
+- [ ] **Security Hardening:** Implement comprehensive systemd service isolation:
+  - Create dedicated unprivileged user with `DynamicUser=yes`.
+  - Apply `ProtectSystem=strict`, `ProtectHome=yes`, `PrivateTmp=yes`.
+  - Restrict capabilities: `CapabilityBoundingSet=CAP_DAC_READ_SEARCH`.
+  - Syscall filtering: `SystemCallFilter=@system-service`.
+  - Set `NoNewPrivileges=yes` to prevent privilege escalation.
+- [ ] **FHS Compliance:** Follow Filesystem Hierarchy Standard:
+  - Binary in `/usr/bin`, configuration in `/etc/pamsignal`, logs in `/var/log/pamsignal`.
+  - Proper file permissions: config `0600`, binary `0755`.
 
-### Giai đoạn 3: The Dispatcher & Distribution (Phát hành)
+### Phase 3: Enterprise Readiness
 
-- [ ] **Multi-channel Alert:** Tích hợp `libcurl` để gửi thông báo qua Telegram/Slack API.
-- [ ] **Config Manager:** Xây dựng file cấu hình (YAML hoặc JSON) để người dùng tùy biến.
-- [ ] **Snap Packaging:** Đóng gói ứng dụng dưới dạng Snap để hỗ trợ cài đặt trên mọi Distro Linux (Ubuntu, CentOS, Fedora...).
-- [ ] **Official Release:** Đưa lên Snap Store toàn cầu.
+- [ ] **SIEM Integration:** Forward events to remote syslog/SIEM systems for centralized monitoring.
+  - Support CEF (Common Event Format) and LEEF (Log Event Extended Format).
+- [ ] **Log Integrity:** Implement SHA256 hashing of alert records to prevent tampering.
+- [ ] **Rate Limiting:** Configurable alert throttling to prevent notification flooding during attacks.
+- [ ] **Health Monitoring:** 
+  - Systemd watchdog integration for service health checks.
+  - Expose metrics for failed alert deliveries and processing lag.
+- [ ] **Graceful Degradation:** Handle systemd journal unavailability without service crashes.
+- [ ] **Signal Handling:** Proper SIGTERM/SIGHUP handling for clean shutdown and configuration reload.
+- [ ] **Audit Trail:** Configurable log retention policies for compliance requirements (NIST 800-53, CIS Controls).
+
+### Phase 4: Distribution & Release
+
+- [ ] **Multi-channel Alert:** Integrate `libcurl` to send notifications via Telegram/Slack API.
+- [ ] **Config Manager:** Build configuration file (YAML or JSON) with validation:
+  - JSON schema for config validation.
+  - Comprehensive documentation with sane defaults.
+- [ ] **Traditional Package Formats (PRIMARY):** Build native packages for maximum compatibility:
+  - **`.deb` packages** for Debian/Ubuntu/Mint (APT):
+    - Create `debian/` directory with control files, rules, and changelog.
+    - Use `dpkg-buildpackage` or `debuild` for building.
+    - Sign packages with GPG for authenticity.
+    - Include systemd service unit files and post-install scripts.
+  - **`.rpm` packages** for RHEL/Fedora/CentOS/Rocky/AlmaLinux (DNF/YUM):
+    - Create `.spec` file with build instructions and dependencies.
+    - Use `rpmbuild` for package creation.
+    - Sign packages with GPG for authenticity.
+    - Include systemd service unit files and post-install scripts.
+- [ ] **Repository Distribution:**
+  - **Debian/Ubuntu**: Submit to official repositories or create PPA (Personal Package Archive).
+  - **Fedora**: Submit to Fedora COPR (Cool Other Package Repo).
+  - **GitHub Releases**: Provide direct downloads for `.deb` and `.rpm` files.
+  - Create installation scripts for one-line setup (`curl | bash` pattern).
+- [ ] **Snap Packages (OPTIONAL):** Universal package for convenience:
+  - Create `snapcraft.yaml` with proper confinement settings.
+  - Publish to Snap Store as supplementary distribution channel.
+  - Note: Snap is secondary due to performance overhead and enterprise resistance.
+- [ ] **Documentation:** 
+  - Man pages (`pamsignal(8)`, `pamsignal.conf(5)`).
+  - Systemd service configuration examples.
+  - Installation guides for each distribution family.
+  - Repository setup instructions (adding GPG keys, sources.list entries).
+- [ ] **Automated Testing:** 
+  - Unit tests for core logic (event parsing, filtering).
+  - Integration tests with mock systemd journal.
+  - Security tests (fuzzing, privilege escalation checks).
+  - Performance tests (handle 1000+ logins/sec).
+  - Package installation tests on multiple distributions (Ubuntu, Debian, Fedora, RHEL).
+- [ ] **CI/CD Pipeline:** GitHub Actions for automated building, testing, and packaging:
+  - Multi-distribution build matrix (Ubuntu 22.04/24.04, Debian 11/12, Fedora 39/40, RHEL 9).
+  - Automated package signing with GPG.
+  - Automated publishing to GitHub Releases.
+  - Automated repository updates.
+- [ ] **Official Release:** 
+  - Publish `.deb` packages to Debian/Ubuntu repositories or PPA.
+  - Publish `.rpm` packages to Fedora COPR.
+  - Publish to GitHub Releases with checksums (SHA256).
+  - Optional: Publish to Snap Store for convenience.
