@@ -13,7 +13,11 @@ Establish the foundation for the **PAMSignal** project. Ensure the source code i
 
 **Operating System**
 
-Since the project focuses on Linux and requires the *libsystemd* library, to run this project you need to use a Linux operating system, such as Ubuntu or any other distribution.
+Since the project focuses on Linux and requires the **libsystemd** library, to run this project you need to use a Linux operating system, such as Ubuntu or any other distribution.
+
+**Why choose Meson build system?** [see details here](./phase-1-meson_guide.md)
+
+**Meson documentation** [see details here](https://mesonbuild.com/Quick-guide.html)
 
 **Dependencies**
 
