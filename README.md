@@ -47,8 +47,8 @@ I've divided the project into 4 main phases to ensure feasibility, sustainabilit
 
 ### Phase 1: The Core Observer
 
-- [x] [Initialize: C project structure, dependency management with Makefile.](./docs/phase-1-initialize.md)
-- [x] [Journal Subscriber: Use *libsystemd* to listen to auth event streams.](./docs/phase1-systemd-jounal.md)
+- [x] [Initialize: C project structure, dependency management with Meson.](./docs/phase-1-initialize.md)
+- [x] [Journal Subscriber: Use **libsystemd** to listen to auth event streams.](./docs/phase-1-systemd-jounald.md)
 - [ ] **PAM Logic:** Accurately filter *session opened* and *session closed* events.
 - [ ] **Information Extractor:** Extract comprehensive data fields:
   - User, Remote IP, Service (sshd/sudo/su)
