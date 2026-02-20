@@ -3,6 +3,7 @@
 - **Status**: Completed
 - **Start Date**: 26/12/2025
 - **Completion Date**: 26/12/2025
+- **Update Date**: 20/02/2026
 
 ## 1. Objective
 
@@ -18,15 +19,16 @@ Since the project focuses on Linux and requires the *libsystemd* library, to run
 
 ```bash
 sudo apt update
-sudo apt install libsystemd-dev pkg-config build-essential cmake
+sudo apt install libsystemd-dev pkg-config build-essential meson ninja-build
 ```
 
-After installation, you can clone the project and run the `make` command. The output will be the `pamsignal` executable file.
+After installation, you can clone the project and run the `meson` and `ninja` commands. The output will be the `pamsignal` executable file under `build/`.
 
 ```bash
 git clone git@github.com:anhtuank7c/pamsignal.git
 cd pamsignal
-make
+meson setup build
+meson compile -C build
 ```
 
 ## 3. Directory Structure
@@ -35,25 +37,25 @@ make
 pamsignal
     src/            Contains executable code (.c)
     include/        Contains header files (.h) for interface management.
-    Makefile        Manages the build process.
+    meson.build     Manages the build process.
     docs/           Manages documentation
 ```
 
-## 4. Compilation Optimization with Makefile
+## 4. Compilation Optimization with Meson
 
 The C compiler has several options related to machine code optimization [see details here](https://gcc.gnu.org/onlinedocs/gcc-15.1.0/gcc/Optimize-Options.html)
 
-I use the `-O2` optimization flag during compilation.
+By default in `meson.build`, I have specified `'buildtype=release'` as the default option. In Meson, a `release` build type automatically applies the `-O3` optimization level and strips debug symbols.
 
-**Why -O2?**
+**Why Release mode?**
 
-This is an optimization level that helps the compiler rearrange machine instructions, eliminate redundant code, and increase log processing speed without inflating file size like `-O3`.
+This is an optimization build type that helps the compiler rearrange machine instructions, eliminate redundant code, and increase log processing speed significantly compared to debug builds.
 
 ## 5. Results
 
 - [x] Successfully initialized directory structure.
 
-- [x] Makefile works well, correctly detects the `libsystemd` library.
+- [x] Meson configurations work well, correctly detects the `libsystemd` library.
 
 - [x] Successfully compiled the first executable file (Sanity Check).
 
