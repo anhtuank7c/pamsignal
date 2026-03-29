@@ -72,6 +72,7 @@ Before every commit, complete these checks in order:
 4. **Build** — run `meson compile -C build` and confirm zero errors and zero warnings
 5. **Run tests** — run `meson test -C build -v` and confirm all tests pass
 6. **OWASP security review** — use the `/owasp-review` skill to audit changed files for vulnerabilities, memory leaks, buffer overflows, use-after-free, and other C-specific issues. Fix all findings before committing.
+7. **Update CHANGELOG.md** — add or update entries under `## Unreleased` to reflect what changed. Use `- [x]` for completed items, `- [ ]` for planned. Move items between sections as appropriate.
 
 Install tools if missing: `sudo apt-get install clang-format clang-tidy libcmocka-dev`
 
