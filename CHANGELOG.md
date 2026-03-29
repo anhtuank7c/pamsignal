@@ -36,6 +36,16 @@
 - [x] Input validation — bounded buffers, `inet_pton` IP validation, log injection sanitization
 - [x] No network code in parent process — alerts isolated via fork+exec
 
+### Testing
+- [x] CMocka unit test framework — integrated with Meson via `meson test`
+- [x] `test_utils` — 27 tests: PAM message parsing (session open/close, login success/fail, IPv4/IPv6), field extraction, edge cases (empty message, invalid IP, long username truncation, control char sanitization, struct zeroing), enum-to-string, timestamp formatting
+- [x] `test_config` — 16 tests: defaults, file handling (missing/empty/comments), valid config, all alert channels, whitespace trimming, boundary values (min/max), error cases (out of range, negative, non-numeric, missing `=`), unknown keys, partial config
+
+### Tooling
+- [x] CLAUDE.md — project conventions, pre-commit workflow, commit message standard
+- [x] `.clang-format` — LLVM-based, 4-space indent, 80-column, right-aligned pointers
+- [x] `.clang-tidy` — clang-analyzer, bugprone, cert, security checks with project naming rules
+
 ### Documentation
 - [x] Architecture — C4 model (context, container, component), alert isolation diagram
 - [x] Configuration reference — all config keys, CLI flags, reload behavior
