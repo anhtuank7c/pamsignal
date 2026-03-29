@@ -23,23 +23,25 @@ It runs as a dedicated unprivileged user (not root), uses no external runtime, a
 How PAMSignal fits into a Linux server environment.
 
 ```mermaid
-C4Context
-    title System Context — PAMSignal
+graph LR
+    admin["🧑‍💻 System Administrator"]
+    sshd["sshd / sudo / su"]
+    journald[("systemd-journald")]
+    pamsignal["PAMSignal"]
+    alerts["Telegram / Slack / Webhook<br/><i>(planned)</i>"]
 
-    Person(admin, "System Administrator", "Manages 1-10 Linux servers")
+    sshd -- "writes PAM auth events" --> journald
+    pamsignal -- "subscribes & filters<br/>via libsystemd" --> journald
+    pamsignal -- "writes structured alerts" --> journald
+    pamsignal -. "sends notifications<br/>via libcurl (planned)" .-> alerts
+    admin -- "reads logs<br/>journalctl -t pamsignal" --> journald
+    alerts -. "receives alerts" .-> admin
 
-    System(pamsignal, "PAMSignal", "Lightweight PAM login monitor daemon")
-
-    System_Ext(journald, "systemd-journald", "System log manager")
-    System_Ext(sshd, "sshd / sudo / su", "PAM-aware services that generate auth events")
-    System_Ext(alerts, "Telegram / Slack / Webhook", "Notification channels (planned)")
-
-    Rel(sshd, journald, "Writes PAM auth events")
-    Rel(pamsignal, journald, "Subscribes and filters PAM events", "libsystemd")
-    Rel(pamsignal, journald, "Writes structured alerts")
-    Rel(pamsignal, alerts, "Sends notifications (planned)", "libcurl")
-    Rel(admin, alerts, "Receives alerts")
-    Rel(admin, journald, "Reads logs via journalctl")
+    style pamsignal fill:#2d6a4f,stroke:#1b4332,color:#fff
+    style journald fill:#264653,stroke:#1d3557,color:#fff
+    style sshd fill:#6c757d,stroke:#495057,color:#fff
+    style alerts fill:#7f5539,stroke:#6c584c,color:#fff,stroke-dasharray: 5 5
+    style admin fill:#e9c46a,stroke:#f4a261,color:#000
 ```
 
 ### Level 2: Container
@@ -47,22 +49,27 @@ C4Context
 PAMSignal is a single-process daemon. No database, no web server, no backend.
 
 ```mermaid
-C4Container
-    title Container — PAMSignal
+graph TB
+    admin["🧑‍💻 System Administrator"]
 
-    Person(admin, "System Administrator")
+    subgraph server ["Linux Server"]
+        pam_services["sshd / sudo / su<br/><i>PAM services</i>"]
+        journald[("systemd journal<br/><i>binary log</i>")]
+        pamsignal["PAMSignal Daemon<br/><i>C / libsystemd</i>"]
+        systemd["systemd<br/><i>service manager</i>"]
+    end
 
-    System_Boundary(server, "Linux Server") {
-        Container(pamsignal, "PAMSignal Daemon", "C / libsystemd", "Monitors PAM events, detects brute-force, writes structured alerts to journal")
-        ContainerDb(journal, "systemd journal", "Binary log", "Stores all system and PAMSignal events")
-        Container(systemd, "systemd", "Service manager", "Manages PAMSignal lifecycle with security sandboxing")
-        Container(pam_services, "sshd / sudo / su", "PAM services", "Generate authentication events")
-    }
+    pam_services -- "writes auth events" --> journald
+    pamsignal -- "reads PAM events &<br/>writes structured alerts" --> journald
+    systemd -- "starts, stops, sandboxes" --> pamsignal
+    admin -- "journalctl -t pamsignal" --> journald
 
-    Rel(pam_services, journal, "Writes auth events")
-    Rel(pamsignal, journal, "Reads PAM events / Writes structured alerts")
-    Rel(systemd, pamsignal, "Starts, stops, sandboxes")
-    Rel(admin, journal, "journalctl -t pamsignal")
+    style pamsignal fill:#2d6a4f,stroke:#1b4332,color:#fff
+    style journald fill:#264653,stroke:#1d3557,color:#fff
+    style systemd fill:#6c757d,stroke:#495057,color:#fff
+    style pam_services fill:#6c757d,stroke:#495057,color:#fff
+    style admin fill:#e9c46a,stroke:#f4a261,color:#000
+    style server fill:#f8f9fa,stroke:#adb5bd,color:#000
 ```
 
 ### Level 3: Component
@@ -70,24 +77,29 @@ C4Container
 The internal structure of the PAMSignal daemon.
 
 ```mermaid
-C4Component
-    title Component — PAMSignal Daemon
+graph TB
+    journald[("systemd journal")]
 
-    Container_Boundary(pamsignal, "PAMSignal Daemon") {
-        Component(main, "main.c", "Entry Point", "CLI parsing, root rejection, journal group check, daemon lifecycle")
-        Component(init, "init.c", "Initialization", "Double-fork daemonization, signal handling (SIGTERM/SIGINT), PID file management")
-        Component(journal_watch, "journal_watch.c", "Journal Watcher", "Journal subscription, event loop, brute-force tracking (5 fails / 5 min per IP)")
-        Component(utils, "utils.c", "Parser & Validator", "PAM message parsing, IP validation (inet_pton), log injection sanitization, timestamp formatting")
-    }
+    subgraph daemon ["PAMSignal Daemon"]
+        main["<b>main.c</b><br/>CLI parsing, root rejection<br/>journal group check, daemon lifecycle"]
+        init["<b>init.c</b><br/>Double-fork daemonization<br/>signal handling, PID file"]
+        jw["<b>journal_watch.c</b><br/>Journal subscription, event loop<br/>brute-force tracking (5 fails / 5 min)"]
+        utils["<b>utils.c</b><br/>PAM message parsing<br/>IP validation, log sanitization"]
+    end
 
-    ContainerDb_Ext(journal, "systemd journal")
+    main -- "initializes" --> init
+    main -- "starts event loop" --> jw
+    jw -- "parses each entry" --> utils
+    jw -- "sd_journal_wait<br/>sd_journal_next" --> journald
+    jw -- "sd_journal_print<br/>(structured alerts)" --> journald
+    init -. "SIGTERM/SIGINT →<br/>running = false" .-> main
 
-    Rel(main, init, "Initializes")
-    Rel(main, journal_watch, "Starts event loop")
-    Rel(journal_watch, utils, "Parses each journal entry")
-    Rel(journal_watch, journal, "sd_journal_wait / sd_journal_next")
-    Rel(journal_watch, journal, "sd_journal_print (structured alerts)")
-    Rel(init, main, "Signal sets running=false")
+    style main fill:#2d6a4f,stroke:#1b4332,color:#fff
+    style init fill:#2d6a4f,stroke:#1b4332,color:#fff
+    style jw fill:#2d6a4f,stroke:#1b4332,color:#fff
+    style utils fill:#2d6a4f,stroke:#1b4332,color:#fff
+    style journald fill:#264653,stroke:#1d3557,color:#fff
+    style daemon fill:#f8f9fa,stroke:#adb5bd,color:#000
 ```
 
 ## Why I built this
