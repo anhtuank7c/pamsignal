@@ -163,41 +163,40 @@ sudo systemctl stop pamsignal
 
 ## Project Roadmap
 
-I've divided the project into 4 main phases to ensure feasibility, sustainability, and alignment with Linux security industry standards:
-
-### Phase 1: The Core Observer
+### Phase 1: The Core Observer (done)
 
 - [x] [Initialize: C project structure, dependency management with Meson.](./docs/phase-1-initialize.md)
 - [x] [Journal Subscriber: Use **libsystemd** to listen to auth event streams.](./docs/phase-1-systemd-jounald.md)
 - [x] **PAM Logic:** Filter *session opened* and *session closed* events.
 - [x] **Information Extractor:** Extract user, remote IP, service (sshd/sudo/su), timestamp, and authentication method (password/key).
 - [x] **Failed Login Tracking:** Monitor and count failed authentication attempts for brute-force detection.
+- [x] **Signal Handling:** SIGTERM/SIGINT handling for clean shutdown.
+- [x] **Systemd Service:** Service file with security hardening (`ProtectSystem=strict`, `NoNewPrivileges=yes`, `MemoryDenyWriteExecute=yes`).
+- [x] **Build Hardening:** Stack protector, FORTIFY_SOURCE, PIE, full RELRO, format-security.
 
-### Phase 2: Context Awareness
+### Phase 2: Alerts & Configuration
+
+- [ ] **Multi-channel Alert:** Integrate `libcurl` for Telegram/Slack/webhook notifications.
+- [ ] **Config Manager:** Configuration file (YAML or JSON) with validation and sane defaults.
+- [ ] **Message Templating:** Design professional, easy-to-read notification structure.
+- [ ] **SIGHUP Config Reload:** Reload configuration without restarting the daemon.
+- [ ] **Rate Limiting:** Configurable alert throttling to prevent notification flooding during attacks.
+
+### Phase 3: Context Awareness
 
 - [ ] **Network Discovery:** Query `/proc/net/tcp` and `/proc/net/tcp6` to identify destination IP and support IPv6.
 - [ ] **Provider Identity:** Identify cloud providers (AWS, GCP, DigitalOcean, etc.).
 - [ ] **ASN/Organization Lookup:** Get the ISP/organization of the accessor using offline GeoIP database (MaxMind GeoLite2).
-- [ ] **Message Templating:** Design professional, easy-to-read notification structure.
-- [ ] **Security Hardening:** systemd service isolation (`ProtectSystem=strict`, `PrivateTmp=yes`, `NoNewPrivileges=yes`, capability/syscall restrictions).
 - [ ] **FHS Compliance:** Binary in `/usr/bin`, configuration in `/etc/pamsignal`, logs in `/var/log/pamsignal`.
 
-### Phase 3: Enterprise Readiness
+### Phase 4: Enterprise & Distribution
 
 - [ ] **SIEM Integration:** Forward events to remote syslog/SIEM systems (CEF/LEEF format).
 - [ ] **Log Integrity:** SHA256 hashing of alert records to prevent tampering.
-- [ ] **Rate Limiting:** Configurable alert throttling to prevent notification flooding during attacks.
 - [ ] **Health Monitoring:** Systemd watchdog integration and metrics for failed deliveries/processing lag.
 - [ ] **Graceful Degradation:** Handle systemd journal unavailability without crashing.
-- [x] **Signal Handling:** SIGTERM/SIGINT handling for clean shutdown.
-- [ ] **SIGHUP Config Reload:** Reload configuration without restarting the daemon.
 - [ ] **Audit Trail:** Configurable log retention policies for compliance (NIST 800-53, CIS Controls).
-
-### Phase 4: Distribution & Release
-
-- [ ] **Multi-channel Alert:** Integrate `libcurl` for Telegram/Slack/webhook notifications.
-- [ ] **Config Manager:** Configuration file (YAML or JSON) with validation and sane defaults.
-- [ ] **Package Building:** Native `.deb` and `.rpm` packages with GPG signing and systemd service units.
+- [ ] **Package Building:** Native `.deb` and `.rpm` packages with GPG signing.
 - [ ] **Repository Distribution:** GitHub Releases, Debian PPA, and Fedora COPR.
 - [ ] **Documentation:** Man pages (`pamsignal(8)`, `pamsignal.conf(5)`) and installation guides.
 - [ ] **Automated Testing:** Unit tests, integration tests, security fuzzing, and multi-distro package tests.
