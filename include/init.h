@@ -8,11 +8,13 @@ enum {
     PS_OK = 0,
     PS_ERR_INIT = -1,
     PS_ERR_SIGNAL = -2,
-    PS_ERR_JOURNAL = -3
+    PS_ERR_JOURNAL = -3,
+    PS_ERR_CONFIG = -4
 };
 
-// Global running flag
+// Global flags (set by signal handlers, read by event loop)
 extern atomic_bool running;
+extern atomic_bool reload_requested;
 
 // Initialize PAMSignal core
 int ps_init();

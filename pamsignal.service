@@ -11,9 +11,11 @@ Group=pamsignal
 SupplementaryGroups=systemd-journal
 Restart=on-failure
 RestartSec=5
+ExecReload=/bin/kill -HUP $MAINPID
 
 # Runtime directory for PID file (/run/pamsignal/)
 RuntimeDirectory=pamsignal
+ConfigurationDirectory=pamsignal
 
 # Security hardening
 NoNewPrivileges=yes

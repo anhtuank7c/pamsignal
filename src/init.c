@@ -11,10 +11,13 @@
 #include "init.h"
 
 atomic_bool running = 1;
+atomic_bool reload_requested = 0;
 
 static void handle_signal(int sig) {
-  (void)sig;
-  running = 0;
+  if (sig == SIGHUP)
+    reload_requested = 1;
+  else
+    running = 0;
 }
 
 int ps_signal_init() {
@@ -24,6 +27,8 @@ int ps_signal_init() {
   if (sigaction(SIGINT, &sa, NULL) < 0)
     return PS_ERR_SIGNAL;
   if (sigaction(SIGTERM, &sa, NULL) < 0)
+    return PS_ERR_SIGNAL;
+  if (sigaction(SIGHUP, &sa, NULL) < 0)
     return PS_ERR_SIGNAL;
 
   return PS_OK;

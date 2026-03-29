@@ -1,4 +1,5 @@
 #include <grp.h>
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -6,16 +7,25 @@
 #include <systemd/sd-journal.h>
 #include <unistd.h>
 
+#include "config.h"
 #include "init.h"
 #include "journal_watch.h"
 
-static int parse_foreground(int argc, char *argv[]) {
+static void parse_args(int argc, char *argv[], int *foreground,
+                       const char **config_path) {
+    *foreground = 0;
+    *config_path = PS_DEFAULT_CONFIG_PATH;
+
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--foreground") == 0 ||
-            strcmp(argv[i], "-f") == 0)
-            return 1;
+            strcmp(argv[i], "-f") == 0) {
+            *foreground = 1;
+        } else if ((strcmp(argv[i], "--config") == 0 ||
+                    strcmp(argv[i], "-c") == 0) &&
+                   i + 1 < argc) {
+            *config_path = argv[++i];
+        }
     }
-    return 0;
 }
 
 // Check if the current user belongs to the systemd-journal group
@@ -56,7 +66,9 @@ static int has_journal_access(void) {
 }
 
 int main(int argc, char *argv[]) {
-    int foreground = parse_foreground(argc, argv);
+    int foreground;
+    const char *config_path;
+    parse_args(argc, argv, &foreground, &config_path);
 
     if (geteuid() == 0) {
         fprintf(stderr,
@@ -83,7 +95,25 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    int ret;
+    // Resolve config path to absolute before daemonize calls chdir("/")
+    static char resolved_path[PATH_MAX];
+    if (realpath(config_path, resolved_path))
+        g_config_path = resolved_path;
+    else
+        g_config_path = config_path; // Use as-is (may be default /etc/... path)
+
+    int ret = ps_config_load(g_config_path, &g_config);
+    if (ret != PS_OK) {
+        fprintf(stderr, "pamsignal: failed to load config: %s\n",
+                g_config_path);
+        return 1;
+    }
+
+    ret = ps_fail_table_init(g_config.max_tracked_ips);
+    if (ret != PS_OK) {
+        fprintf(stderr, "pamsignal: failed to allocate fail table\n");
+        return 1;
+    }
 
     if (!foreground) {
         ret = ps_daemonize();

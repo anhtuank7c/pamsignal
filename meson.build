@@ -28,6 +28,7 @@ libsystemd_dep = dependency('libsystemd')
 inc = include_directories('include')
 
 srcs = [
+  'src/config.c',
   'src/init.c',
   'src/journal_watch.c',
   'src/main.c',
@@ -43,4 +44,9 @@ executable('pamsignal',
 
 install_data('pamsignal.service',
   install_dir: '/etc/systemd/system'
+)
+
+install_data('pamsignal.conf.example',
+  install_dir: get_option('sysconfdir') / 'pamsignal',
+  rename: 'pamsignal.conf'
 )

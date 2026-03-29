@@ -1,0 +1,41 @@
+# pamsignal configuration
+# /etc/pamsignal/pamsignal.conf
+#
+# All values shown are defaults. Uncomment and change as needed.
+# Reload without restart: sudo systemctl reload pamsignal
+#
+# This file may contain alert credentials.
+# Recommended permissions: root:pamsignal 0640
+
+# Brute-force detection
+# fail_threshold = 5
+# fail_window_sec = 300
+# max_tracked_ips = 256
+
+# Alert rate limiting
+# alert_cooldown_sec = 60
+
+# --- Alert channels (optional, best-effort) ---
+# Only configure the channels you use.
+# Alerts are fire-and-forget — failures won't break monitoring.
+
+# Telegram
+# telegram_bot_token = 123456:ABC-DEF
+# telegram_chat_id = -100123456
+
+# Slack
+# slack_webhook_url = https://hooks.slack.com/services/...
+
+# Microsoft Teams
+# teams_webhook_url = https://outlook.office.com/webhook/...
+
+# WhatsApp (Meta Cloud API)
+# whatsapp_access_token =
+# whatsapp_phone_number_id =
+# whatsapp_recipient = 84901234567
+
+# Discord
+# discord_webhook_url = https://discord.com/api/webhooks/...
+
+# Custom webhook (receives JSON POST, see docs/alerts.md)
+# webhook_url = https://your-app.com/api/alerts

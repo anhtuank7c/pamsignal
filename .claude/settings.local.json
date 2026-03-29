@@ -31,7 +31,18 @@
       "Bash(chmod:*)",
       "Bash(find /home/tuan-nguyen/projects/personal/pamsignal -type f -name README* -o -name *.md -o -name Makefile* -o -name CMakeLists.txt -o -name *.toml -o -name *.yaml -o -name *.yml)",
       "Bash(head:*)",
-      "Bash(ninja -C build)"
+      "Bash(ninja -C build)",
+      "Bash(grep -c '```mermaid' README.md)",
+      "Bash(grep -c '```$' README.md)",
+      "Bash(./build/pamsignal --help)",
+      "Bash(./build/pamsignal -c /nonexistent/path.conf)",
+      "Bash(./build/pamsignal -c /tmp/test_pamsignal.conf)",
+      "Bash(rm -f /tmp/test_pamsignal.conf)",
+      "Bash(git mv:*)",
+      "Bash(grep -r secrets.env --include=*.md --include=*.conf* --include=*.service --include=*.c --include=*.h .)",
+      "Bash(grep -r \"secrets.env\\\\|WEBHOOK_AUTH_HEADER\\\\|EnvironmentFile\" --include=*.md --include=*.conf* --include=*.service --include=*.c --include=*.h .)",
+      "Bash(grep -r \"secrets.env\\\\|WEBHOOK_AUTH_HEADER\" --include=*.md --include=*.conf* --include=*.service --include=*.c --include=*.h --include=*.py .)",
+      "Bash(grep -r \"relay\\\\|contrib\\\\|secrets.env\\\\|EnvironmentFile\\\\|libcurl\" --include=*.md --include=*.conf* --include=*.service --include=*.c --include=*.h .)"
     ]
   }
 }

@@ -4,16 +4,13 @@
 #include <syslog.h>
 #include <systemd/sd-journal.h>
 
+#include "config.h"
 #include "init.h"
 #include "journal_watch.h"
 #include "pam_event.h"
 #include "utils.h"
 
 // --- Failed login tracking ---
-
-#define PS_MAX_TRACKED_IPS 256
-#define PS_FAIL_THRESHOLD  5
-#define PS_FAIL_WINDOW_USEC (300ULL * 1000000ULL) // 5 minutes
 
 typedef struct {
     char     ip[INET6_ADDRSTRLEN];
@@ -22,19 +19,36 @@ typedef struct {
     uint64_t last_attempt_usec;
 } ps_fail_entry_t;
 
-static ps_fail_entry_t fail_table[PS_MAX_TRACKED_IPS];
+static ps_fail_entry_t *fail_table = NULL;
 static int fail_table_count = 0;
+static int fail_table_capacity = 0;
+
+int ps_fail_table_init(int capacity) {
+    free(fail_table);
+    fail_table = calloc((size_t)capacity, sizeof(ps_fail_entry_t));
+    if (!fail_table)
+        return PS_ERR_INIT;
+    fail_table_count = 0;
+    fail_table_capacity = capacity;
+    return PS_OK;
+}
+
+void ps_fail_table_reset(void) {
+    ps_fail_table_init(g_config.max_tracked_ips);
+}
 
 static void ps_track_failed_login(const ps_pam_event_t *event) {
-    if (event->source_ip[0] == '\0')
+    if (event->source_ip[0] == '\0' || !fail_table)
         return;
+
+    uint64_t window_usec = (uint64_t)g_config.fail_window_sec * 1000000ULL;
 
     // Search for existing entry
     for (int i = 0; i < fail_table_count; i++) {
         if (strcmp(fail_table[i].ip, event->source_ip) == 0) {
             // Reset if window expired
             if (event->timestamp_usec - fail_table[i].first_attempt_usec >
-                PS_FAIL_WINDOW_USEC) {
+                window_usec) {
                 fail_table[i].count = 1;
                 fail_table[i].first_attempt_usec = event->timestamp_usec;
             } else {
@@ -42,12 +56,13 @@ static void ps_track_failed_login(const ps_pam_event_t *event) {
             }
             fail_table[i].last_attempt_usec = event->timestamp_usec;
 
-            if (fail_table[i].count >= PS_FAIL_THRESHOLD) {
+            if (fail_table[i].count >= g_config.fail_threshold) {
                 sd_journal_print(
                     LOG_WARNING,
                     "pamsignal: BRUTE_FORCE_DETECTED ip=%s attempts=%d "
-                    "window=300s user=%s",
-                    fail_table[i].ip, fail_table[i].count, event->username);
+                    "window=%ds user=%s",
+                    fail_table[i].ip, fail_table[i].count,
+                    g_config.fail_window_sec, event->username);
                 fail_table[i].count = 0;
                 fail_table[i].first_attempt_usec = event->timestamp_usec;
             }
@@ -56,7 +71,7 @@ static void ps_track_failed_login(const ps_pam_event_t *event) {
     }
 
     // New entry
-    if (fail_table_count < PS_MAX_TRACKED_IPS) {
+    if (fail_table_count < fail_table_capacity) {
         ps_fail_entry_t *e = &fail_table[fail_table_count++];
         snprintf(e->ip, sizeof(e->ip), "%s", event->source_ip);
         e->count = 1;
@@ -67,7 +82,7 @@ static void ps_track_failed_login(const ps_pam_event_t *event) {
 
     // Table full: evict oldest entry
     int oldest = 0;
-    for (int i = 1; i < PS_MAX_TRACKED_IPS; i++) {
+    for (int i = 1; i < fail_table_capacity; i++) {
         if (fail_table[i].last_attempt_usec <
             fail_table[oldest].last_attempt_usec)
             oldest = i;
@@ -233,6 +248,20 @@ int ps_journal_watch_init(sd_journal **j) {
 
 int ps_journal_watch_run(sd_journal *j) {
     while (running) {
+        if (reload_requested) {
+            reload_requested = 0;
+            ps_config_t tmp;
+            if (ps_config_load(g_config_path, &tmp) == PS_OK) {
+                g_config = tmp;
+                ps_fail_table_reset();
+                sd_journal_print(LOG_INFO, "pamsignal: config reloaded");
+            } else {
+                sd_journal_print(LOG_WARNING,
+                                 "pamsignal: config reload failed, "
+                                 "keeping current config");
+            }
+        }
+
         int r = sd_journal_wait(j, 1000000); // 1 second timeout
         if (r < 0) {
             sd_journal_print(LOG_ERR, "pamsignal: journal wait error: %s",
@@ -254,4 +283,8 @@ int ps_journal_watch_run(sd_journal *j) {
 void ps_journal_watch_cleanup(sd_journal *j) {
     if (j)
         sd_journal_close(j);
+    free(fail_table);
+    fail_table = NULL;
+    fail_table_count = 0;
+    fail_table_capacity = 0;
 }
