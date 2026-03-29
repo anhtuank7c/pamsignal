@@ -42,7 +42,12 @@
       "Bash(grep -r secrets.env --include=*.md --include=*.conf* --include=*.service --include=*.c --include=*.h .)",
       "Bash(grep -r \"secrets.env\\\\|WEBHOOK_AUTH_HEADER\\\\|EnvironmentFile\" --include=*.md --include=*.conf* --include=*.service --include=*.c --include=*.h .)",
       "Bash(grep -r \"secrets.env\\\\|WEBHOOK_AUTH_HEADER\" --include=*.md --include=*.conf* --include=*.service --include=*.c --include=*.h --include=*.py .)",
-      "Bash(grep -r \"relay\\\\|contrib\\\\|secrets.env\\\\|EnvironmentFile\\\\|libcurl\" --include=*.md --include=*.conf* --include=*.service --include=*.c --include=*.h .)"
+      "Bash(grep -r \"relay\\\\|contrib\\\\|secrets.env\\\\|EnvironmentFile\\\\|libcurl\" --include=*.md --include=*.conf* --include=*.service --include=*.c --include=*.h .)",
+      "Bash(clang-format --version)",
+      "Bash(clang-tidy --version)",
+      "Bash(apt list:*)",
+      "Bash(sudo apt-get:*)",
+      "Bash(clang-format:*)"
     ]
   }
 }
