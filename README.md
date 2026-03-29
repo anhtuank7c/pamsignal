@@ -95,34 +95,70 @@ sudo apt install openssh-server
 sudo systemctl enable --now ssh
 ```
 
-### Run
+### Run (manual)
 
 ```bash
-# Start the daemon as the pamsignal user
-sudo -u pamsignal ./build/pamsignal
+# Foreground mode (Ctrl+C to stop)
+sudo -u pamsignal ./build/pamsignal --foreground
 
-# Watch pamsignal output in real time
-journalctl -t pamsignal -f
+# Or as a background daemon
+sudo -u pamsignal ./build/pamsignal
 ```
 
-Then trigger events from another terminal:
+### Run (systemd service)
 
 ```bash
-# Successful login (triggers LOGIN_SUCCESS + SESSION_OPEN)
-ssh localhost
+# Install binary and service file
+sudo meson install -C build
 
-# Failed login (triggers LOGIN_FAILED)
-ssh nonexistent@localhost
+# Reload systemd and start the service
+sudo systemctl daemon-reload
+sudo systemctl enable --now pamsignal
+
+# Check status
+sudo systemctl status pamsignal
+
+# View logs
+journalctl -u pamsignal -f
 ```
 
 ### Stop
 
 ```bash
-# Graceful shutdown via SIGTERM
-sudo kill $(pgrep pamsignal)
+# If running as systemd service
+sudo systemctl stop pamsignal
 
-# Verify it's stopped
-ps aux | grep pamsignal
+# If running manually as background daemon
+sudo kill $(pgrep pamsignal)
+```
+
+### End-to-end testing
+
+Start pamsignal and open a second terminal to watch its output:
+
+```bash
+journalctl -t pamsignal -f
+```
+
+Then in a third terminal, trigger events:
+
+```bash
+# 1. Successful SSH login (expect: LOGIN_SUCCESS + SESSION_OPEN)
+ssh localhost
+# type 'exit' (expect: SESSION_CLOSE)
+
+# 2. Failed SSH login (expect: LOGIN_FAILED)
+ssh nonexistent@localhost
+
+# 3. Brute-force detection (expect: BRUTE_FORCE_DETECTED after 5 failures)
+for i in $(seq 1 5); do ssh nonexistent@localhost; done
+
+# 4. Sudo session (expect: SESSION_OPEN for sudo)
+sudo ls
+
+# 5. Graceful shutdown (expect: "shutting down" in journal)
+sudo systemctl stop pamsignal
+# or Ctrl+C if running in foreground
 ```
 
 ## Project Roadmap
