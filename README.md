@@ -10,11 +10,20 @@ System administrators are often reactive to unauthorized intrusions because defa
 
 **Why I created PAMSignal**
 
-- I personally encountered many challenges and obstacles managing a considerable number of Linux servers with **limited resources**.
-- I wanted to practice C programming more and master this skill.
+- I manage a number of Linux servers with **limited resources** and needed a lightweight monitoring tool that didn't exist in the way I wanted.
+- I wanted to deepen my understanding of C, Linux internals, and security — skills that remain in demand even as the industry shifts.
 - I wanted to connect with and learn from industry experts.
-- I wanted to dive deeper into Linux.
 - I wanted to create an open-source product Made in Vietnam.
+
+**On using AI in this project**
+
+This project is built with AI assistance ([Claude Code](https://claude.ai/claude-code)). I review, test, and take responsibility for every line that gets merged.
+
+Why? The honest answer: time. The tech job market since 2023 has been brutal — [mass layoffs](https://layoffs.fyi/), hiring freezes, and a shift toward fewer engineers expected to do more. Meanwhile AI coding tools have moved from autocomplete to genuine pair programming. Ignoring that is not pragmatism, it's denial.
+
+I don't treat AI as a replacement for understanding. I treat it as a force multiplier: it handles boilerplate, catches patterns I'd miss at 2 AM, and lets me ship a real project while holding down a day job and other responsibilities. Every architectural decision, every security review, every commit message — I read it, I verify it, I own it.
+
+This is the new reality for independent developers: use the tools available, apply them with care, and spend your limited hours on the problems that actually need a human.
 
 **What is PAMSignal?**
 
