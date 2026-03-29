@@ -37,5 +37,9 @@ executable('pamsignal',
   srcs,
   include_directories: inc,
   dependencies: libsystemd_dep,
-  install: false
+  install: true
+)
+
+install_data('pamsignal.service',
+  install_dir: '/etc/systemd/system'
 )
