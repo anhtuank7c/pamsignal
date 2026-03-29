@@ -52,11 +52,13 @@ static ps_service_t parse_service_from_pam(const char *msg) {
 }
 
 // Extract username from "for user USERNAME" or "for USERNAME from"
+// Handles newer PAM format: "for user root(uid=0)" -> "root"
 static void extract_username(const char *start, char *username, size_t len) {
     if (len == 0)
         return;
     size_t i = 0;
-    while (*start && *start != ' ' && *start != '\n' && i < len - 1) {
+    while (*start && *start != ' ' && *start != '\n' && *start != '(' &&
+           i < len - 1) {
         username[i++] = *start++;
     }
     username[i] = '\0';

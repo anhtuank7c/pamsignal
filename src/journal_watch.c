@@ -205,8 +205,12 @@ int ps_journal_watch_init(sd_journal **j) {
     // Move back one entry so we don't re-process the last existing entry
     sd_journal_previous(*j);
 
-    // Add filters: match any of these syslog identifiers
+    // Add filters: match any of these syslog identifiers.
+    // Include both sshd and sshd-session (newer OpenSSH splits them),
+    // and both ssh.service (Ubuntu/Debian) and sshd.service (Fedora/RHEL).
     sd_journal_add_match(*j, "SYSLOG_IDENTIFIER=sshd", 0);
+    sd_journal_add_disjunction(*j);
+    sd_journal_add_match(*j, "SYSLOG_IDENTIFIER=sshd-session", 0);
     sd_journal_add_disjunction(*j);
     sd_journal_add_match(*j, "SYSLOG_IDENTIFIER=sudo", 0);
     sd_journal_add_disjunction(*j);
@@ -215,6 +219,8 @@ int ps_journal_watch_init(sd_journal **j) {
     sd_journal_add_match(*j, "SYSLOG_IDENTIFIER=login", 0);
     sd_journal_add_disjunction(*j);
     sd_journal_add_match(*j, "_SYSTEMD_UNIT=sshd.service", 0);
+    sd_journal_add_disjunction(*j);
+    sd_journal_add_match(*j, "_SYSTEMD_UNIT=ssh.service", 0);
 
     return PS_OK;
 }
