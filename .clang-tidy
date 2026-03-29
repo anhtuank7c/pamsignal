@@ -1,0 +1,53 @@
+---
+Checks: >
+  clang-analyzer-*,
+  -clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling,
+  bugprone-*,
+  -bugprone-easily-swappable-parameters,
+  -bugprone-assignment-in-if-condition,
+  cert-*,
+  -cert-err33-c,
+  concurrency-*,
+  -concurrency-mt-unsafe,
+  misc-*,
+  -misc-unused-parameters,
+  -misc-include-cleaner,
+  performance-*,
+  portability-*,
+  readability-identifier-naming,
+  security-*
+
+WarningsAsErrors: >
+  clang-analyzer-security.*,
+  bugprone-use-after-move,
+  bugprone-string-literal-with-embedded-nul,
+  bugprone-signal-handler,
+  clang-analyzer-unix.Malloc,
+  clang-analyzer-core.NullDereference
+
+CheckOptions:
+  # Naming conventions matching project style
+  - key: readability-identifier-naming.FunctionCase
+    value: lower_case
+  - key: readability-identifier-naming.VariableCase
+    value: lower_case
+  # g_ prefix for extern globals enforced by convention (CLAUDE.md), not here,
+  # because clang-tidy cannot distinguish extern vs file-scope static globals.
+  - key: readability-identifier-naming.GlobalVariableCase
+    value: lower_case
+  - key: readability-identifier-naming.MacroDefinitionCase
+    value: UPPER_CASE
+  - key: readability-identifier-naming.TypedefCase
+    value: lower_case
+  - key: readability-identifier-naming.TypedefSuffix
+    value: '_t'
+  - key: readability-identifier-naming.EnumCase
+    value: lower_case
+  - key: readability-identifier-naming.EnumSuffix
+    value: '_t'
+  - key: readability-identifier-naming.EnumConstantCase
+    value: UPPER_CASE
+  - key: readability-identifier-naming.EnumConstantPrefix
+    value: 'PS_'
+
+HeaderFilterRegex: 'include/.*\.h$'
