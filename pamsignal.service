@@ -1,0 +1,25 @@
+[Unit]
+Description=PAMSignal - Real-time PAM login monitor
+Documentation=https://github.com/anhtuank7c/pamsignal
+After=systemd-journald.service
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/pamsignal --foreground
+User=pamsignal
+Group=pamsignal
+SupplementaryGroups=systemd-journal
+Restart=on-failure
+RestartSec=5
+
+# Security hardening
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+ProtectKernelTunables=yes
+ProtectControlGroups=yes
+MemoryDenyWriteExecute=yes
+
+[Install]
+WantedBy=multi-user.target
