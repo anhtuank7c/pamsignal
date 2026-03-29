@@ -14,7 +14,7 @@ ps_config_t g_config;
 const char *g_config_path = PS_DEFAULT_CONFIG_PATH;
 
 void ps_config_defaults(ps_config_t *cfg) {
-    cfg->webhook_url[0] = '\0';
+    memset(cfg, 0, sizeof(*cfg));
     cfg->fail_threshold = PS_DEFAULT_FAIL_THRESHOLD;
     cfg->fail_window_sec = PS_DEFAULT_FAIL_WINDOW_SEC;
     cfg->max_tracked_ips = PS_DEFAULT_MAX_TRACKED_IPS;
@@ -85,7 +85,31 @@ int ps_config_load(const char *path, ps_config_t *cfg) {
         char *key = trim(p);
         char *val = trim(eq + 1);
 
-        if (strcmp(key, "webhook_url") == 0) {
+        if (strcmp(key, "telegram_bot_token") == 0) {
+            snprintf(cfg->telegram_bot_token, sizeof(cfg->telegram_bot_token),
+                     "%s", val);
+        } else if (strcmp(key, "telegram_chat_id") == 0) {
+            snprintf(cfg->telegram_chat_id, sizeof(cfg->telegram_chat_id),
+                     "%s", val);
+        } else if (strcmp(key, "slack_webhook_url") == 0) {
+            snprintf(cfg->slack_webhook_url, sizeof(cfg->slack_webhook_url),
+                     "%s", val);
+        } else if (strcmp(key, "teams_webhook_url") == 0) {
+            snprintf(cfg->teams_webhook_url, sizeof(cfg->teams_webhook_url),
+                     "%s", val);
+        } else if (strcmp(key, "whatsapp_access_token") == 0) {
+            snprintf(cfg->whatsapp_access_token,
+                     sizeof(cfg->whatsapp_access_token), "%s", val);
+        } else if (strcmp(key, "whatsapp_phone_number_id") == 0) {
+            snprintf(cfg->whatsapp_phone_number_id,
+                     sizeof(cfg->whatsapp_phone_number_id), "%s", val);
+        } else if (strcmp(key, "whatsapp_recipient") == 0) {
+            snprintf(cfg->whatsapp_recipient, sizeof(cfg->whatsapp_recipient),
+                     "%s", val);
+        } else if (strcmp(key, "discord_webhook_url") == 0) {
+            snprintf(cfg->discord_webhook_url,
+                     sizeof(cfg->discord_webhook_url), "%s", val);
+        } else if (strcmp(key, "webhook_url") == 0) {
             snprintf(cfg->webhook_url, sizeof(cfg->webhook_url), "%s", val);
         } else if (strcmp(key, "fail_threshold") == 0) {
             if (parse_int_range(val, 1, 10000, &cfg->fail_threshold) < 0) {
@@ -134,10 +158,16 @@ int ps_config_load(const char *path, ps_config_t *cfg) {
     }
 
     sd_journal_print(LOG_INFO,
-                     "pamsignal: config loaded: webhook_url=%s "
+                     "pamsignal: config loaded: telegram=%s slack=%s teams=%s "
+                     "whatsapp=%s discord=%s webhook=%s "
                      "fail_threshold=%d fail_window_sec=%d "
                      "max_tracked_ips=%d alert_cooldown_sec=%d",
-                     cfg->webhook_url[0] ? cfg->webhook_url : "(disabled)",
+                     cfg->telegram_bot_token[0] ? "on" : "off",
+                     cfg->slack_webhook_url[0] ? "on" : "off",
+                     cfg->teams_webhook_url[0] ? "on" : "off",
+                     cfg->whatsapp_access_token[0] ? "on" : "off",
+                     cfg->discord_webhook_url[0] ? "on" : "off",
+                     cfg->webhook_url[0] ? "on" : "off",
                      cfg->fail_threshold, cfg->fail_window_sec,
                      cfg->max_tracked_ips, cfg->alert_cooldown_sec);
     return PS_OK;

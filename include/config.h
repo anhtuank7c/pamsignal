@@ -12,8 +12,16 @@
 #define PS_DEFAULT_ALERT_COOLDOWN_SEC 60
 
 typedef struct {
-    // Webhook
-    char webhook_url[512];  // empty = disabled
+    // Alert channels (empty = disabled)
+    char telegram_bot_token[256];
+    char telegram_chat_id[64];
+    char slack_webhook_url[512];
+    char teams_webhook_url[512];
+    char whatsapp_access_token[512];
+    char whatsapp_phone_number_id[64];
+    char whatsapp_recipient[32];
+    char discord_webhook_url[512];
+    char webhook_url[512];
 
     // Brute-force detection
     int fail_threshold;     // 1..10000

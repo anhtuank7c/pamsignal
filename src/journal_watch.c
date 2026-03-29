@@ -7,6 +7,7 @@
 #include "config.h"
 #include "init.h"
 #include "journal_watch.h"
+#include "notify.h"
 #include "pam_event.h"
 #include "utils.h"
 
@@ -77,6 +78,11 @@ static void ps_track_failed_login(const ps_pam_event_t *event) {
                     "PAMSIGNAL_WINDOW_SEC=%s", window_str,
                     "PAMSIGNAL_USERNAME=%s", event->username,
                     "PAMSIGNAL_HOSTNAME=%s", event->hostname, NULL);
+
+                ps_notify_brute_force(
+                    &g_config, fail_table[i].ip, fail_table[i].count,
+                    g_config.fail_window_sec, event->username,
+                    event->hostname, event->timestamp_usec);
 
                 fail_table[i].count = 0;
                 fail_table[i].first_attempt_usec = event->timestamp_usec;
@@ -239,6 +245,7 @@ static void ps_process_entry(sd_journal *j) {
     sd_journal_get_realtime_usec(j, &event.timestamp_usec);
 
     ps_log_event(&event);
+    ps_notify_event(&g_config, &event);
 
     if (event.type == PS_EVENT_LOGIN_FAILED)
         ps_track_failed_login(&event);

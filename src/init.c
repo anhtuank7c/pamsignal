@@ -31,6 +31,13 @@ int ps_signal_init() {
   if (sigaction(SIGHUP, &sa, NULL) < 0)
     return PS_ERR_SIGNAL;
 
+  // Auto-reap child processes (fork+exec curl for alerts)
+  struct sigaction sa_chld = {0};
+  sa_chld.sa_handler = SIG_IGN;
+  sa_chld.sa_flags = SA_NOCLDWAIT;
+  if (sigaction(SIGCHLD, &sa_chld, NULL) < 0)
+    return PS_ERR_SIGNAL;
+
   return PS_OK;
 }
 

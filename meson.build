@@ -32,6 +32,7 @@ srcs = [
   'src/init.c',
   'src/journal_watch.c',
   'src/main.c',
+  'src/notify.c',
   'src/utils.c'
 ]
 
