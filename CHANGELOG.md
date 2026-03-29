@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Refactoring
+- [x] Replace `sscanf` with `strtol` for port parsing — proper error detection, CERT-compliant (`cert-err34-c`)
+- [x] Table-driven config parser — replace 15+ `strcmp`/`snprintf` branches with `cfg_entry_t` mapping table
+- [x] Consolidate notify channel senders — extract `post_json`/`send_simple_webhook` helpers, ~80 lines removed
+
 ### Core Observer
 - [x] Journal subscription via `libsystemd` — filter PAM events from sshd, sudo, su, login
 - [x] PAM message parsing — extract username, source IP, port, service, auth method

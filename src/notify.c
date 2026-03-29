@@ -130,6 +130,40 @@ static void format_brute_json(const char *ip, int attempts, int window,
              (unsigned long long)ts);
 }
 
+// --- HTTP POST helpers ---
+
+static void post_json(char *url, char *body) {
+    char *argv[] = {"curl",
+                    "-s",
+                    "-S",
+                    "--max-time",
+                    "10",
+                    "-H",
+                    "Content-Type: application/json",
+                    "-d",
+                    body,
+                    url,
+                    NULL};
+    fire_curl(argv);
+}
+
+static void post_json_auth(char *url, char *auth_header, char *body) {
+    char *argv[] = {"curl",
+                    "-s",
+                    "-S",
+                    "--max-time",
+                    "10",
+                    "-H",
+                    "Content-Type: application/json",
+                    "-H",
+                    auth_header,
+                    "-d",
+                    body,
+                    url,
+                    NULL};
+    fire_curl(argv);
+}
+
 // --- Per-channel senders ---
 
 static void send_telegram(const ps_config_t *cfg, const char *text) {
@@ -148,66 +182,18 @@ static void send_telegram(const ps_config_t *cfg, const char *text) {
              "{\"chat_id\":\"%s\",\"text\":\"%s\",\"parse_mode\":\"HTML\"}",
              cfg->telegram_chat_id, esc_text);
 
-    char *argv[] = {"curl",
-                    "-s",
-                    "-S",
-                    "--max-time",
-                    "10",
-                    "-H",
-                    "Content-Type: application/json",
-                    "-d",
-                    body,
-                    url,
-                    NULL};
-    fire_curl(argv);
+    post_json(url, body);
 }
 
-static void send_slack(const ps_config_t *cfg, const char *text) {
-    if (!cfg->slack_webhook_url[0])
-        return;
-
+static void send_simple_webhook(const char *url, const char *text_key,
+                                const char *text) {
     char esc_text[2048];
     json_escape(text, esc_text, sizeof(esc_text));
 
     char body[2560];
-    snprintf(body, sizeof(body), "{\"text\":\"%s\"}", esc_text);
+    snprintf(body, sizeof(body), "{\"%s\":\"%s\"}", text_key, esc_text);
 
-    char *argv[] = {"curl",
-                    "-s",
-                    "-S",
-                    "--max-time",
-                    "10",
-                    "-H",
-                    "Content-Type: application/json",
-                    "-d",
-                    body,
-                    (char *)cfg->slack_webhook_url,
-                    NULL};
-    fire_curl(argv);
-}
-
-static void send_teams(const ps_config_t *cfg, const char *text) {
-    if (!cfg->teams_webhook_url[0])
-        return;
-
-    char esc_text[2048];
-    json_escape(text, esc_text, sizeof(esc_text));
-
-    char body[2560];
-    snprintf(body, sizeof(body), "{\"text\":\"%s\"}", esc_text);
-
-    char *argv[] = {"curl",
-                    "-s",
-                    "-S",
-                    "--max-time",
-                    "10",
-                    "-H",
-                    "Content-Type: application/json",
-                    "-d",
-                    body,
-                    (char *)cfg->teams_webhook_url,
-                    NULL};
-    fire_curl(argv);
+    post_json((char *)url, body);
 }
 
 static void send_whatsapp(const ps_config_t *cfg, const char *text) {
@@ -232,62 +218,7 @@ static void send_whatsapp(const ps_config_t *cfg, const char *text) {
              "\"type\":\"text\",\"text\":{\"body\":\"%s\"}}",
              cfg->whatsapp_recipient, esc_text);
 
-    char *argv[] = {"curl",
-                    "-s",
-                    "-S",
-                    "--max-time",
-                    "10",
-                    "-H",
-                    "Content-Type: application/json",
-                    "-H",
-                    auth,
-                    "-d",
-                    body,
-                    url,
-                    NULL};
-    fire_curl(argv);
-}
-
-static void send_discord(const ps_config_t *cfg, const char *text) {
-    if (!cfg->discord_webhook_url[0])
-        return;
-
-    char esc_text[2048];
-    json_escape(text, esc_text, sizeof(esc_text));
-
-    char body[2560];
-    snprintf(body, sizeof(body), "{\"content\":\"%s\"}", esc_text);
-
-    char *argv[] = {"curl",
-                    "-s",
-                    "-S",
-                    "--max-time",
-                    "10",
-                    "-H",
-                    "Content-Type: application/json",
-                    "-d",
-                    body,
-                    (char *)cfg->discord_webhook_url,
-                    NULL};
-    fire_curl(argv);
-}
-
-static void send_webhook(const ps_config_t *cfg, const char *json) {
-    if (!cfg->webhook_url[0])
-        return;
-
-    char *argv[] = {"curl",
-                    "-s",
-                    "-S",
-                    "--max-time",
-                    "10",
-                    "-H",
-                    "Content-Type: application/json",
-                    "-d",
-                    (char *)json,
-                    (char *)cfg->webhook_url,
-                    NULL};
-    fire_curl(argv);
+    post_json_auth(url, auth, body);
 }
 
 // --- Cooldown ---
@@ -314,14 +245,18 @@ void ps_notify_event(const ps_config_t *cfg, const ps_pam_event_t *event) {
     format_event_text(event, text, sizeof(text));
 
     send_telegram(cfg, text);
-    send_slack(cfg, text);
-    send_teams(cfg, text);
+    if (cfg->slack_webhook_url[0])
+        send_simple_webhook(cfg->slack_webhook_url, "text", text);
+    if (cfg->teams_webhook_url[0])
+        send_simple_webhook(cfg->teams_webhook_url, "text", text);
     send_whatsapp(cfg, text);
-    send_discord(cfg, text);
+    if (cfg->discord_webhook_url[0])
+        send_simple_webhook(cfg->discord_webhook_url, "content", text);
 
     char json[2048];
     format_event_json(event, json, sizeof(json));
-    send_webhook(cfg, json);
+    if (cfg->webhook_url[0])
+        post_json((char *)cfg->webhook_url, json);
 }
 
 void ps_notify_brute_force(const ps_config_t *cfg, const char *source_ip,
@@ -336,13 +271,17 @@ void ps_notify_brute_force(const ps_config_t *cfg, const char *source_ip,
                       timestamp_usec, text, sizeof(text));
 
     send_telegram(cfg, text);
-    send_slack(cfg, text);
-    send_teams(cfg, text);
+    if (cfg->slack_webhook_url[0])
+        send_simple_webhook(cfg->slack_webhook_url, "text", text);
+    if (cfg->teams_webhook_url[0])
+        send_simple_webhook(cfg->teams_webhook_url, "text", text);
     send_whatsapp(cfg, text);
-    send_discord(cfg, text);
+    if (cfg->discord_webhook_url[0])
+        send_simple_webhook(cfg->discord_webhook_url, "content", text);
 
     char json[2048];
     format_brute_json(source_ip, attempts, window_sec, last_username, hostname,
                       timestamp_usec, json, sizeof(json));
-    send_webhook(cfg, json);
+    if (cfg->webhook_url[0])
+        post_json((char *)cfg->webhook_url, json);
 }

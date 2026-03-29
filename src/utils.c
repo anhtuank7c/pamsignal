@@ -1,6 +1,8 @@
 #include <arpa/inet.h>
 #include <ctype.h>
+#include <errno.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <time.h>
 
@@ -64,6 +66,30 @@ static void extract_username(const char *start, char *username, size_t len) {
     username[i] = '\0';
 }
 
+// Parse "USER from IP port PORT [ssh2]" into event fields.
+// Uses strtol for port to satisfy cert-err34-c (sscanf doesn't report
+// conversion errors for integers).
+static int parse_login_fields(const char *p, ps_pam_event_t *event) {
+    char port_str[16] = {0};
+    if (sscanf(p, "%63s from %45s port %15s", event->username, event->source_ip,
+               port_str) < 2)
+        return -1;
+
+    sanitize_string(event->username);
+    if (!is_valid_ip(event->source_ip))
+        event->source_ip[0] = '\0';
+
+    if (port_str[0]) {
+        char *end;
+        errno = 0;
+        long port = strtol(port_str, &end, 10);
+        if (end != port_str && *end == '\0' && errno != ERANGE && port >= 0 &&
+            port <= 65535)
+            event->port = (int)port;
+    }
+    return 0;
+}
+
 int ps_parse_message(const char *message, ps_pam_event_t *event) {
     memset(event, 0, sizeof(*event));
     event->type = PS_EVENT_UNKNOWN;
@@ -103,12 +129,7 @@ int ps_parse_message(const char *message, ps_pam_event_t *event) {
         event->auth_method = PS_AUTH_PASSWORD;
         event->service = PS_SERVICE_SSHD;
         p += 22; // skip "Accepted password for "
-        if (sscanf(p, "%63s from %45s port %d", event->username,
-                   event->source_ip, &event->port) >= 2) {
-            sanitize_string(event->username);
-            if (!is_valid_ip(event->source_ip))
-                event->source_ip[0] = '\0';
-        }
+        parse_login_fields(p, event);
         return PS_OK;
     }
 
@@ -119,12 +140,7 @@ int ps_parse_message(const char *message, ps_pam_event_t *event) {
         event->auth_method = PS_AUTH_PUBLICKEY;
         event->service = PS_SERVICE_SSHD;
         p += 23; // skip "Accepted publickey for "
-        if (sscanf(p, "%63s from %45s port %d", event->username,
-                   event->source_ip, &event->port) >= 2) {
-            sanitize_string(event->username);
-            if (!is_valid_ip(event->source_ip))
-                event->source_ip[0] = '\0';
-        }
+        parse_login_fields(p, event);
         return PS_OK;
     }
 
@@ -141,12 +157,7 @@ int ps_parse_message(const char *message, ps_pam_event_t *event) {
         if (strncmp(p, "invalid user ", 13) == 0)
             p += 13;
 
-        if (sscanf(p, "%63s from %45s port %d", event->username,
-                   event->source_ip, &event->port) >= 2) {
-            sanitize_string(event->username);
-            if (!is_valid_ip(event->source_ip))
-                event->source_ip[0] = '\0';
-        }
+        parse_login_fields(p, event);
         return PS_OK;
     }
 

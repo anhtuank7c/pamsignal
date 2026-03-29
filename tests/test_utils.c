@@ -270,6 +270,26 @@ static void test_parse_event_zeroed(void **state) {
     assert_string_equal(event.hostname, "");
 }
 
+static void test_parse_invalid_port_ignored(void **state) {
+    (void)state;
+    ps_pam_event_t event;
+    int ret = ps_parse_message(
+        "Accepted password for root from 1.2.3.4 port notanum ssh2", &event);
+    assert_int_equal(ret, PS_OK);
+    assert_int_equal(event.type, PS_EVENT_LOGIN_SUCCESS);
+    assert_string_equal(event.username, "root");
+    assert_int_equal(event.port, 0); // invalid port, stays at default
+}
+
+static void test_parse_port_out_of_range(void **state) {
+    (void)state;
+    ps_pam_event_t event;
+    int ret = ps_parse_message(
+        "Accepted password for root from 1.2.3.4 port 99999 ssh2", &event);
+    assert_int_equal(ret, PS_OK);
+    assert_int_equal(event.port, 0); // out of range, stays at default
+}
+
 // --- ps_format_timestamp ---
 
 static void test_format_timestamp(void **state) {
@@ -355,6 +375,8 @@ int main(void) {
         cmocka_unit_test(test_parse_long_username_truncated),
         cmocka_unit_test(test_parse_control_chars_sanitized),
         cmocka_unit_test(test_parse_event_zeroed),
+        cmocka_unit_test(test_parse_invalid_port_ignored),
+        cmocka_unit_test(test_parse_port_out_of_range),
 
         // ps_format_timestamp
         cmocka_unit_test(test_format_timestamp),

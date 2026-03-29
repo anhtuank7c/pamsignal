@@ -1,6 +1,7 @@
 #include <ctype.h>
 #include <errno.h>
 #include <limits.h>
+#include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -44,6 +45,48 @@ static int parse_int_range(const char *val, int min, int max, int *out) {
     return 0;
 }
 
+// --- Config key mapping table ---
+
+typedef enum { CFG_STRING, CFG_INT } cfg_type_t;
+
+typedef struct {
+    const char *key;
+    cfg_type_t type;
+    size_t offset; // offset into ps_config_t
+    size_t size;   // buffer size for strings
+    int min;       // for int range validation
+    int max;
+} cfg_entry_t;
+
+#define CFG_STR(name)                  \
+    {#name,                            \
+     CFG_STRING,                       \
+     offsetof(ps_config_t, name),      \
+     sizeof(((ps_config_t *)0)->name), \
+     0,                                \
+     0}
+#define CFG_INT(name, lo, hi) \
+    {#name, CFG_INT, offsetof(ps_config_t, name), 0, lo, hi}
+
+static const cfg_entry_t config_keys[] = {
+    CFG_STR(telegram_bot_token),
+    CFG_STR(telegram_chat_id),
+    CFG_STR(slack_webhook_url),
+    CFG_STR(teams_webhook_url),
+    CFG_STR(whatsapp_access_token),
+    CFG_STR(whatsapp_phone_number_id),
+    CFG_STR(whatsapp_recipient),
+    CFG_STR(discord_webhook_url),
+    CFG_STR(webhook_url),
+    CFG_INT(fail_threshold, 1, 10000),
+    CFG_INT(fail_window_sec, 1, 86400),
+    CFG_INT(max_tracked_ips, 1, 100000),
+    CFG_INT(alert_cooldown_sec, 0, 86400),
+};
+
+static const size_t config_keys_count =
+    sizeof(config_keys) / sizeof(config_keys[0]);
+
 int ps_config_load(const char *path, ps_config_t *cfg) {
     ps_config_defaults(cfg);
 
@@ -84,65 +127,29 @@ int ps_config_load(const char *path, ps_config_t *cfg) {
         char *key = trim(p);
         char *val = trim(eq + 1);
 
-        if (strcmp(key, "telegram_bot_token") == 0) {
-            snprintf(cfg->telegram_bot_token, sizeof(cfg->telegram_bot_token),
-                     "%s", val);
-        } else if (strcmp(key, "telegram_chat_id") == 0) {
-            snprintf(cfg->telegram_chat_id, sizeof(cfg->telegram_chat_id), "%s",
-                     val);
-        } else if (strcmp(key, "slack_webhook_url") == 0) {
-            snprintf(cfg->slack_webhook_url, sizeof(cfg->slack_webhook_url),
-                     "%s", val);
-        } else if (strcmp(key, "teams_webhook_url") == 0) {
-            snprintf(cfg->teams_webhook_url, sizeof(cfg->teams_webhook_url),
-                     "%s", val);
-        } else if (strcmp(key, "whatsapp_access_token") == 0) {
-            snprintf(cfg->whatsapp_access_token,
-                     sizeof(cfg->whatsapp_access_token), "%s", val);
-        } else if (strcmp(key, "whatsapp_phone_number_id") == 0) {
-            snprintf(cfg->whatsapp_phone_number_id,
-                     sizeof(cfg->whatsapp_phone_number_id), "%s", val);
-        } else if (strcmp(key, "whatsapp_recipient") == 0) {
-            snprintf(cfg->whatsapp_recipient, sizeof(cfg->whatsapp_recipient),
-                     "%s", val);
-        } else if (strcmp(key, "discord_webhook_url") == 0) {
-            snprintf(cfg->discord_webhook_url, sizeof(cfg->discord_webhook_url),
-                     "%s", val);
-        } else if (strcmp(key, "webhook_url") == 0) {
-            snprintf(cfg->webhook_url, sizeof(cfg->webhook_url), "%s", val);
-        } else if (strcmp(key, "fail_threshold") == 0) {
-            if (parse_int_range(val, 1, 10000, &cfg->fail_threshold) < 0) {
-                sd_journal_print(
-                    LOG_ERR,
-                    "pamsignal: config:%d: fail_threshold must be 1..10000",
-                    lineno);
-                errors++;
+        int found = 0;
+        for (size_t i = 0; i < config_keys_count; i++) {
+            if (strcmp(key, config_keys[i].key) != 0)
+                continue;
+            found = 1;
+
+            if (config_keys[i].type == CFG_STRING) {
+                char *dst = (char *)cfg + config_keys[i].offset;
+                snprintf(dst, config_keys[i].size, "%s", val);
+            } else {
+                int *dst = (int *)((char *)cfg + config_keys[i].offset);
+                if (parse_int_range(val, config_keys[i].min, config_keys[i].max,
+                                    dst) < 0) {
+                    sd_journal_print(
+                        LOG_ERR, "pamsignal: config:%d: %s must be %d..%d",
+                        lineno, key, config_keys[i].min, config_keys[i].max);
+                    errors++;
+                }
             }
-        } else if (strcmp(key, "fail_window_sec") == 0) {
-            if (parse_int_range(val, 1, 86400, &cfg->fail_window_sec) < 0) {
-                sd_journal_print(
-                    LOG_ERR,
-                    "pamsignal: config:%d: fail_window_sec must be 1..86400",
-                    lineno);
-                errors++;
-            }
-        } else if (strcmp(key, "max_tracked_ips") == 0) {
-            if (parse_int_range(val, 1, 100000, &cfg->max_tracked_ips) < 0) {
-                sd_journal_print(
-                    LOG_ERR,
-                    "pamsignal: config:%d: max_tracked_ips must be 1..100000",
-                    lineno);
-                errors++;
-            }
-        } else if (strcmp(key, "alert_cooldown_sec") == 0) {
-            if (parse_int_range(val, 0, 86400, &cfg->alert_cooldown_sec) < 0) {
-                sd_journal_print(
-                    LOG_ERR,
-                    "pamsignal: config:%d: alert_cooldown_sec must be 0..86400",
-                    lineno);
-                errors++;
-            }
-        } else {
+            break;
+        }
+
+        if (!found) {
             sd_journal_print(LOG_WARNING,
                              "pamsignal: config:%d: unknown key: %s", lineno,
                              key);
