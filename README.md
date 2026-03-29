@@ -41,6 +41,81 @@ PAMSignal focuses on Access Monitoring, so you'll need PAMSignal if:
 
 PAMSignal is written in pure C to ensure no dependency on bulky runtimes (like Python or Java), minimizing the attack surface for itself, and simplifying the installation process while keeping the installation footprint minimal.
 
+## Development Guide
+
+### Prerequisites
+
+```bash
+sudo apt install libsystemd-dev pkg-config build-essential meson ninja-build
+```
+
+### Build
+
+```bash
+# First time: configure the build directory
+meson setup build
+
+# Compile
+meson compile -C build
+```
+
+### Clean
+
+```bash
+# Remove all build artifacts and reconfigure
+rm -rf build
+meson setup build
+```
+
+### Setup test environment
+
+PAMSignal runs as a dedicated unprivileged user with journal read access (not root).
+
+```bash
+# Create a system user for pamsignal (no login shell, no home directory)
+sudo useradd -r -s /usr/sbin/nologin pamsignal
+
+# Grant permission to read the systemd journal
+sudo usermod -aG systemd-journal pamsignal
+```
+
+You also need SSH available locally to generate real login events:
+
+```bash
+sudo apt install openssh-server
+sudo systemctl enable --now ssh
+```
+
+### Run
+
+```bash
+# Start the daemon as the pamsignal user
+sudo -u pamsignal ./build/pamsignal
+
+# Watch pamsignal output in real time
+journalctl -t pamsignal -f
+```
+
+Then trigger events from another terminal:
+
+```bash
+# Successful login (triggers LOGIN_SUCCESS + SESSION_OPEN)
+ssh localhost
+
+# Failed login (triggers LOGIN_FAILED)
+ssh nonexistent@localhost
+```
+
+### Stop
+
+```bash
+# Graceful shutdown via SIGTERM
+sudo kill $(pgrep pamsignal)
+
+# Verify it's stopped
+ps aux | grep pamsignal
+```
+
 ## Project Roadmap
 
 I've divided the project into 4 main phases to ensure feasibility, sustainability, and alignment with Linux security industry standards:
@@ -49,90 +124,36 @@ I've divided the project into 4 main phases to ensure feasibility, sustainabilit
 
 - [x] [Initialize: C project structure, dependency management with Meson.](./docs/phase-1-initialize.md)
 - [x] [Journal Subscriber: Use **libsystemd** to listen to auth event streams.](./docs/phase-1-systemd-jounald.md)
-- [ ] **PAM Logic:** Accurately filter *session opened* and *session closed* events.
-- [ ] **Information Extractor:** Extract comprehensive data fields:
-  - User, Remote IP, Service (sshd/sudo/su)
-  - Timestamp, session duration, authentication method (password/key)
-- [ ] **Failed Login Tracking:** Monitor and count failed authentication attempts for brute-force detection.
-- [ ] **Auditd Integration:** Optional support for `pam_tty_audit` to monitor privileged user sessions.
-- [ ] **IPv6 Support:** Parse `/proc/net/tcp6` for complete network coverage.
+- [x] **PAM Logic:** Filter *session opened* and *session closed* events.
+- [x] **Information Extractor:** Extract user, remote IP, service (sshd/sudo/su), timestamp, and authentication method (password/key).
+- [x] **Failed Login Tracking:** Monitor and count failed authentication attempts for brute-force detection.
 
 ### Phase 2: Context Awareness
 
-- [ ] **Network Discovery:** List all existing IPs on the server.
-  - Query `/proc/net/tcp` and `/proc/net/tcp6` to identify **Destination IP** (the IP the client is connecting to).
-  - Support for Unix socket authentication tracking.
-- [ ] **Provider Identity:** Integrate logic to identify Cloud providers (AWS, GCP, DigitalOcean, etc.).
-- [ ] **ASN/Organization Lookup:** Get the ISP name of the accessor (e.g., Viettel, FPT, or a suspicious data center in Russia).
-  - Use offline GeoIP database (MaxMind GeoLite2) to avoid external dependencies.
+- [ ] **Network Discovery:** Query `/proc/net/tcp` and `/proc/net/tcp6` to identify destination IP and support IPv6.
+- [ ] **Provider Identity:** Identify cloud providers (AWS, GCP, DigitalOcean, etc.).
+- [ ] **ASN/Organization Lookup:** Get the ISP/organization of the accessor using offline GeoIP database (MaxMind GeoLite2).
 - [ ] **Message Templating:** Design professional, easy-to-read notification structure.
-- [ ] **Security Hardening:** Implement comprehensive systemd service isolation:
-  - Create dedicated unprivileged user with `DynamicUser=yes`.
-  - Apply `ProtectSystem=strict`, `ProtectHome=yes`, `PrivateTmp=yes`.
-  - Restrict capabilities: `CapabilityBoundingSet=CAP_DAC_READ_SEARCH`.
-  - Syscall filtering: `SystemCallFilter=@system-service`.
-  - Set `NoNewPrivileges=yes` to prevent privilege escalation.
-- [ ] **FHS Compliance:** Follow Filesystem Hierarchy Standard:
-  - Binary in `/usr/bin`, configuration in `/etc/pamsignal`, logs in `/var/log/pamsignal`.
-  - Proper file permissions: config `0600`, binary `0755`.
+- [ ] **Security Hardening:** systemd service isolation (`ProtectSystem=strict`, `PrivateTmp=yes`, `NoNewPrivileges=yes`, capability/syscall restrictions).
+- [ ] **FHS Compliance:** Binary in `/usr/bin`, configuration in `/etc/pamsignal`, logs in `/var/log/pamsignal`.
 
 ### Phase 3: Enterprise Readiness
 
-- [ ] **SIEM Integration:** Forward events to remote syslog/SIEM systems for centralized monitoring.
-  - Support CEF (Common Event Format) and LEEF (Log Event Extended Format).
-- [ ] **Log Integrity:** Implement SHA256 hashing of alert records to prevent tampering.
+- [ ] **SIEM Integration:** Forward events to remote syslog/SIEM systems (CEF/LEEF format).
+- [ ] **Log Integrity:** SHA256 hashing of alert records to prevent tampering.
 - [ ] **Rate Limiting:** Configurable alert throttling to prevent notification flooding during attacks.
-- [ ] **Health Monitoring:** 
-  - Systemd watchdog integration for service health checks.
-  - Expose metrics for failed alert deliveries and processing lag.
-- [ ] **Graceful Degradation:** Handle systemd journal unavailability without service crashes.
-- [ ] **Signal Handling:** Proper SIGTERM/SIGHUP handling for clean shutdown and configuration reload.
-- [ ] **Audit Trail:** Configurable log retention policies for compliance requirements (NIST 800-53, CIS Controls).
+- [ ] **Health Monitoring:** Systemd watchdog integration and metrics for failed deliveries/processing lag.
+- [ ] **Graceful Degradation:** Handle systemd journal unavailability without crashing.
+- [x] **Signal Handling:** SIGTERM/SIGINT handling for clean shutdown.
+- [ ] **SIGHUP Config Reload:** Reload configuration without restarting the daemon.
+- [ ] **Audit Trail:** Configurable log retention policies for compliance (NIST 800-53, CIS Controls).
 
 ### Phase 4: Distribution & Release
 
-- [ ] **Multi-channel Alert:** Integrate `libcurl` to send notifications via Telegram/Slack API.
-- [ ] **Config Manager:** Build configuration file (YAML or JSON) with validation:
-  - JSON schema for config validation.
-  - Comprehensive documentation with sane defaults.
-- [ ] **Traditional Package Formats (PRIMARY):** Build native packages for maximum compatibility:
-  - **`.deb` packages** for Debian/Ubuntu/Mint (APT):
-    - Create `debian/` directory with control files, rules, and changelog.
-    - Use `dpkg-buildpackage` or `debuild` for building.
-    - Sign packages with GPG for authenticity.
-    - Include systemd service unit files and post-install scripts.
-  - **`.rpm` packages** for RHEL/Fedora/CentOS/Rocky/AlmaLinux (DNF/YUM):
-    - Create `.spec` file with build instructions and dependencies.
-    - Use `rpmbuild` for package creation.
-    - Sign packages with GPG for authenticity.
-    - Include systemd service unit files and post-install scripts.
-- [ ] **Repository Distribution:**
-  - **Debian/Ubuntu**: Submit to official repositories or create PPA (Personal Package Archive).
-  - **Fedora**: Submit to Fedora COPR (Cool Other Package Repo).
-  - **GitHub Releases**: Provide direct downloads for `.deb` and `.rpm` files.
-  - Create installation scripts for one-line setup (`curl | bash` pattern).
-- [ ] **Snap Packages (OPTIONAL):** Universal package for convenience:
-  - Create `snapcraft.yaml` with proper confinement settings.
-  - Publish to Snap Store as supplementary distribution channel.
-  - Note: Snap is secondary due to performance overhead and enterprise resistance.
-- [ ] **Documentation:** 
-  - Man pages (`pamsignal(8)`, `pamsignal.conf(5)`).
-  - Systemd service configuration examples.
-  - Installation guides for each distribution family.
-  - Repository setup instructions (adding GPG keys, sources.list entries).
-- [ ] **Automated Testing:** 
-  - Unit tests for core logic (event parsing, filtering).
-  - Integration tests with mock systemd journal.
-  - Security tests (fuzzing, privilege escalation checks).
-  - Performance tests (handle 1000+ logins/sec).
-  - Package installation tests on multiple distributions (Ubuntu, Debian, Fedora, RHEL).
-- [ ] **CI/CD Pipeline:** GitHub Actions for automated building, testing, and packaging:
-  - Multi-distribution build matrix (Ubuntu 22.04/24.04, Debian 11/12, Fedora 39/40, RHEL 9).
-  - Automated package signing with GPG.
-  - Automated publishing to GitHub Releases.
-  - Automated repository updates.
-- [ ] **Official Release:** 
-  - Publish `.deb` packages to Debian/Ubuntu repositories or PPA.
-  - Publish `.rpm` packages to Fedora COPR.
-  - Publish to GitHub Releases with checksums (SHA256).
-  - Optional: Publish to Snap Store for convenience.
+- [ ] **Multi-channel Alert:** Integrate `libcurl` for Telegram/Slack/webhook notifications.
+- [ ] **Config Manager:** Configuration file (YAML or JSON) with validation and sane defaults.
+- [ ] **Package Building:** Native `.deb` and `.rpm` packages with GPG signing and systemd service units.
+- [ ] **Repository Distribution:** GitHub Releases, Debian PPA, and Fedora COPR.
+- [ ] **Documentation:** Man pages (`pamsignal(8)`, `pamsignal.conf(5)`) and installation guides.
+- [ ] **Automated Testing:** Unit tests, integration tests, security fuzzing, and multi-distro package tests.
+- [ ] **CI/CD Pipeline:** GitHub Actions for building, testing, signing, and publishing across distributions.
