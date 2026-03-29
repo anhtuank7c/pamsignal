@@ -20,7 +20,7 @@ int ps_daemonize();
 int ps_signal_init();
 
 // PID file for single-instance enforcement
-#define PS_PID_FILE "/tmp/pamsignal.pid"
+#define PS_PID_FILE "/run/pamsignal/pamsignal.pid"
 int ps_pidfile_acquire(void);
 void ps_pidfile_release(void);
 

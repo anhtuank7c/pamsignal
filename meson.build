@@ -10,7 +10,8 @@ project('pamsignal', 'c',
 
 add_project_arguments(
   '-Wshadow',
-  '-Wformat-security',
+  '-Wformat=2',
+  '-Werror=format-security',
   '-fstack-protector-strong',
   '-D_FORTIFY_SOURCE=2',
   language: 'c'

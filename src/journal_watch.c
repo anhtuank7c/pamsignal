@@ -203,7 +203,13 @@ int ps_journal_watch_init(sd_journal **j) {
     }
 
     // Move back one entry so we don't re-process the last existing entry
-    sd_journal_previous(*j);
+    r = sd_journal_previous(*j);
+    if (r < 0) {
+        sd_journal_print(LOG_WARNING,
+                         "pamsignal: failed to step back in journal: %s",
+                         strerror(-r));
+        // Non-fatal: worst case we re-process one entry on startup
+    }
 
     // Add filters: match any of these syslog identifiers.
     // Include both sshd and sshd-session (newer OpenSSH splits them),

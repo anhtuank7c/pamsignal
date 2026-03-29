@@ -71,6 +71,7 @@ int main(int argc, char *argv[]) {
     }
 
     if (!has_journal_access()) {
+        const char *user = getenv("USER");
         fprintf(stderr,
                 "pamsignal: current user is not in the systemd-journal "
                 "group.\n"
@@ -78,7 +79,7 @@ int main(int argc, char *argv[]) {
                 "  sudo usermod -aG systemd-journal %s\n"
                 "Then log out and back in, or run:\n"
                 "  newgrp systemd-journal\n",
-                getenv("USER") ? getenv("USER") : "(unknown)");
+                user ? user : "(unknown)");
         return 1;
     }
 
