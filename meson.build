@@ -51,3 +51,28 @@ install_data('pamsignal.conf.example',
   install_dir: get_option('sysconfdir') / 'pamsignal',
   rename: 'pamsignal.conf'
 )
+
+# --- Tests ---
+cmocka_dep = dependency('cmocka', required: false)
+
+if cmocka_dep.found()
+  test('test_utils',
+    executable('test_utils',
+      'tests/test_utils.c',
+      'src/utils.c',
+      include_directories: inc,
+      dependencies: [cmocka_dep, libsystemd_dep],
+    ),
+    protocol: 'exitcode',
+  )
+
+  test('test_config',
+    executable('test_config',
+      'tests/test_config.c',
+      'src/config.c',
+      include_directories: inc,
+      dependencies: [cmocka_dep, libsystemd_dep],
+    ),
+    protocol: 'exitcode',
+  )
+endif

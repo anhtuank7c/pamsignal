@@ -47,7 +47,9 @@
       "Bash(clang-tidy --version)",
       "Bash(apt list:*)",
       "Bash(sudo apt-get:*)",
-      "Bash(clang-format:*)"
+      "Bash(clang-format:*)",
+      "Bash(pkg-config:*)",
+      "Bash(meson test:*)"
     ]
   }
 }
