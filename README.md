@@ -75,6 +75,7 @@ See [Deployment](./docs/deployment.md) for production setup with systemd.
 | [Alerts](./docs/alerts.md) | Channel setup guides, message formats, webhook payload reference |
 | [Development](./docs/development.md) | Build, test environment, e2e testing |
 | [Deployment](./docs/deployment.md) | systemd service, production setup, security hardening |
+| [Changelog](./CHANGELOG.md) | What's done, what's next, task tracking |
 
 ## Why I built this
 
@@ -92,20 +93,18 @@ I don't claim full control over every detail. What I do is: read what AI produce
 
 This is how I believe software will increasingly be built: humans and AI collaborating openly. If that bothers you, this project probably isn't for you. If you're curious about the workflow, everything is here to inspect.
 
-## What's next
+## Status
 
-- **Structured journal output:** Replace `sd_journal_print` with `sd_journal_send` for machine-readable `PAMSIGNAL_*` fields
-- **Alert dispatch:** fork+exec `curl` for Telegram, Slack, Teams, WhatsApp, Discord
-- **Rate limiting:** Alert cooldown per IP to prevent notification flooding
+See [CHANGELOG.md](./CHANGELOG.md) for the full task tracking.
 
-## Ideas (no promises)
+**Done:** Core observer, structured journal output, config with SIGHUP reload, alert dispatch (Telegram, Slack, Teams, WhatsApp, Discord, webhook), security hardening, documentation.
 
-Things I'm thinking about, but only if real users ask for them:
+**Next up:**
+- End-to-end test with real alert channels
+- Per-IP alert cooldown (current cooldown is global)
+- Curl availability check at startup
 
-- GeoIP/ASN lookup for source IPs
-- Forwarding events to external logging systems
-- Package distribution (.deb, .rpm)
-- IPv6 network context from `/proc/net/tcp6`
+**Ideas (no promises):** GeoIP/ASN lookup, event forwarding, package distribution, IPv6 context, message templates.
 
 ## Learning notes
 
