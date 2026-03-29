@@ -4,51 +4,135 @@
 ![Language](https://img.shields.io/badge/Language-C-orange)
 ![Platform](https://img.shields.io/badge/Platform-Linux-lightgrey)
 
-## Introduction
+## What is PAMSignal?
 
-System administrators are often reactive to unauthorized intrusions because default logging systems are difficult to monitor, easily tampered with, or existing security tools are too heavy and complex to deploy on low-spec servers. Or perhaps you simply don't have the budget or manpower to implement massive systems like EDR (**E**ndpoint **D**etection and **R**esponse) or XDR (**E**xtended **D**etection and **R**esponse), which are designed for large, professional enterprises.
+PAMSignal is a lightweight, real-time login monitor for Linux servers. It watches the systemd journal for PAM authentication events and alerts you when someone logs in, logs out, or tries to brute-force their way in.
 
-**Why I created PAMSignal**
+**Don't use a sledgehammer to crack a nut.** If you manage 1-10 Linux servers and just want to know when someone touches your box — without deploying Wazuh, EDR, or reading 200 pages of documentation — this is for you.
 
-- I manage a number of Linux servers with **limited resources** and needed a lightweight monitoring tool that didn't exist in the way I wanted.
-- I wanted to deepen my understanding of C, Linux internals, and security — skills that remain in demand even as the industry shifts.
-- I wanted to connect with and learn from industry experts.
-- I wanted to create an open-source product Made in Vietnam.
+## How it works
 
-**On using AI in this project**
+PAMSignal subscribes to the systemd journal and filters for PAM-related messages from sshd, sudo, su, and login. It parses each message to extract the username, source IP, port, service, and authentication method, then writes structured events back to the journal. It tracks failed login attempts per IP and alerts when a brute-force pattern is detected (5 failures within 5 minutes).
 
-This project is built with AI assistance ([Claude Code](https://claude.ai/claude-code)). I review, test, and take responsibility for every line that gets merged.
+It runs as a dedicated unprivileged user (not root), uses no external runtime, and has a single dependency: `libsystemd`.
 
-Why? The honest answer: time. The tech job market since 2023 has been brutal — [mass layoffs](https://layoffs.fyi/), hiring freezes, and a shift toward fewer engineers expected to do more. Meanwhile AI coding tools have moved from autocomplete to genuine pair programming. Ignoring that is not pragmatism, it's denial.
+## Architecture (C4 Model)
 
-I don't treat AI as a replacement for understanding. I treat it as a force multiplier: it handles boilerplate, catches patterns I'd miss at 2 AM, and lets me ship a real project while holding down a day job and other responsibilities. Every architectural decision, every security review, every commit message — I read it, I verify it, I own it.
+### Level 1: System Context
 
-This is the new reality for independent developers: use the tools available, apply them with care, and spend your limited hours on the problems that actually need a human.
+How PAMSignal fits into a Linux server environment.
 
-**What is PAMSignal?**
+```mermaid
+C4Context
+    title System Context — PAMSignal
 
-PAMSignal is a Linux-specific application for monitoring and alerting immediately when login sessions occur. It ensures you're always proactive in every situation.
+    Person(admin, "System Administrator", "Manages 1-10 Linux servers")
 
-**Who needs PAMSignal?**
+    System(pamsignal, "PAMSignal", "Lightweight PAM login monitor daemon")
 
-Many people ask me: Why not use **Wazuh** or install **EDR**, **XDR** for a more professional solution?
+    System_Ext(journald, "systemd-journald", "System log manager")
+    System_Ext(sshd, "sshd / sudo / su", "PAM-aware services that generate auth events")
+    System_Ext(alerts, "Telegram / Slack / Webhook", "Notification channels (planned)")
 
-The simple answer is: **Don't use a sledgehammer to crack a nut.**
+    Rel(sshd, journald, "Writes PAM auth events")
+    Rel(pamsignal, journald, "Subscribes and filters PAM events", "libsystemd")
+    Rel(pamsignal, journald, "Writes structured alerts")
+    Rel(pamsignal, alerts, "Sends notifications (planned)", "libcurl")
+    Rel(admin, alerts, "Receives alerts")
+    Rel(admin, journald, "Reads logs via journalctl")
+```
 
-So who is **PAMSignal** suitable for?
+### Level 2: Container
 
-PAMSignal focuses on Access Monitoring, so you'll need PAMSignal if:
+PAMSignal is a single-process daemon. No database, no web server, no backend.
 
-- You need to manage 1-10 Linux VPS/servers (or more).
-- You have minimal server specs but still want monitoring.
-- You need an access monitoring tool that's simple enough, lightweight, with no backend required.
-- You prioritize minimalism, plug & play installation, without spending time reading hundreds of pages of documentation.
-- You need a tool that can send alerts to Telegram/Slack/custom webhooks (integrate directly into your web application).
-- You need a free tool, distributed under the [MIT open-source license](./LICENSE).
+```mermaid
+C4Container
+    title Container — PAMSignal
 
-**Why use C as the primary programming language for PAMSignal?**
+    Person(admin, "System Administrator")
 
-PAMSignal is written in pure C to ensure no dependency on bulky runtimes (like Python or Java), minimizing the attack surface for itself, and simplifying the installation process while keeping the installation footprint minimal.
+    System_Boundary(server, "Linux Server") {
+        Container(pamsignal, "PAMSignal Daemon", "C / libsystemd", "Monitors PAM events, detects brute-force, writes structured alerts to journal")
+        ContainerDb(journal, "systemd journal", "Binary log", "Stores all system and PAMSignal events")
+        Container(systemd, "systemd", "Service manager", "Manages PAMSignal lifecycle with security sandboxing")
+        Container(pam_services, "sshd / sudo / su", "PAM services", "Generate authentication events")
+    }
+
+    Rel(pam_services, journal, "Writes auth events")
+    Rel(pamsignal, journal, "Reads PAM events / Writes structured alerts")
+    Rel(systemd, pamsignal, "Starts, stops, sandboxes")
+    Rel(admin, journal, "journalctl -t pamsignal")
+```
+
+### Level 3: Component
+
+The internal structure of the PAMSignal daemon.
+
+```mermaid
+C4Component
+    title Component — PAMSignal Daemon
+
+    Container_Boundary(pamsignal, "PAMSignal Daemon") {
+        Component(main, "main.c", "Entry Point", "CLI parsing, root rejection, journal group check, daemon lifecycle")
+        Component(init, "init.c", "Initialization", "Double-fork daemonization, signal handling (SIGTERM/SIGINT), PID file management")
+        Component(journal_watch, "journal_watch.c", "Journal Watcher", "Journal subscription, event loop, brute-force tracking (5 fails / 5 min per IP)")
+        Component(utils, "utils.c", "Parser & Validator", "PAM message parsing, IP validation (inet_pton), log injection sanitization, timestamp formatting")
+    }
+
+    ContainerDb_Ext(journal, "systemd journal")
+
+    Rel(main, init, "Initializes")
+    Rel(main, journal_watch, "Starts event loop")
+    Rel(journal_watch, utils, "Parses each journal entry")
+    Rel(journal_watch, journal, "sd_journal_wait / sd_journal_next")
+    Rel(journal_watch, journal, "sd_journal_print (structured alerts)")
+    Rel(init, main, "Signal sets running=false")
+```
+
+## Why I built this
+
+- I manage a number of Linux servers with limited resources and needed a monitoring tool that didn't exist the way I wanted.
+- I wanted to learn C, Linux internals, and security by building something real.
+- I wanted to create an open-source project Made in Vietnam.
+
+## On using AI
+
+This project is built with AI assistance ([Claude Code](https://claude.ai/claude-code)). I want to be straightforward about what that means.
+
+I'm not a senior C programmer. I don't have years of Linux systems experience. AI doesn't just write boilerplate for me — it teaches me, catches mistakes I wouldn't know to look for, and helps me make decisions I couldn't make alone yet. The [OWASP ASVS 5.0 security review](.claude/skills/owasp-review/SKILL.md) that hardened this project? That was an AI-assisted audit using a custom skill I built for exactly this purpose.
+
+I don't claim full control over every detail. What I do is: read what AI produces, ask questions when I don't understand, test it on real systems, and take responsibility for shipping it. The `.claude/` directory is committed to this repo — you can see exactly how AI is used in this project. I hide nothing.
+
+This is how I believe software will increasingly be built: humans and AI collaborating openly. If that bothers you, this project probably isn't for you. If you're curious about the workflow, everything is here to inspect.
+
+## What it does today
+
+- Real-time monitoring of PAM events via systemd journal
+- Detects session open/close, login success, and login failure
+- Tracks failed login attempts per IP with brute-force detection
+- Extracts username, source IP, port, service, auth method, and timestamp
+- Runs as unprivileged daemon with systemd sandboxing
+- Build hardened: stack protector, FORTIFY_SOURCE, PIE, full RELRO
+- Runtime hardened: 15+ systemd security directives
+
+## What's next
+
+The core observer works. The next step is making it actually useful for day-to-day monitoring:
+
+- **Alerts:** Telegram, Slack, and custom webhook notifications via `libcurl`
+- **Configuration:** Config file (likely YAML or JSON) so you can set alert credentials and thresholds without recompiling
+- **Rate limiting:** Throttle alerts during sustained attacks so your phone doesn't explode
+- **Config reload:** SIGHUP to reload config without restarting the daemon
+
+## Ideas (no promises)
+
+Things I'm thinking about, but only if real users ask for them:
+
+- GeoIP/ASN lookup for source IPs
+- Forwarding events to external logging systems
+- Package distribution (.deb, .rpm)
+- IPv6 network context from `/proc/net/tcp6`
 
 ## Development Guide
 
@@ -161,43 +245,10 @@ sudo systemctl stop pamsignal
 # or Ctrl+C if running in foreground
 ```
 
-## Project Roadmap
+## Learning notes
 
-### Phase 1: The Core Observer (done)
+Technical notes I wrote while building this:
 
-- [x] [Initialize: C project structure, dependency management with Meson.](./docs/phase-1-initialize.md)
-- [x] [Journal Subscriber: Use **libsystemd** to listen to auth event streams.](./docs/phase-1-systemd-jounald.md)
-- [x] **PAM Logic:** Filter *session opened* and *session closed* events.
-- [x] **Information Extractor:** Extract user, remote IP, service (sshd/sudo/su), timestamp, and authentication method (password/key).
-- [x] **Failed Login Tracking:** Monitor and count failed authentication attempts for brute-force detection.
-- [x] **Signal Handling:** SIGTERM/SIGINT handling for clean shutdown.
-- [x] **Systemd Service:** Service file with security hardening (`ProtectSystem=strict`, `NoNewPrivileges=yes`, `MemoryDenyWriteExecute=yes`).
-- [x] **Build Hardening:** Stack protector, FORTIFY_SOURCE, PIE, full RELRO, format-security.
-
-### Phase 2: Alerts & Configuration
-
-- [ ] **Multi-channel Alert:** Integrate `libcurl` for Telegram/Slack/webhook notifications.
-- [ ] **Config Manager:** Configuration file (YAML or JSON) with validation and sane defaults.
-- [ ] **Message Templating:** Design professional, easy-to-read notification structure.
-- [ ] **SIGHUP Config Reload:** Reload configuration without restarting the daemon.
-- [ ] **Rate Limiting:** Configurable alert throttling to prevent notification flooding during attacks.
-
-### Phase 3: Context Awareness
-
-- [ ] **Network Discovery:** Query `/proc/net/tcp` and `/proc/net/tcp6` to identify destination IP and support IPv6.
-- [ ] **Provider Identity:** Identify cloud providers (AWS, GCP, DigitalOcean, etc.).
-- [ ] **ASN/Organization Lookup:** Get the ISP/organization of the accessor using offline GeoIP database (MaxMind GeoLite2).
-- [ ] **FHS Compliance:** Binary in `/usr/bin`, configuration in `/etc/pamsignal`, logs in `/var/log/pamsignal`.
-
-### Phase 4: Enterprise & Distribution
-
-- [ ] **SIEM Integration:** Forward events to remote syslog/SIEM systems (CEF/LEEF format).
-- [ ] **Log Integrity:** SHA256 hashing of alert records to prevent tampering.
-- [ ] **Health Monitoring:** Systemd watchdog integration and metrics for failed deliveries/processing lag.
-- [ ] **Graceful Degradation:** Handle systemd journal unavailability without crashing.
-- [ ] **Audit Trail:** Configurable log retention policies for compliance (NIST 800-53, CIS Controls).
-- [ ] **Package Building:** Native `.deb` and `.rpm` packages with GPG signing.
-- [ ] **Repository Distribution:** GitHub Releases, Debian PPA, and Fedora COPR.
-- [ ] **Documentation:** Man pages (`pamsignal(8)`, `pamsignal.conf(5)`) and installation guides.
-- [ ] **Automated Testing:** Unit tests, integration tests, security fuzzing, and multi-distro package tests.
-- [ ] **CI/CD Pipeline:** GitHub Actions for building, testing, signing, and publishing across distributions.
+- [Project initialization and structure](./docs/phase-1-initialize.md)
+- [Meson build system guide](./docs/phase-1-meson_guide.md)
+- [Systemd journal subscription](./docs/phase-1-systemd-jounald.md)
