@@ -1,12 +1,22 @@
 #include <grp.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <syslog.h>
 #include <systemd/sd-journal.h>
 #include <unistd.h>
 
 #include "init.h"
 #include "journal_watch.h"
+
+static int parse_foreground(int argc, char *argv[]) {
+    for (int i = 1; i < argc; i++) {
+        if (strcmp(argv[i], "--foreground") == 0 ||
+            strcmp(argv[i], "-f") == 0)
+            return 1;
+    }
+    return 0;
+}
 
 // Check if the current user belongs to the systemd-journal group
 static int has_journal_access(void) {
@@ -45,7 +55,9 @@ static int has_journal_access(void) {
     return 0;
 }
 
-int main() {
+int main(int argc, char *argv[]) {
+    int foreground = parse_foreground(argc, argv);
+
     if (geteuid() == 0) {
         fprintf(stderr,
                 "pamsignal should not run as root.\n"
@@ -72,20 +84,22 @@ int main() {
 
     int ret;
 
-    ret = ps_daemonize();
-    if (ret != PS_OK) {
-        fprintf(stderr, "Daemonization failed with code %d\n", ret);
-        return ret;
-    }
+    if (!foreground) {
+        ret = ps_daemonize();
+        if (ret != PS_OK) {
+            fprintf(stderr, "Daemonization failed with code %d\n", ret);
+            return ret;
+        }
 
-    // After daemonization, stderr goes to /dev/null. Use sd_journal_print.
+        // After daemonization, stderr goes to /dev/null.
 
-    ret = ps_pidfile_acquire();
-    if (ret != PS_OK) {
-        sd_journal_print(LOG_ERR,
-                         "pamsignal: another instance is already running "
-                         "or cannot create PID file");
-        return ret;
+        ret = ps_pidfile_acquire();
+        if (ret != PS_OK) {
+            sd_journal_print(LOG_ERR,
+                             "pamsignal: another instance is already running "
+                             "or cannot create PID file");
+            return ret;
+        }
     }
 
     ret = ps_signal_init();
@@ -116,7 +130,9 @@ int main() {
 
     sd_journal_print(LOG_INFO, "pamsignal: shutting down");
     ps_journal_watch_cleanup(j);
-    ps_pidfile_release();
+
+    if (!foreground)
+        ps_pidfile_release();
 
     return ret;
 }
