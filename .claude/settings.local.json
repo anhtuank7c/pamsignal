@@ -1,0 +1,37 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(gh auth:*)",
+      "Bash(wc:*)",
+      "Bash(pkg-config --cflags --libs libsystemd)",
+      "Bash(dpkg -L libsystemd-dev)",
+      "Bash(meson compile:*)",
+      "Bash(meson setup:*)",
+      "Bash(readelf -l build/pamsignal)",
+      "Bash(checksec --file=build/pamsignal)",
+      "Bash(readelf -d build/pamsignal)",
+      "Bash(readelf -h build/pamsignal)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(git remote:*)",
+      "Bash(meson install:*)",
+      "Bash(DESTDIR=/tmp/pamsignal-test meson install -C build)",
+      "Read(//tmp/pamsignal-test/usr/local/**)",
+      "Read(//tmp/**)",
+      "Bash(rm -rf /tmp/pamsignal-test)",
+      "Bash(sudo useradd:*)",
+      "Bash(sudo usermod:*)",
+      "Bash(systemctl is-active:*)",
+      "Bash(journalctl:*)",
+      "Bash(sudo -u pamsignal /tmp/pamsignal --foreground)",
+      "Bash(echo \"exit code: $?\")",
+      "Bash(ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new localhost \"echo ''SSH login successful''\")",
+      "Bash(python3 -m json.tool)",
+      "Bash(chmod:*)",
+      "Bash(find /home/tuan-nguyen/projects/personal/pamsignal -type f -name README* -o -name *.md -o -name Makefile* -o -name CMakeLists.txt -o -name *.toml -o -name *.yaml -o -name *.yml)",
+      "Bash(head:*)",
+      "Bash(ninja -C build)"
+    ]
+  }
+}
