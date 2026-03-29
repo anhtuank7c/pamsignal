@@ -24,9 +24,9 @@ typedef struct {
     char webhook_url[512];
 
     // Brute-force detection
-    int fail_threshold;     // 1..10000
-    int fail_window_sec;    // 1..86400
-    int max_tracked_ips;    // 1..100000
+    int fail_threshold;  // 1..10000
+    int fail_window_sec; // 1..86400
+    int max_tracked_ips; // 1..100000
 
     // Alert rate limiting
     int alert_cooldown_sec; // 0..86400 (0 = no cooldown)

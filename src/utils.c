@@ -72,7 +72,8 @@ int ps_parse_message(const char *message, ps_pam_event_t *event) {
 
     const char *p;
 
-    // Session opened: "pam_unix(sshd:session): session opened for user USERNAME"
+    // Session opened: "pam_unix(sshd:session): session opened for user
+    // USERNAME"
     p = strstr(message, "session opened for user ");
     if (p) {
         event->type = PS_EVENT_SESSION_OPEN;
@@ -83,7 +84,8 @@ int ps_parse_message(const char *message, ps_pam_event_t *event) {
         return PS_OK;
     }
 
-    // Session closed: "pam_unix(sshd:session): session closed for user USERNAME"
+    // Session closed: "pam_unix(sshd:session): session closed for user
+    // USERNAME"
     p = strstr(message, "session closed for user ");
     if (p) {
         event->type = PS_EVENT_SESSION_CLOSE;
@@ -101,8 +103,8 @@ int ps_parse_message(const char *message, ps_pam_event_t *event) {
         event->auth_method = PS_AUTH_PASSWORD;
         event->service = PS_SERVICE_SSHD;
         p += 22; // skip "Accepted password for "
-        if (sscanf(p, "%63s from %45s port %d",
-                   event->username, event->source_ip, &event->port) >= 2) {
+        if (sscanf(p, "%63s from %45s port %d", event->username,
+                   event->source_ip, &event->port) >= 2) {
             sanitize_string(event->username);
             if (!is_valid_ip(event->source_ip))
                 event->source_ip[0] = '\0';
@@ -117,8 +119,8 @@ int ps_parse_message(const char *message, ps_pam_event_t *event) {
         event->auth_method = PS_AUTH_PUBLICKEY;
         event->service = PS_SERVICE_SSHD;
         p += 23; // skip "Accepted publickey for "
-        if (sscanf(p, "%63s from %45s port %d",
-                   event->username, event->source_ip, &event->port) >= 2) {
+        if (sscanf(p, "%63s from %45s port %d", event->username,
+                   event->source_ip, &event->port) >= 2) {
             sanitize_string(event->username);
             if (!is_valid_ip(event->source_ip))
                 event->source_ip[0] = '\0';
@@ -126,7 +128,8 @@ int ps_parse_message(const char *message, ps_pam_event_t *event) {
         return PS_OK;
     }
 
-    // Failed password: "Failed password for [invalid user] USER from IP port PORT ssh2"
+    // Failed password: "Failed password for [invalid user] USER from IP port
+    // PORT ssh2"
     p = strstr(message, "Failed password for ");
     if (p) {
         event->type = PS_EVENT_LOGIN_FAILED;
@@ -138,8 +141,8 @@ int ps_parse_message(const char *message, ps_pam_event_t *event) {
         if (strncmp(p, "invalid user ", 13) == 0)
             p += 13;
 
-        if (sscanf(p, "%63s from %45s port %d",
-                   event->username, event->source_ip, &event->port) >= 2) {
+        if (sscanf(p, "%63s from %45s port %d", event->username,
+                   event->source_ip, &event->port) >= 2) {
             sanitize_string(event->username);
             if (!is_valid_ip(event->source_ip))
                 event->source_ip[0] = '\0';

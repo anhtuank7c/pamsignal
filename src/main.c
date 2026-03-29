@@ -71,14 +71,13 @@ int main(int argc, char *argv[]) {
     parse_args(argc, argv, &foreground, &config_path);
 
     if (geteuid() == 0) {
-        fprintf(stderr,
-                "pamsignal should not run as root.\n"
-                "Create a dedicated user and add it to the "
-                "systemd-journal group:\n"
-                "  sudo useradd -r -s /usr/sbin/nologin pamsignal\n"
-                "  sudo usermod -aG systemd-journal pamsignal\n"
-                "Then run as:\n"
-                "  sudo -u pamsignal ./build/pamsignal\n");
+        fprintf(stderr, "pamsignal should not run as root.\n"
+                        "Create a dedicated user and add it to the "
+                        "systemd-journal group:\n"
+                        "  sudo useradd -r -s /usr/sbin/nologin pamsignal\n"
+                        "  sudo usermod -aG systemd-journal pamsignal\n"
+                        "Then run as:\n"
+                        "  sudo -u pamsignal ./build/pamsignal\n");
         return 1;
     }
 
@@ -149,8 +148,8 @@ int main(int argc, char *argv[]) {
     sd_journal *j = NULL;
     ret = ps_journal_watch_init(&j);
     if (ret != PS_OK) {
-        sd_journal_print(LOG_ERR,
-                         "pamsignal: journal init failed with code %d", ret);
+        sd_journal_print(LOG_ERR, "pamsignal: journal init failed with code %d",
+                         ret);
         return ret;
     }
 

@@ -28,16 +28,16 @@ typedef enum {
 } ps_service_t;
 
 typedef struct {
-    ps_event_type_t  type;
+    ps_event_type_t type;
     ps_auth_method_t auth_method;
-    ps_service_t     service;
-    char             username[64];
-    char             source_ip[INET6_ADDRSTRLEN];
-    int              port;
-    pid_t            pid;
-    uid_t            uid;
-    char             hostname[256];
-    uint64_t         timestamp_usec;
+    ps_service_t service;
+    char username[64];
+    char source_ip[INET6_ADDRSTRLEN];
+    int port;
+    pid_t pid;
+    uid_t uid;
+    char hostname[256];
+    uint64_t timestamp_usec;
 } ps_pam_event_t;
 
 #endif /* PAM_EVENT_H */

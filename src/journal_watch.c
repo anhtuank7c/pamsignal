@@ -14,8 +14,8 @@
 // --- Failed login tracking ---
 
 typedef struct {
-    char     ip[INET6_ADDRSTRLEN];
-    int      count;
+    char ip[INET6_ADDRSTRLEN];
+    int count;
     uint64_t first_attempt_usec;
     uint64_t last_attempt_usec;
 } ps_fail_entry_t;
@@ -68,10 +68,8 @@ static void ps_track_failed_login(const ps_pam_event_t *event) {
                 sd_journal_send(
                     "MESSAGE=pamsignal: BRUTE_FORCE_DETECTED ip=%s attempts=%s "
                     "window=%ss user=%s",
-                    fail_table[i].ip, attempts_str, window_str,
-                    event->username,
-                    "PRIORITY=%d", LOG_WARNING,
-                    "SYSLOG_IDENTIFIER=pamsignal",
+                    fail_table[i].ip, attempts_str, window_str, event->username,
+                    "PRIORITY=%d", LOG_WARNING, "SYSLOG_IDENTIFIER=pamsignal",
                     "PAMSIGNAL_EVENT=BRUTE_FORCE_DETECTED",
                     "PAMSIGNAL_SOURCE_IP=%s", fail_table[i].ip,
                     "PAMSIGNAL_ATTEMPTS=%s", attempts_str,
@@ -79,10 +77,10 @@ static void ps_track_failed_login(const ps_pam_event_t *event) {
                     "PAMSIGNAL_USERNAME=%s", event->username,
                     "PAMSIGNAL_HOSTNAME=%s", event->hostname, NULL);
 
-                ps_notify_brute_force(
-                    &g_config, fail_table[i].ip, fail_table[i].count,
-                    g_config.fail_window_sec, event->username,
-                    event->hostname, event->timestamp_usec);
+                ps_notify_brute_force(&g_config, fail_table[i].ip,
+                                      fail_table[i].count,
+                                      g_config.fail_window_sec, event->username,
+                                      event->hostname, event->timestamp_usec);
 
                 fail_table[i].count = 0;
                 fail_table[i].first_attempt_usec = event->timestamp_usec;
@@ -136,34 +134,31 @@ static void ps_log_event(const ps_pam_event_t *event) {
                  ps_event_type_str(event->type), event->username,
                  ps_service_str(event->service), timebuf);
 
-        sd_journal_send(
-            "MESSAGE=%s", msg, "PRIORITY=%d", LOG_NOTICE,
-            "SYSLOG_IDENTIFIER=pamsignal",
-            "PAMSIGNAL_EVENT=%s", ps_event_type_str(event->type),
-            "PAMSIGNAL_USERNAME=%s", event->username,
-            "PAMSIGNAL_SERVICE=%s", ps_service_str(event->service),
-            "PAMSIGNAL_HOSTNAME=%s", event->hostname,
-            "PAMSIGNAL_PID=%s", pid_str, "PAMSIGNAL_UID=%s", uid_str, NULL);
+        sd_journal_send("MESSAGE=%s", msg, "PRIORITY=%d", LOG_NOTICE,
+                        "SYSLOG_IDENTIFIER=pamsignal", "PAMSIGNAL_EVENT=%s",
+                        ps_event_type_str(event->type), "PAMSIGNAL_USERNAME=%s",
+                        event->username, "PAMSIGNAL_SERVICE=%s",
+                        ps_service_str(event->service), "PAMSIGNAL_HOSTNAME=%s",
+                        event->hostname, "PAMSIGNAL_PID=%s", pid_str,
+                        "PAMSIGNAL_UID=%s", uid_str, NULL);
     } else {
         snprintf(msg, sizeof(msg),
                  "pamsignal: %s user=%s from=%s port=%d service=%s auth=%s "
                  "at %s",
                  ps_event_type_str(event->type), event->username,
-                 event->source_ip, event->port,
-                 ps_service_str(event->service),
+                 event->source_ip, event->port, ps_service_str(event->service),
                  ps_auth_method_str(event->auth_method), timebuf);
 
         sd_journal_send(
             "MESSAGE=%s", msg, "PRIORITY=%d", LOG_NOTICE,
-            "SYSLOG_IDENTIFIER=pamsignal",
-            "PAMSIGNAL_EVENT=%s", ps_event_type_str(event->type),
-            "PAMSIGNAL_USERNAME=%s", event->username,
-            "PAMSIGNAL_SOURCE_IP=%s", event->source_ip,
-            "PAMSIGNAL_PORT=%s", port_str,
-            "PAMSIGNAL_SERVICE=%s", ps_service_str(event->service),
-            "PAMSIGNAL_AUTH_METHOD=%s", ps_auth_method_str(event->auth_method),
-            "PAMSIGNAL_HOSTNAME=%s", event->hostname,
-            "PAMSIGNAL_PID=%s", pid_str, "PAMSIGNAL_UID=%s", uid_str, NULL);
+            "SYSLOG_IDENTIFIER=pamsignal", "PAMSIGNAL_EVENT=%s",
+            ps_event_type_str(event->type), "PAMSIGNAL_USERNAME=%s",
+            event->username, "PAMSIGNAL_SOURCE_IP=%s", event->source_ip,
+            "PAMSIGNAL_PORT=%s", port_str, "PAMSIGNAL_SERVICE=%s",
+            ps_service_str(event->service), "PAMSIGNAL_AUTH_METHOD=%s",
+            ps_auth_method_str(event->auth_method), "PAMSIGNAL_HOSTNAME=%s",
+            event->hostname, "PAMSIGNAL_PID=%s", pid_str, "PAMSIGNAL_UID=%s",
+            uid_str, NULL);
     }
 }
 

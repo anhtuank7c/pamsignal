@@ -82,8 +82,8 @@ static void format_event_text(const ps_pam_event_t *event, char *buf,
 }
 
 static void format_brute_text(const char *ip, int attempts, int window,
-                              const char *user, const char *host,
-                              uint64_t ts, char *buf, size_t len) {
+                              const char *user, const char *host, uint64_t ts,
+                              char *buf, size_t len) {
     char timebuf[32];
     ps_format_timestamp(ts, timebuf, sizeof(timebuf));
     snprintf(buf, len,
@@ -148,12 +148,17 @@ static void send_telegram(const ps_config_t *cfg, const char *text) {
              "{\"chat_id\":\"%s\",\"text\":\"%s\",\"parse_mode\":\"HTML\"}",
              cfg->telegram_chat_id, esc_text);
 
-    char *argv[] = {"curl",  "-s",
-                    "-S",    "--max-time",
-                    "10",    "-H",
+    char *argv[] = {"curl",
+                    "-s",
+                    "-S",
+                    "--max-time",
+                    "10",
+                    "-H",
                     "Content-Type: application/json",
-                    "-d",    body,
-                    url,     NULL};
+                    "-d",
+                    body,
+                    url,
+                    NULL};
     fire_curl(argv);
 }
 
@@ -211,8 +216,7 @@ static void send_whatsapp(const ps_config_t *cfg, const char *text) {
         return;
 
     char url[256];
-    snprintf(url, sizeof(url),
-             "https://graph.facebook.com/v21.0/%s/messages",
+    snprintf(url, sizeof(url), "https://graph.facebook.com/v21.0/%s/messages",
              cfg->whatsapp_phone_number_id);
 
     char auth[576];
@@ -228,10 +232,19 @@ static void send_whatsapp(const ps_config_t *cfg, const char *text) {
              "\"type\":\"text\",\"text\":{\"body\":\"%s\"}}",
              cfg->whatsapp_recipient, esc_text);
 
-    char *argv[] = {"curl", "-s",  "-S",  "--max-time", "10",
-                    "-H",   "Content-Type: application/json",
-                    "-H",   auth,  "-d",  body,
-                    url,    NULL};
+    char *argv[] = {"curl",
+                    "-s",
+                    "-S",
+                    "--max-time",
+                    "10",
+                    "-H",
+                    "Content-Type: application/json",
+                    "-H",
+                    auth,
+                    "-d",
+                    body,
+                    url,
+                    NULL};
     fire_curl(argv);
 }
 

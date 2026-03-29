@@ -56,8 +56,8 @@ int ps_config_load(const char *path, ps_config_t *cfg) {
                              path);
             return PS_OK;
         }
-        sd_journal_print(LOG_ERR, "pamsignal: cannot open config: %s: %s",
-                         path, strerror(errno));
+        sd_journal_print(LOG_ERR, "pamsignal: cannot open config: %s: %s", path,
+                         strerror(errno));
         return PS_ERR_CONFIG;
     }
 
@@ -74,9 +74,8 @@ int ps_config_load(const char *path, ps_config_t *cfg) {
 
         char *eq = strchr(p, '=');
         if (!eq) {
-            sd_journal_print(LOG_ERR,
-                             "pamsignal: config:%d: missing '=' in: %s", lineno,
-                             p);
+            sd_journal_print(
+                LOG_ERR, "pamsignal: config:%d: missing '=' in: %s", lineno, p);
             errors++;
             continue;
         }
@@ -89,8 +88,8 @@ int ps_config_load(const char *path, ps_config_t *cfg) {
             snprintf(cfg->telegram_bot_token, sizeof(cfg->telegram_bot_token),
                      "%s", val);
         } else if (strcmp(key, "telegram_chat_id") == 0) {
-            snprintf(cfg->telegram_chat_id, sizeof(cfg->telegram_chat_id),
-                     "%s", val);
+            snprintf(cfg->telegram_chat_id, sizeof(cfg->telegram_chat_id), "%s",
+                     val);
         } else if (strcmp(key, "slack_webhook_url") == 0) {
             snprintf(cfg->slack_webhook_url, sizeof(cfg->slack_webhook_url),
                      "%s", val);
@@ -107,8 +106,8 @@ int ps_config_load(const char *path, ps_config_t *cfg) {
             snprintf(cfg->whatsapp_recipient, sizeof(cfg->whatsapp_recipient),
                      "%s", val);
         } else if (strcmp(key, "discord_webhook_url") == 0) {
-            snprintf(cfg->discord_webhook_url,
-                     sizeof(cfg->discord_webhook_url), "%s", val);
+            snprintf(cfg->discord_webhook_url, sizeof(cfg->discord_webhook_url),
+                     "%s", val);
         } else if (strcmp(key, "webhook_url") == 0) {
             snprintf(cfg->webhook_url, sizeof(cfg->webhook_url), "%s", val);
         } else if (strcmp(key, "fail_threshold") == 0) {
@@ -167,8 +166,8 @@ int ps_config_load(const char *path, ps_config_t *cfg) {
                      cfg->teams_webhook_url[0] ? "on" : "off",
                      cfg->whatsapp_access_token[0] ? "on" : "off",
                      cfg->discord_webhook_url[0] ? "on" : "off",
-                     cfg->webhook_url[0] ? "on" : "off",
-                     cfg->fail_threshold, cfg->fail_window_sec,
-                     cfg->max_tracked_ips, cfg->alert_cooldown_sec);
+                     cfg->webhook_url[0] ? "on" : "off", cfg->fail_threshold,
+                     cfg->fail_window_sec, cfg->max_tracked_ips,
+                     cfg->alert_cooldown_sec);
     return PS_OK;
 }
