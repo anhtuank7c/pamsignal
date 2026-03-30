@@ -1,0 +1,23 @@
+{
+  "skill_name": "distro-packaging",
+  "evals": [
+    {
+      "id": 0,
+      "prompt": "Generate the debian packaging for pamsignal",
+      "expected_output": "Complete debian/ directory with control, rules, changelog, copyright, postinst, prerm, postrm, source/format",
+      "files": []
+    },
+    {
+      "id": 1,
+      "prompt": "Create an RPM spec file for pamsignal targeting Rocky Linux 9",
+      "expected_output": "A pamsignal.spec file with EL9-appropriate settings, %meson macros, system user creation, config(noreplace)",
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "I need to package pamsignal for both Ubuntu 24.04 and Fedora 40",
+      "expected_output": "Both debian/ directory and .spec file, with distro-specific notes and meson.build fix suggestions",
+      "files": []
+    }
+  ]
+}

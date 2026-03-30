@@ -108,6 +108,23 @@ Rules:
 - `libcmocka-dev` (test only)
 - `clang-format` + `clang-tidy` (dev tooling)
 
+## Packaging & Release
+
+Use the `/distro-packaging` skill to generate distribution package specs. Target distros:
+
+- **deb**: Debian, Ubuntu
+- **rpm**: Fedora, CentOS, AlmaLinux, Rocky Linux
+
+The skill handles FHS path corrections, systemd unit placement, system user creation, config file protection, and the two known meson.build issues (hardcoded service file path and ExecStart binary path).
+
+```bash
+# deb: generates debian/ directory, build with:
+dpkg-buildpackage -us -uc -b
+
+# rpm: generates .spec file, build with:
+rpmbuild -ba pamsignal.spec
+```
+
 ## Key Design Decisions
 
 - Alerts are fire-and-forget via fork+exec curl — child process failures cannot crash the daemon
