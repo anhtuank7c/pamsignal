@@ -49,7 +49,18 @@
       "Bash(sudo apt-get:*)",
       "Bash(clang-format:*)",
       "Bash(pkg-config:*)",
-      "Bash(meson test:*)"
+      "Bash(meson test:*)",
+      "WebSearch",
+      "WebFetch(domain:wiki.archlinux.org)",
+      "WebFetch(domain:docs.flatpak.org)",
+      "WebFetch(domain:snapcraft.io)",
+      "WebFetch(domain:fedoraproject.org)",
+      "WebFetch(domain:rpm-packaging-guide.github.io)",
+      "WebFetch(domain:docs.appimage.org)",
+      "WebFetch(domain:documentation.ubuntu.com)",
+      "WebFetch(domain:openbuildservice.org)",
+      "Skill(senior-linux-developer)",
+      "Bash(dpkg -l)"
     ]
   }
 }
