@@ -365,6 +365,66 @@ static void test_auth_method_str(void **state) {
     assert_string_equal(ps_auth_method_str(PS_AUTH_UNKNOWN), "unknown");
 }
 
+// --- ECS mapping helpers ---
+
+static void test_event_action_str(void **state) {
+    (void)state;
+    assert_string_equal(ps_event_action_str(PS_EVENT_SESSION_OPEN),
+                        "session_opened");
+    assert_string_equal(ps_event_action_str(PS_EVENT_SESSION_CLOSE),
+                        "session_closed");
+    assert_string_equal(ps_event_action_str(PS_EVENT_LOGIN_SUCCESS),
+                        "login_success");
+    assert_string_equal(ps_event_action_str(PS_EVENT_LOGIN_FAILED),
+                        "login_failure");
+}
+
+static void test_event_category_str(void **state) {
+    (void)state;
+    assert_string_equal(ps_event_category_str(PS_EVENT_SESSION_OPEN),
+                        "authentication,session");
+    assert_string_equal(ps_event_category_str(PS_EVENT_LOGIN_FAILED),
+                        "authentication");
+}
+
+static void test_event_outcome_str(void **state) {
+    (void)state;
+    assert_string_equal(ps_event_outcome_str(PS_EVENT_SESSION_OPEN), "success");
+    assert_string_equal(ps_event_outcome_str(PS_EVENT_LOGIN_SUCCESS),
+                        "success");
+    assert_string_equal(ps_event_outcome_str(PS_EVENT_LOGIN_FAILED), "failure");
+    assert_string_equal(ps_event_outcome_str(PS_EVENT_UNKNOWN), "unknown");
+}
+
+static void test_event_severity_num(void **state) {
+    (void)state;
+    assert_int_equal(ps_event_severity_num(PS_EVENT_SESSION_OPEN), 3);
+    assert_int_equal(ps_event_severity_num(PS_EVENT_SESSION_CLOSE), 3);
+    assert_int_equal(ps_event_severity_num(PS_EVENT_LOGIN_SUCCESS), 4);
+    assert_int_equal(ps_event_severity_num(PS_EVENT_LOGIN_FAILED), 5);
+}
+
+static void test_event_severity_label_fixed_width(void **state) {
+    (void)state;
+    // All labels must be exactly 8 chars so columns align in monospace.
+    assert_int_equal(strlen(ps_event_severity_label(PS_EVENT_SESSION_OPEN)), 8);
+    assert_int_equal(strlen(ps_event_severity_label(PS_EVENT_LOGIN_SUCCESS)),
+                     8);
+    assert_int_equal(strlen(ps_event_severity_label(PS_EVENT_LOGIN_FAILED)), 8);
+    assert_string_equal(ps_event_severity_label(PS_EVENT_LOGIN_SUCCESS),
+                        "[NOTICE]");
+    assert_string_equal(ps_event_severity_label(PS_EVENT_LOGIN_FAILED),
+                        "[WARN]  ");
+}
+
+static void test_event_kind_str(void **state) {
+    (void)state;
+    // All ps_event_type_t values map to "event" — brute-force is the only
+    // "alert" but it doesn't have a ps_event_type_t value.
+    assert_string_equal(ps_event_kind_str(PS_EVENT_SESSION_OPEN), "event");
+    assert_string_equal(ps_event_kind_str(PS_EVENT_LOGIN_FAILED), "event");
+}
+
 int main(void) {
     const struct CMUnitTest tests[] = {
         // ps_field_value
@@ -410,6 +470,14 @@ int main(void) {
         cmocka_unit_test(test_event_type_str),
         cmocka_unit_test(test_service_str),
         cmocka_unit_test(test_auth_method_str),
+
+        // ECS mapping helpers
+        cmocka_unit_test(test_event_action_str),
+        cmocka_unit_test(test_event_category_str),
+        cmocka_unit_test(test_event_outcome_str),
+        cmocka_unit_test(test_event_severity_num),
+        cmocka_unit_test(test_event_severity_label_fixed_width),
+        cmocka_unit_test(test_event_kind_str),
     };
 
     return cmocka_run_group_tests(tests, NULL, NULL);

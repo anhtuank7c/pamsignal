@@ -115,8 +115,8 @@ static void test_track_increments_for_same_ip(void **state) {
     assert_int_equal(ps_fail_table_init(g_config.max_tracked_ips), PS_OK);
 
     for (int i = 0; i < 3; i++) {
-        ps_pam_event_t e = make_failed_login("192.0.2.1", "alice",
-                                             1000000ULL + (uint64_t)i * 1000000);
+        ps_pam_event_t e = make_failed_login(
+            "192.0.2.1", "alice", 1000000ULL + (uint64_t)i * 1000000);
         ps_track_failed_login(&e);
     }
 

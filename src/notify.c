@@ -222,39 +222,49 @@ static void post_alert(const char *url, const char *auth_header, char *body) {
 }
 
 // --- Message formatting ---
+//
+// Output format follows Elastic Common Schema (ECS) conventions:
+//   - chat text: severity-prefixed key=value pairs in a fixed field order
+//   - JSON webhook: nested ECS objects (event.*, host.*, user.*, source.*,
+//     service.*, process.*) plus pamsignal.* for vendor-specific fields
+//
+// Field order in chat text is intentional: severity → action → identity
+// → location → metadata → pid → ts. PID is placed immediately before ts so
+// `kill <pid>` is an easy copy-paste from any alert message.
 
 static void format_event_text(const ps_pam_event_t *event, char *buf,
                               size_t len) {
     char timebuf[32];
     ps_format_timestamp(event->timestamp_usec, timebuf, sizeof(timebuf));
 
-    const char *type = ps_event_type_str(event->type);
+    const char *severity = ps_event_severity_label(event->type);
+    const char *action = ps_event_action_str(event->type);
 
     if (event->type == PS_EVENT_SESSION_OPEN ||
         event->type == PS_EVENT_SESSION_CLOSE) {
-        snprintf(buf, len, "%s | User: %s | Service: %s | Host: %s | %s", type,
-                 event->username, ps_service_str(event->service),
-                 event->hostname, timebuf);
+        snprintf(buf, len, "%s auth.%s user=%s host=%s service=%s pid=%d ts=%s",
+                 severity, action, event->username, event->hostname,
+                 ps_service_str(event->service), (int)event->pid, timebuf);
     } else {
         snprintf(buf, len,
-                 "%s | User: %s | From: %s:%d | Service: %s | Auth: %s | "
-                 "Host: %s | %s",
-                 type, event->username, event->source_ip, event->port,
-                 ps_service_str(event->service),
-                 ps_auth_method_str(event->auth_method), event->hostname,
+                 "%s auth.%s user=%s src=%s:%d host=%s service=%s "
+                 "auth=%s pid=%d ts=%s",
+                 severity, action, event->username, event->source_ip,
+                 event->port, event->hostname, ps_service_str(event->service),
+                 ps_auth_method_str(event->auth_method), (int)event->pid,
                  timebuf);
     }
 }
 
 static void format_brute_text(const char *ip, int attempts, int window,
                               const char *user, const char *host, uint64_t ts,
-                              char *buf, size_t len) {
+                              pid_t last_pid, char *buf, size_t len) {
     char timebuf[32];
     ps_format_timestamp(ts, timebuf, sizeof(timebuf));
     snprintf(buf, len,
-             "BRUTE_FORCE_DETECTED | IP: %s | Attempts: %d | Window: %ds | "
-             "Last user: %s | Host: %s | %s",
-             ip, attempts, window, user, host, timebuf);
+             "[ALERT]  auth.brute_force_detected src=%s attempts=%d "
+             "window=%ds user=%s host=%s pid=%d ts=%s",
+             ip, attempts, window, user, host, (int)last_pid, timebuf);
 }
 
 static void format_event_json(const ps_pam_event_t *event, char *buf,
@@ -265,21 +275,57 @@ static void format_event_json(const ps_pam_event_t *event, char *buf,
     json_escape(event->username, esc_user, sizeof(esc_user));
     json_escape(event->hostname, esc_host, sizeof(esc_host));
 
-    snprintf(buf, len,
-             "{\"event\":\"%s\",\"username\":\"%s\",\"source_ip\":\"%s\","
-             "\"port\":%d,\"service\":\"%s\",\"auth_method\":\"%s\","
-             "\"hostname\":\"%s\",\"timestamp\":\"%s\","
-             "\"timestamp_usec\":%llu,\"pid\":%d,\"uid\":%d}",
-             ps_event_type_str(event->type), esc_user, event->source_ip,
-             event->port, ps_service_str(event->service),
-             ps_auth_method_str(event->auth_method), esc_host, timebuf,
-             (unsigned long long)event->timestamp_usec, (int)event->pid,
-             (int)event->uid);
+    // ECS event.category is an array. For session events it's
+    // ["authentication","session"]; for login events ["authentication"].
+    const char *category_array = (event->type == PS_EVENT_SESSION_OPEN ||
+                                  event->type == PS_EVENT_SESSION_CLOSE)
+                                     ? "[\"authentication\",\"session\"]"
+                                     : "[\"authentication\"]";
+
+    if (event->type == PS_EVENT_SESSION_OPEN ||
+        event->type == PS_EVENT_SESSION_CLOSE) {
+        snprintf(buf, len,
+                 "{\"@timestamp\":\"%s\","
+                 "\"event\":{\"action\":\"%s\",\"category\":%s,"
+                 "\"kind\":\"%s\",\"outcome\":\"%s\",\"severity\":%d,"
+                 "\"module\":\"pamsignal\",\"dataset\":\"pamsignal.events\"},"
+                 "\"host\":{\"hostname\":\"%s\"},"
+                 "\"user\":{\"name\":\"%s\"},"
+                 "\"service\":{\"name\":\"%s\"},"
+                 "\"process\":{\"pid\":%d,\"user\":{\"id\":\"%d\"}},"
+                 "\"pamsignal\":{\"event_type\":\"%s\"}}",
+                 timebuf, ps_event_action_str(event->type), category_array,
+                 ps_event_kind_str(event->type),
+                 ps_event_outcome_str(event->type),
+                 ps_event_severity_num(event->type), esc_host, esc_user,
+                 ps_service_str(event->service), (int)event->pid,
+                 (int)event->uid, ps_event_type_str(event->type));
+    } else {
+        snprintf(
+            buf, len,
+            "{\"@timestamp\":\"%s\","
+            "\"event\":{\"action\":\"%s\",\"category\":%s,"
+            "\"kind\":\"%s\",\"outcome\":\"%s\",\"severity\":%d,"
+            "\"module\":\"pamsignal\",\"dataset\":\"pamsignal.events\"},"
+            "\"host\":{\"hostname\":\"%s\"},"
+            "\"user\":{\"name\":\"%s\"},"
+            "\"service\":{\"name\":\"%s\"},"
+            "\"source\":{\"ip\":\"%s\",\"port\":%d},"
+            "\"process\":{\"pid\":%d,\"user\":{\"id\":\"%d\"}},"
+            "\"pamsignal\":{\"event_type\":\"%s\","
+            "\"auth_method\":\"%s\"}}",
+            timebuf, ps_event_action_str(event->type), category_array,
+            ps_event_kind_str(event->type), ps_event_outcome_str(event->type),
+            ps_event_severity_num(event->type), esc_host, esc_user,
+            ps_service_str(event->service), event->source_ip, event->port,
+            (int)event->pid, (int)event->uid, ps_event_type_str(event->type),
+            ps_auth_method_str(event->auth_method));
+    }
 }
 
 static void format_brute_json(const char *ip, int attempts, int window,
                               const char *user, const char *host, uint64_t ts,
-                              char *buf, size_t len) {
+                              pid_t last_pid, char *buf, size_t len) {
     char timebuf[32];
     char esc_user[128], esc_host[512];
     ps_format_timestamp(ts, timebuf, sizeof(timebuf));
@@ -287,12 +333,19 @@ static void format_brute_json(const char *ip, int attempts, int window,
     json_escape(host, esc_host, sizeof(esc_host));
 
     snprintf(buf, len,
-             "{\"event\":\"BRUTE_FORCE_DETECTED\",\"source_ip\":\"%s\","
-             "\"attempts\":%d,\"window_sec\":%d,\"last_username\":\"%s\","
-             "\"hostname\":\"%s\",\"timestamp\":\"%s\","
-             "\"timestamp_usec\":%llu}",
-             ip, attempts, window, esc_user, esc_host, timebuf,
-             (unsigned long long)ts);
+             "{\"@timestamp\":\"%s\","
+             "\"event\":{\"action\":\"brute_force_detected\","
+             "\"category\":[\"authentication\",\"intrusion_detection\"],"
+             "\"kind\":\"alert\",\"outcome\":\"unknown\","
+             "\"severity\":8,\"module\":\"pamsignal\","
+             "\"dataset\":\"pamsignal.events\"},"
+             "\"host\":{\"hostname\":\"%s\"},"
+             "\"user\":{\"name\":\"%s\"},"
+             "\"source\":{\"ip\":\"%s\"},"
+             "\"process\":{\"pid\":%d},"
+             "\"pamsignal\":{\"event_type\":\"BRUTE_FORCE_DETECTED\","
+             "\"attempts\":%d,\"window_sec\":%d}}",
+             timebuf, esc_host, esc_user, ip, (int)last_pid, attempts, window);
 }
 
 // --- Per-channel senders ---
@@ -421,13 +474,13 @@ void ps_notify_event(const ps_config_t *cfg, const ps_pam_event_t *event) {
 void ps_notify_brute_force(const ps_config_t *cfg, const char *source_ip,
                            int attempts, int window_sec,
                            const char *last_username, const char *hostname,
-                           uint64_t timestamp_usec) {
+                           uint64_t timestamp_usec, pid_t last_pid) {
     // Caller (journal_watch.c) applies the per-source-IP cooldown using
     // fail_entry state, so we don't gate brute-force alerts here. Suppressing
     // them globally would let a chatty login flood mute brute-force signals.
     char text[1024];
     format_brute_text(source_ip, attempts, window_sec, last_username, hostname,
-                      timestamp_usec, text, sizeof(text));
+                      timestamp_usec, last_pid, text, sizeof(text));
 
     send_telegram(cfg, text);
     if (cfg->slack_webhook_url[0])
@@ -441,7 +494,8 @@ void ps_notify_brute_force(const ps_config_t *cfg, const char *source_ip,
     if (cfg->webhook_url[0]) {
         char json[2048];
         format_brute_json(source_ip, attempts, window_sec, last_username,
-                          hostname, timestamp_usec, json, sizeof(json));
+                          hostname, timestamp_usec, last_pid, json,
+                          sizeof(json));
         post_alert(cfg->webhook_url, NULL, json);
     }
 }

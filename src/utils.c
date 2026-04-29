@@ -235,3 +235,86 @@ const char *ps_auth_method_str(ps_auth_method_t method) {
     }
     return "unknown";
 }
+
+// --- ECS mapping ---
+
+const char *ps_event_action_str(ps_event_type_t type) {
+    switch (type) {
+    case PS_EVENT_SESSION_OPEN:
+        return "session_opened";
+    case PS_EVENT_SESSION_CLOSE:
+        return "session_closed";
+    case PS_EVENT_LOGIN_SUCCESS:
+        return "login_success";
+    case PS_EVENT_LOGIN_FAILED:
+        return "login_failure";
+    case PS_EVENT_UNKNOWN:
+        return "unknown";
+    }
+    return "unknown";
+}
+
+const char *ps_event_category_str(ps_event_type_t type) {
+    switch (type) {
+    case PS_EVENT_SESSION_OPEN:
+    case PS_EVENT_SESSION_CLOSE:
+        return "authentication,session";
+    case PS_EVENT_LOGIN_SUCCESS:
+    case PS_EVENT_LOGIN_FAILED:
+    case PS_EVENT_UNKNOWN:
+        return "authentication";
+    }
+    return "authentication";
+}
+
+const char *ps_event_kind_str(ps_event_type_t type) {
+    (void)type;
+    // All standard PAM event types are observational. Brute-force detection
+    // is the only "alert"; it doesn't have a ps_event_type_t (it's reported
+    // through a separate notify entry point), so this helper always returns
+    // "event" — the brute-force formatter writes "alert" directly.
+    return "event";
+}
+
+const char *ps_event_outcome_str(ps_event_type_t type) {
+    switch (type) {
+    case PS_EVENT_SESSION_OPEN:
+    case PS_EVENT_SESSION_CLOSE:
+    case PS_EVENT_LOGIN_SUCCESS:
+        return "success";
+    case PS_EVENT_LOGIN_FAILED:
+        return "failure";
+    case PS_EVENT_UNKNOWN:
+        return "unknown";
+    }
+    return "unknown";
+}
+
+int ps_event_severity_num(ps_event_type_t type) {
+    switch (type) {
+    case PS_EVENT_SESSION_OPEN:
+    case PS_EVENT_SESSION_CLOSE:
+    case PS_EVENT_UNKNOWN:
+        return 3; // info (and default for unknown)
+    case PS_EVENT_LOGIN_SUCCESS:
+        return 4; // notice
+    case PS_EVENT_LOGIN_FAILED:
+        return 5; // warning
+    }
+    return 3;
+}
+
+const char *ps_event_severity_label(ps_event_type_t type) {
+    // Fixed 8-char width so columns align in monospace renderings.
+    switch (type) {
+    case PS_EVENT_SESSION_OPEN:
+    case PS_EVENT_SESSION_CLOSE:
+    case PS_EVENT_UNKNOWN:
+        return "[INFO]  ";
+    case PS_EVENT_LOGIN_SUCCESS:
+        return "[NOTICE]";
+    case PS_EVENT_LOGIN_FAILED:
+        return "[WARN]  ";
+    }
+    return "[INFO]  ";
+}

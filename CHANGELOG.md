@@ -1,5 +1,33 @@
 # Changelog
 
+## 0.2.0 — 2026-04-30
+
+**Breaking change**: alert payload format moves to [Elastic Common Schema (ECS)] for both chat text and webhook JSON. Anyone parsing the previous pipe-delimited text or the flat `{"event":..., "username":...}` JSON needs to update their consumers — see `docs/alerts.md` for the new schema and a Vector example for non-ECS SIEMs.
+
+[Elastic Common Schema (ECS)]: https://www.elastic.co/guide/en/ecs/current/index.html
+
+### Logging format
+- [x] **Chat text** (Telegram / Slack / Teams / WhatsApp / Discord) is now severity-prefixed key=value: `[NOTICE] auth.login_success user=admin src=192.168.1.100:52341 host=ubuntu service=sshd auth=password pid=12345 ts=2026-04-30T10:00:00+0700`. Severity bracket is fixed-width (8 chars) so columns align in monospace; field order is severity → action → identity → location → metadata → `pid` → `ts`.
+- [x] **`pid=` field added** to every chat alert. For `session_opened` / `login_success` events the PID is the live sshd session — copy/paste into `kill <pid>` to disconnect a user immediately. For failures and brute-force the PID is the failing-auth child (already reaped, kept for forensic context).
+- [x] **JSON webhook payload** is now ECS-conformant: `@timestamp` at top level; nested `event.{action,category,kind,outcome,severity,module,dataset}`, `host.hostname`, `user.name`, `service.name`, `source.{ip,port}`, `process.{pid,user.id}`. Vendor-specific fields (`event_type`, `auth_method`, `attempts`, `window_sec`) live under the `pamsignal.*` namespace per ECS guidance.
+- [x] **systemd-journal structured fields** add ECS-aligned `EVENT_ACTION`, `EVENT_CATEGORY`, `EVENT_KIND`, `EVENT_OUTCOME`, `EVENT_SEVERITY`, `EVENT_MODULE`, `USER_NAME`, `SOURCE_IP`, `SOURCE_PORT`, `HOST_HOSTNAME`, `SERVICE_NAME`, `PROCESS_PID` alongside the existing `PAMSIGNAL_*` fields. The legacy `PAMSIGNAL_*` fields stay through v0.2.x for backward-compat with any existing `journalctl` queries; they retire in v0.3.0.
+
+### Event taxonomy
+- [x] `event.action` values are past-tense lowercase per ECS: `session_opened`, `session_closed`, `login_success`, `login_failure`, `brute_force_detected`. Legacy uppercase enum (`SESSION_OPEN`, `LOGIN_FAILED`, etc.) survives as `pamsignal.event_type` for one minor release.
+- [x] `event.severity` mapped to a syslog-aligned numeric scale: 3=info (sessions), 4=notice (login_success), 5=warning (login_failure), 8=alert (brute_force_detected).
+- [x] `event.kind=alert` only for brute-force detections (per ECS recommendation that "alert" indicates security findings, not generic events). Everything else is `event.kind=event`.
+
+### API
+- [x] `ps_notify_brute_force` signature gains a `pid_t last_pid` parameter. Updated call site in `journal_watch.c` to pass `event->pid` from the threshold-breaching attempt.
+- [x] New ECS helper functions in `utils.h`: `ps_event_action_str`, `ps_event_category_str`, `ps_event_kind_str`, `ps_event_outcome_str`, `ps_event_severity_num`, `ps_event_severity_label`. All total functions, all covered by `test_utils`.
+
+### Tests
+- [x] `test_utils` grows to 36 tests (added 6 ECS-helper assertions).
+- [x] `test_notify` updated for the new `ps_notify_brute_force` signature.
+
+### Documentation
+- [x] `docs/alerts.md` rewritten end-to-end: new chat text examples, full ECS JSON examples for login / session / brute-force events, an updated field-reference table mapping ECS paths to their meanings, a SIEM compatibility table (Elastic / Wazuh / Splunk / Sentinel / Datadog / Sumo / Graylog / ArcSight / QRadar), and a Vector config showing pamsignal → ingest → SIEM as the conventional production architecture.
+
 ## 0.1.0 — 2026-04-29
 
 First tagged release. Headlined by a six-phase OWASP 2025 / data-integrity /
@@ -90,6 +118,14 @@ Highlights:
 - [x] Table-driven config parser — replace 15+ `strcmp`/`snprintf` branches with `cfg_entry_t` mapping table
 - [x] Consolidate notify channel senders — extract `post_json`/`send_simple_webhook` helpers, ~80 lines removed
 
+### Packaging
+- [x] `debian/` — full Debian/Ubuntu packaging (control, changelog, copyright, rules, source/format, postinst/prerm/postrm). Build with `dpkg-buildpackage -us -uc -b`. Maintainer scripts create the `pamsignal` system user, add it to `systemd-journal`, and chmod the config to `root:pamsignal 0640`.
+- [x] `pamsignal.spec` — Fedora/CentOS/AlmaLinux/Rocky Linux RPM spec. Build with `rpmbuild -ba pamsignal.spec`. `%pre` creates the system user via `useradd -r`; `%post` enforces config-file permissions; `%config(noreplace)` preserves admin edits across upgrades.
+- Both formats fix the two known `meson.build` issues in the install step: relocate the systemd unit from `/etc/systemd/system/` to the vendor path (`/usr/lib/systemd/system/` for deb, `%{_unitdir}` for rpm), and patch `ExecStart=/usr/local/bin/pamsignal` → `/usr/bin/pamsignal` (or `%{_bindir}` for rpm).
+
+### CI
+- [x] `.github/workflows/release-packages.yml` — builds `.deb` (Ubuntu 24.04) and `.rpm` (Fedora container) automatically when a GitHub release is published. apt and dnf caches reuse downloaded packages across runs, keyed on the build-deps hash. Both jobs upload workflow artifacts (90-day retention) and attach the binaries to the triggering release. Manual runs via `workflow_dispatch` accept a `ref` input plus an `attach_to_release` flag for backfilling existing releases.
+
 ### Core Observer
 - [x] Journal subscription via `libsystemd` — filter PAM events from sshd, sudo, su, login
 - [x] PAM message parsing — extract username, source IP, port, service, auth method
@@ -145,13 +181,7 @@ Highlights:
 
 ## Unreleased
 
-### Packaging
-- [x] `debian/` — full Debian/Ubuntu packaging (control, changelog, copyright, rules, source/format, postinst/prerm/postrm). Build with `dpkg-buildpackage -us -uc -b`. Maintainer scripts create the `pamsignal` system user, add it to `systemd-journal`, and chmod the config to `root:pamsignal 0640`.
-- [x] `pamsignal.spec` — Fedora/CentOS/AlmaLinux/Rocky Linux RPM spec. Build with `rpmbuild -ba pamsignal.spec`. `%pre` creates the system user via `useradd -r`; `%post` enforces config-file permissions; `%config(noreplace)` preserves admin edits across upgrades.
-- Both formats fix the two known `meson.build` issues in the install step: relocate the systemd unit from `/etc/systemd/system/` to the vendor path (`/usr/lib/systemd/system/` for deb, `%{_unitdir}` for rpm), and patch `ExecStart=/usr/local/bin/pamsignal` → `/usr/bin/pamsignal` (or `%{_bindir}` for rpm).
-
-### CI
-- [x] `.github/workflows/release-packages.yml` — builds `.deb` (Ubuntu 24.04) and `.rpm` (Fedora container) automatically when a GitHub release is published. apt and dnf caches reuse downloaded packages across runs, keyed on the build-deps hash. Both jobs upload workflow artifacts (90-day retention) and attach the binaries to the triggering release. Manual runs via `workflow_dispatch` accept a `ref` input plus an `attach_to_release` flag for backfilling existing releases.
+(no changes yet)
 
 ## To Do
 

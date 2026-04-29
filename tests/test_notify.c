@@ -49,7 +49,7 @@ static void test_notify_brute_no_channels(void **state) {
     ps_config_defaults(&cfg);
 
     ps_notify_brute_force(&cfg, "192.0.2.99", 5, 60, "alice", "host",
-                          1700000000000000ULL);
+                          1700000000000000ULL, 12345);
 }
 
 // Cooldown: with a long cooldown, only the first invocation should attempt
