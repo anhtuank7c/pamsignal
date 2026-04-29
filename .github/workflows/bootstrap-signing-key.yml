@@ -1,0 +1,143 @@
+name: Bootstrap signing key (ONE-TIME ONLY)
+
+# Manually-triggered workflow that generates a 4096-bit RSA GPG key inside the
+# Actions runner, exports it to a short-lived artifact, and immediately ends.
+# The runner is destroyed at job completion so the key never persists in CI
+# beyond the artifact's 1-day retention.
+#
+# Run from the Actions tab once. Type the literal word BOOTSTRAP in the
+# confirmation field. Download the artifact, copy each value into a repo
+# secret, then delete the artifact and the run history. After that you can
+# delete this workflow file too — re-running it would generate a different
+# key and break verification of every previously-signed release.
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type BOOTSTRAP to confirm. This generates a NEW signing key — only run once.'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  generate-key:
+    name: Generate GPG signing key
+    if: inputs.confirm == 'BOOTSTRAP'
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Generate strong passphrase + GPG key
+        run: |
+          mkdir -p out
+          PASSPHRASE=$(openssl rand -base64 48)
+
+          cat > /tmp/keygen.batch <<EOF
+          %echo Generating pamsignal release signing key
+          Key-Type: RSA
+          Key-Length: 4096
+          Subkey-Type: RSA
+          Subkey-Length: 4096
+          Name-Real: pamsignal release signing
+          Name-Email: pamsignal-releases@noreply.github.com
+          Expire-Date: 0
+          Passphrase: $PASSPHRASE
+          %commit
+          %echo done
+          EOF
+
+          gpg --batch --pinentry-mode loopback --generate-key /tmp/keygen.batch
+          shred -u /tmp/keygen.batch
+
+          # Long-form key id (used by rpm --addsign and apt InRelease).
+          KEYID=$(gpg --list-secret-keys --with-colons \
+                    | awk -F: '/^sec/ {print $5; exit}')
+          FPR=$(gpg --list-secret-keys --with-colons \
+                  | awk -F: '/^fpr/ {print $10; exit}')
+
+          # Armored private key — NEVER print to stdout / log.
+          gpg --batch --pinentry-mode loopback --passphrase "$PASSPHRASE" \
+              --armor --export-secret-keys "$FPR" > out/GPG_PRIVATE_KEY.asc
+
+          # Armored public key — safe to commit to the repo.
+          gpg --armor --export "$FPR" > out/GPG_PUBLIC_KEY.asc
+
+          # Passphrase + key id as plain files (single line, no trailing nl)
+          printf '%s' "$PASSPHRASE" > out/GPG_PASSPHRASE.txt
+          printf '%s' "$KEYID"      > out/GPG_KEY_ID.txt
+          printf '%s' "$FPR"        > out/GPG_KEY_FINGERPRINT.txt
+
+          # Permissions: armored key files should be 0600 inside the artifact
+          chmod 0600 out/GPG_PRIVATE_KEY.asc out/GPG_PASSPHRASE.txt
+
+          # Public key fingerprint (safe to log — it identifies which key was made)
+          echo "::notice::Generated key with fingerprint: $FPR"
+          echo "::notice::Key ID: $KEYID"
+
+      - name: Write usage instructions
+        run: |
+          cat > out/README.txt <<'INSTR'
+          ============================================================
+          pamsignal release signing key — bundle from CI bootstrap
+          ============================================================
+
+          ⚠ The files in this artifact are SECURITY-CRITICAL.
+          The artifact auto-deletes in 1 day; do the steps below NOW.
+
+          1. Open the repo on GitHub:
+             Settings → Secrets and variables → Actions → New repository secret
+
+             Create three secrets, one per file:
+
+             - Name: GPG_PRIVATE_KEY
+               Value: paste the FULL contents of GPG_PRIVATE_KEY.asc
+                      (including the BEGIN/END PGP PRIVATE KEY BLOCK lines)
+
+             - Name: GPG_PASSPHRASE
+               Value: paste the contents of GPG_PASSPHRASE.txt
+                      (one line, no trailing newline)
+
+             - Name: GPG_KEY_ID
+               Value: paste the contents of GPG_KEY_ID.txt
+                      (a 16-hex-char short ID, e.g. 1A2B3C4D5E6F7890)
+
+          2. Verify the secrets exist:
+             gh secret list --repo <owner>/<repo>
+
+             You should see GPG_PRIVATE_KEY, GPG_PASSPHRASE, GPG_KEY_ID
+             (each shown without its value).
+
+          3. Save GPG_PUBLIC_KEY.asc somewhere — the publishing workflow
+             will commit it to gh-pages/key.asc so users can import it
+             with:
+                 curl -fsSL https://<user>.github.io/pamsignal/key.asc \
+                     | sudo gpg --dearmor -o /usr/share/keyrings/pamsignal.gpg
+
+          4. After the secrets are in place:
+             - DELETE this workflow run from the Actions UI
+               (...menu on the run row → Delete workflow run).
+               The artifact auto-deletes after 1 day, but deleting the run
+               immediately is safer.
+             - Optionally delete .github/workflows/bootstrap-signing-key.yml
+               from the repo so it can't be re-triggered. Re-running would
+               generate a DIFFERENT key and break signature verification of
+               every previously-signed release.
+
+          5. The key fingerprint, printed in the workflow log as a notice,
+             is what users should verify against. Note it down.
+
+          ============================================================
+          INSTR
+
+      - name: Upload signing bundle (1-day retention)
+        uses: actions/upload-artifact@v7
+        with:
+          name: signing-key-bundle-DELETE-AFTER-USE
+          path: out/
+          retention-days: 1
+          if-no-files-found: error
+
+      - name: Final reminder
+        run: |
+          echo "::warning::DOWNLOAD THE 'signing-key-bundle-DELETE-AFTER-USE' ARTIFACT NOW. It auto-deletes in 24h. After copying values into repo secrets, delete this workflow run."
