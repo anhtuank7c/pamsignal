@@ -416,7 +416,11 @@ jobs:
       - name: Install runtime deps
         run: |
           ${{ matrix.repo_setup }}
-          dnf install -y --setopt=install_weak_deps=False curl shadow-utils \
+          # Don't pre-install `curl` — AlmaLinux ships curl-minimal which
+          # conflicts with full curl, and pamsignal.spec already declares
+          # Requires: curl so dnf install of the .rpm pulls whatever curl
+          # variant is on the box.
+          dnf install -y --setopt=install_weak_deps=False shadow-utils \
             systemd which findutils
 
       - name: Download .rpm artifact
