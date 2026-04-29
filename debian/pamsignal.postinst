@@ -1,0 +1,40 @@
+#!/bin/sh
+set -e
+
+case "$1" in
+    configure)
+        # Create the pamsignal system user if it doesn't exist. Idempotent so
+        # upgrades and re-installs are safe.
+        if ! getent passwd pamsignal >/dev/null 2>&1; then
+            adduser --system --group --no-create-home \
+                --home /nonexistent \
+                --shell /usr/sbin/nologin \
+                --gecos "PAMSignal daemon" \
+                pamsignal
+        fi
+
+        # Grant read access to the journal. systemd-journal is the standard
+        # group on Debian/Ubuntu.
+        if getent group systemd-journal >/dev/null 2>&1; then
+            adduser pamsignal systemd-journal >/dev/null 2>&1 || true
+        fi
+
+        # The config file holds alert credentials (Telegram tokens, webhook
+        # URLs). Owner stays root so only the admin can edit; group is set
+        # to pamsignal with mode 0640 so the daemon can read.
+        if [ -f /etc/pamsignal/pamsignal.conf ]; then
+            chown root:pamsignal /etc/pamsignal/pamsignal.conf
+            chmod 0640 /etc/pamsignal/pamsignal.conf
+        fi
+    ;;
+    abort-upgrade|abort-remove|abort-deconfigure)
+    ;;
+    *)
+        echo "postinst called with unknown argument '$1'" >&2
+        exit 1
+    ;;
+esac
+
+#DEBHELPER#
+
+exit 0

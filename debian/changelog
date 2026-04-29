@@ -1,0 +1,15 @@
+pamsignal (0.1.0-1) unstable; urgency=medium
+
+  * Initial Debian packaging.
+  * Six-phase OWASP 2025 / data-integrity / memory-safety audit closed every
+    Critical, High, Medium, Low, and Info finding identified.
+  * Alert dispatch hardened: secrets passed via memfd-backed curl config,
+    not argv; absolute-path execv; --proto =https forced.
+  * PID file via openat under O_DIRECTORY|O_NOFOLLOW dirfd; stale removal
+    only after kill(pid,0) confirms ESRCH.
+  * Per-source-IP brute-force cooldown.
+  * Compiler hardening: _FORTIFY_SOURCE=3, stack-clash, CET, separate-code.
+  * 78 CMocka tests across four suites; opt-in libFuzzer harness for the
+    PAM message parser.
+
+ -- Tuan Nguyen <anhtuank7c@hotmail.com>  Wed, 29 Apr 2026 16:10:00 +0000

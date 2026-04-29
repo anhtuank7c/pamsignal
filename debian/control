@@ -1,0 +1,33 @@
+Source: pamsignal
+Section: admin
+Priority: optional
+Maintainer: Tuan Nguyen <anhtuank7c@hotmail.com>
+Build-Depends: debhelper-compat (= 13),
+               meson,
+               ninja-build,
+               pkg-config,
+               libsystemd-dev,
+               libcmocka-dev
+Standards-Version: 4.6.2
+Homepage: https://github.com/anhtuank7c/pamsignal
+Vcs-Git: https://github.com/anhtuank7c/pamsignal.git
+Vcs-Browser: https://github.com/anhtuank7c/pamsignal
+Rules-Requires-Root: no
+
+Package: pamsignal
+Architecture: any
+Depends: ${shlibs:Depends},
+         ${misc:Depends},
+         curl,
+         systemd
+Pre-Depends: adduser
+Description: Real-time PAM login monitor with multi-channel alerts
+ PAMSignal monitors PAM authentication events via the systemd journal.
+ It detects login attempts, logouts, and brute-force patterns from sshd,
+ sudo, su, and login services, sending alerts to Telegram, Slack, Microsoft
+ Teams, WhatsApp, Discord, or custom webhooks.
+ .
+ The daemon runs as an unprivileged system user with read-only access to
+ the journal, isolates the alert dispatch path via fork+exec of curl, and
+ ships with systemd hardening directives (NoNewPrivileges, ProtectSystem,
+ SystemCallFilter, MemoryDenyWriteExecute, etc.).

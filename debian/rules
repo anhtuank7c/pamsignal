@@ -1,0 +1,32 @@
+#!/usr/bin/make -f
+
+export DEB_BUILD_MAINT_OPTIONS = hardening=+all
+
+%:
+	dh $@
+
+override_dh_auto_configure:
+	meson setup obj-debian --prefix=/usr --sysconfdir=/etc --buildtype=release
+
+override_dh_auto_build:
+	meson compile -C obj-debian
+
+override_dh_auto_install:
+	DESTDIR=$(CURDIR)/debian/pamsignal meson install -C obj-debian --no-rebuild
+	# meson.build hardcodes the service file install dir to /etc/systemd/system/
+	# (admin override path) — relocate to /usr/lib/systemd/system/ (vendor path).
+	mkdir -p $(CURDIR)/debian/pamsignal/usr/lib/systemd/system
+	mv $(CURDIR)/debian/pamsignal/etc/systemd/system/pamsignal.service \
+	   $(CURDIR)/debian/pamsignal/usr/lib/systemd/system/pamsignal.service
+	rmdir --ignore-fail-on-non-empty $(CURDIR)/debian/pamsignal/etc/systemd/system 2>/dev/null || true
+	rmdir --ignore-fail-on-non-empty $(CURDIR)/debian/pamsignal/etc/systemd 2>/dev/null || true
+	# pamsignal.service ships with ExecStart=/usr/local/bin/pamsignal (the meson
+	# default prefix); patch to /usr/bin/pamsignal for the package install.
+	sed -i 's|/usr/local/bin/pamsignal|/usr/bin/pamsignal|g' \
+	   $(CURDIR)/debian/pamsignal/usr/lib/systemd/system/pamsignal.service
+
+override_dh_auto_test:
+	meson test -C obj-debian
+
+override_dh_auto_clean:
+	rm -rf obj-debian

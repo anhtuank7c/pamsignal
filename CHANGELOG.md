@@ -145,13 +145,16 @@ Highlights:
 
 ## Unreleased
 
-(no changes yet)
+### Packaging
+- [x] `debian/` — full Debian/Ubuntu packaging (control, changelog, copyright, rules, source/format, postinst/prerm/postrm). Build with `dpkg-buildpackage -us -uc -b`. Maintainer scripts create the `pamsignal` system user, add it to `systemd-journal`, and chmod the config to `root:pamsignal 0640`.
+- [x] `pamsignal.spec` — Fedora/CentOS/AlmaLinux/Rocky Linux RPM spec. Build with `rpmbuild -ba pamsignal.spec`. `%pre` creates the system user via `useradd -r`; `%post` enforces config-file permissions; `%config(noreplace)` preserves admin edits across upgrades.
+- Both formats fix the two known `meson.build` issues in the install step: relocate the systemd unit from `/etc/systemd/system/` to the vendor path (`/usr/lib/systemd/system/` for deb, `%{_unitdir}` for rpm), and patch `ExecStart=/usr/local/bin/pamsignal` → `/usr/bin/pamsignal` (or `%{_bindir}` for rpm).
 
 ## To Do
 
 ### Next Up
 - [ ] Curl availability check at startup (log warning if `curl` not found)
-- [ ] Distribution packaging via `/distro-packaging` skill (.deb, .rpm)
+- [ ] Sign and publish .deb / .rpm to a hosted repository (Launchpad PPA, COPR)
 
 ### Ideas (no promises)
 - [ ] GeoIP/ASN lookup for source IPs

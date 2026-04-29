@@ -1,0 +1,24 @@
+#!/bin/sh
+set -e
+
+case "$1" in
+    purge)
+        # Remove the config directory and any user-edited contents on purge.
+        # The conffile mechanism handles /etc/pamsignal/pamsignal.conf itself,
+        # but we still need to clean up any extra files an admin dropped in.
+        rm -rf /etc/pamsignal
+
+        # The pamsignal user is intentionally NOT removed — it may own
+        # journal entries or runtime state outside our control.
+    ;;
+    remove|upgrade|failed-upgrade|abort-install|abort-upgrade|disappear)
+    ;;
+    *)
+        echo "postrm called with unknown argument '$1'" >&2
+        exit 1
+    ;;
+esac
+
+#DEBHELPER#
+
+exit 0

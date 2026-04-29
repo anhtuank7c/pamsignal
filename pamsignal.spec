@@ -1,0 +1,111 @@
+Name:           pamsignal
+Version:        0.1.0
+Release:        1%{?dist}
+Summary:        Real-time PAM login monitor with multi-channel alerts
+
+License:        MIT
+URL:            https://github.com/anhtuank7c/pamsignal
+Source0:        %{name}-%{version}.tar.gz
+
+BuildRequires:  meson >= 0.50
+BuildRequires:  ninja-build
+BuildRequires:  gcc
+BuildRequires:  pkg-config
+BuildRequires:  systemd-devel
+BuildRequires:  systemd-rpm-macros
+BuildRequires:  libcmocka-devel
+
+Requires:       systemd
+Requires:       curl
+Requires(pre):  shadow-utils
+
+%description
+PAMSignal monitors PAM authentication events via the systemd journal.
+It detects login attempts, logouts, and brute-force patterns from sshd,
+sudo, su, and login services, sending alerts to Telegram, Slack, Microsoft
+Teams, WhatsApp, Discord, or custom webhooks.
+
+The daemon runs as an unprivileged system user with read-only access to
+the journal, isolates the alert dispatch path via fork+exec of curl, and
+ships with systemd hardening directives (NoNewPrivileges, ProtectSystem,
+SystemCallFilter, MemoryDenyWriteExecute, etc.).
+
+%prep
+%autosetup -n %{name}-%{version}
+
+%build
+%meson
+%meson_build
+
+%check
+%meson_test
+
+%install
+%meson_install
+
+# meson.build hardcodes the service file install dir to /etc/systemd/system/
+# (admin override path). Move to %{_unitdir} (vendor unit path).
+mkdir -p %{buildroot}%{_unitdir}
+if [ -f %{buildroot}/etc/systemd/system/pamsignal.service ]; then
+    mv %{buildroot}/etc/systemd/system/pamsignal.service \
+       %{buildroot}%{_unitdir}/pamsignal.service
+    rmdir --ignore-fail-on-non-empty %{buildroot}/etc/systemd/system/ 2>/dev/null || true
+    rmdir --ignore-fail-on-non-empty %{buildroot}/etc/systemd/ 2>/dev/null || true
+fi
+
+# pamsignal.service ships with ExecStart=/usr/local/bin/pamsignal (the meson
+# default prefix); patch to %{_bindir}/pamsignal for the package install.
+sed -i 's|/usr/local/bin/pamsignal|%{_bindir}/pamsignal|g' \
+    %{buildroot}%{_unitdir}/pamsignal.service
+
+%pre
+# Create the pamsignal system user before file install. shadow-utils provides
+# useradd; the (pre) requirement above ensures it's present.
+getent passwd pamsignal >/dev/null 2>&1 || \
+    useradd -r -s /sbin/nologin -M -d /nonexistent \
+            -c "PAMSignal daemon" pamsignal
+
+# Grant read access to the journal.
+getent group systemd-journal >/dev/null 2>&1 && \
+    usermod -aG systemd-journal pamsignal || true
+
+%post
+%systemd_post pamsignal.service
+
+# The config file holds alert credentials (Telegram tokens, webhook URLs).
+# Owner stays root so only admins can edit; group is pamsignal mode 0640 so
+# the daemon can read.
+if [ -f %{_sysconfdir}/pamsignal/pamsignal.conf ]; then
+    chown root:pamsignal %{_sysconfdir}/pamsignal/pamsignal.conf
+    chmod 0640 %{_sysconfdir}/pamsignal/pamsignal.conf
+fi
+
+%preun
+%systemd_preun pamsignal.service
+
+%postun
+%systemd_postun_with_restart pamsignal.service
+# The pamsignal user is intentionally NOT removed — it may own journal
+# entries or runtime state outside our control.
+
+%files
+%license LICENSE
+%doc README.md CHANGELOG.md
+%{_bindir}/pamsignal
+%{_unitdir}/pamsignal.service
+%dir %attr(0750,root,pamsignal) %{_sysconfdir}/pamsignal
+%config(noreplace) %attr(0640,root,pamsignal) %{_sysconfdir}/pamsignal/pamsignal.conf
+
+%changelog
+* Wed Apr 29 2026 Tuan Nguyen <anhtuank7c@hotmail.com> - 0.1.0-1
+- Initial RPM packaging.
+- Six-phase OWASP 2025 / data-integrity / memory-safety audit closed every
+  Critical, High, Medium, Low, and Info finding identified.
+- Alert dispatch hardened: secrets via memfd-backed curl config (not argv);
+  absolute-path execv; --proto =https forced.
+- PID file via openat under O_DIRECTORY|O_NOFOLLOW dirfd; stale removal
+  only after kill(pid,0) confirms ESRCH.
+- Per-source-IP brute-force cooldown.
+- Compiler hardening: _FORTIFY_SOURCE=3, stack-clash, CET, separate-code.
+- 78 CMocka tests across four suites; opt-in libFuzzer harness for the
+  PAM message parser.
