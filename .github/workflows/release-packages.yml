@@ -34,7 +34,7 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           ref: ${{ github.event.inputs.ref || github.ref }}
           # Full history so dpkg-genchanges and any future git-derived metadata
@@ -47,7 +47,7 @@ jobs:
       # is more robust than third-party "cache + install" actions that try
       # to skip apt entirely on cache hit.
       - name: Restore apt archive cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             /var/cache/apt/archives/*.deb
@@ -96,7 +96,7 @@ jobs:
           echo "::endgroup::"
 
       - name: Upload workflow artifact (90-day retention)
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: pamsignal-deb-${{ github.run_number }}
           path: out/*
@@ -104,7 +104,7 @@ jobs:
 
       - name: Attach to GitHub release
         if: github.event_name == 'release' || inputs.attach_to_release == 'true'
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ github.event_name == 'release' && github.ref_name || inputs.ref }}
           files: |
@@ -129,7 +129,7 @@ jobs:
             systemd-devel systemd-rpm-macros libcmocka-devel
 
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           ref: ${{ github.event.inputs.ref || github.ref }}
           fetch-depth: 0
@@ -138,7 +138,7 @@ jobs:
       # survive across runs only via this cache. Keyed on the spec so a
       # BuildRequires change invalidates correctly.
       - name: Cache DNF state
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             /var/cache/dnf
@@ -187,7 +187,7 @@ jobs:
           done
 
       - name: Upload workflow artifact (90-day retention)
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: pamsignal-rpm-${{ github.run_number }}
           path: out/*.rpm
@@ -195,7 +195,7 @@ jobs:
 
       - name: Attach to GitHub release
         if: github.event_name == 'release' || inputs.attach_to_release == 'true'
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ github.event_name == 'release' && github.ref_name || inputs.ref }}
           files: out/*.rpm
