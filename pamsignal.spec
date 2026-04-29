@@ -19,6 +19,14 @@ Requires:       systemd
 Requires:       curl
 Requires(pre):  shadow-utils
 
+# %files declares %attr(...,pamsignal) which makes RPM auto-generate
+# Requires: user(pamsignal) and Requires: group(pamsignal). The user and
+# group are created by %pre as part of THIS package's install, so we
+# Provides them explicitly — otherwise dnf rejects the transaction at
+# resolution time, before %pre has a chance to run.
+Provides:       user(pamsignal)
+Provides:       group(pamsignal)
+
 %description
 PAMSignal monitors PAM authentication events via the systemd journal.
 It detects login attempts, logouts, and brute-force patterns from sshd,

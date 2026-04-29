@@ -346,13 +346,16 @@ jobs:
           test "$login_failures" -ge 3
           test "$login_successes" -ge 1
           test "$brute" -ge 1
-          # Verify ECS top-level shape on at least one event.
-          jq -e 'select(.event.action == "login_failure")
+          # Verify ECS shape on the FIRST login_failure event. Combining the
+          # action and port predicates inside select() keeps the filter
+          # tight to one event so jq -e doesn't see false outputs from the
+          # other (port=39183/39184) failures.
+          jq -e 'select(.event.action == "login_failure"
+                         and .source.port == 39182)
                   | .["@timestamp"] and .event.module == "pamsignal"
                     and (.event.category | contains(["authentication"]))
                     and .event.severity == 5
                     and .source.ip == "203.0.113.50"
-                    and .source.port == 39182
                     and .user.name == "root"
                     and .service.name == "sshd"
                     and .pamsignal.auth_method == "password"' \
