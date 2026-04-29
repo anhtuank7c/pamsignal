@@ -59,8 +59,11 @@ jobs:
       - name: Install build dependencies
         run: |
           sudo apt-get update -qq
+          # build-essential is implicitly required by dpkg-checkbuilddeps;
+          # pulled in here explicitly so a slim runner image still satisfies it.
           sudo apt-get install -y --no-install-recommends \
-            debhelper meson ninja-build pkg-config libsystemd-dev libcmocka-dev
+            build-essential debhelper meson ninja-build pkg-config \
+            libsystemd-dev libcmocka-dev
 
       - name: Show toolchain
         run: |
