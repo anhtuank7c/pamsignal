@@ -1,3 +1,17 @@
+pamsignal (0.2.0-1) unstable; urgency=medium
+
+  * Align alert payloads with Elastic Common Schema (ECS). Breaking change
+    to the chat text and JSON webhook formats — see CHANGELOG.md for the
+    new schema and migration notes.
+  * Chat text: severity-prefixed key=value (`[NOTICE] auth.login_success
+    user=… pid=… ts=…`), with a new pid= field for direct `kill <pid>`.
+  * JSON webhook: nested ECS objects (event.*, host.*, user.*, source.*,
+    process.*) plus pamsignal.* for vendor-specific fields.
+  * systemd-journal: ECS-aligned structured fields added alongside the
+    existing PAMSIGNAL_* fields (kept through v0.2.x for backward compat).
+
+ -- Tuan Nguyen <anhtuank7c@hotmail.com>  Thu, 30 Apr 2026 10:00:00 +0000
+
 pamsignal (0.1.0-1) unstable; urgency=medium
 
   * Initial Debian packaging.

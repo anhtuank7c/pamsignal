@@ -1,5 +1,5 @@
 Name:           pamsignal
-Version:        0.1.0
+Version:        0.2.0
 Release:        1%{?dist}
 Summary:        Real-time PAM login monitor with multi-channel alerts
 
@@ -97,6 +97,14 @@ fi
 %config(noreplace) %attr(0640,root,pamsignal) %{_sysconfdir}/pamsignal/pamsignal.conf
 
 %changelog
+* Thu Apr 30 2026 Tuan Nguyen <anhtuank7c@hotmail.com> - 0.2.0-1
+- Align alert payloads with Elastic Common Schema (ECS). Breaking change to
+  chat text and JSON webhook formats; see CHANGELOG.md for migration.
+- Chat text: severity-prefixed key=value with a new pid= field for direct
+  `kill <pid>` from the alert.
+- JSON webhook: nested ECS objects plus pamsignal.* namespace.
+- systemd-journal: ECS-aligned fields added alongside legacy PAMSIGNAL_*.
+
 * Wed Apr 29 2026 Tuan Nguyen <anhtuank7c@hotmail.com> - 0.1.0-1
 - Initial RPM packaging.
 - Six-phase OWASP 2025 / data-integrity / memory-safety audit closed every
