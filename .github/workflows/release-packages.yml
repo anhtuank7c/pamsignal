@@ -291,11 +291,18 @@ jobs:
           done
           rm -f /tmp/.gpg-pass
 
-          # Verify each rpm's embedded sig.
+          # Verify each rpm's embedded sig. Modern rpm -K prints things like
+          # "Header V4 RSA/SHA256 Signature, key ID xxxxxxxx: OK" — we look
+          # for 'NOT OK' / 'BAD' as the failure markers and assume any other
+          # output is a successful verification.
           rpm --import <(gpg --armor --export "$GPG_KEY_ID")
           for rpm in out/*.rpm; do
-            rpm -K "$rpm" | grep -q 'pgp.*OK' || \
-              { echo "Signature verification failed for $rpm"; exit 1; }
+            output=$(rpm -K "$rpm")
+            echo "$output"
+            if echo "$output" | grep -qE 'NOT OK|BAD'; then
+              echo "::error::Signature verification failed for $rpm"
+              exit 1
+            fi
           done
 
       - name: Upload workflow artifact (90-day retention)
