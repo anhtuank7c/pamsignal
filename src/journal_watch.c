@@ -78,12 +78,18 @@ static void ps_track_failed_login(const ps_pam_event_t *event) {
                 // The journal log entry is written every time so post-mortem
                 // forensics still see every threshold breach; only the
                 // outbound notification is rate-limited.
+                //
+                // last_brute_alert_usec == 0 means "never alerted for this IP"
+                // — treat as cooldown-elapsed so the first breach always fires
+                // regardless of how recently after epoch the event arrived.
                 uint64_t cooldown_usec =
                     (uint64_t)g_config.alert_cooldown_sec * 1000000ULL;
-                int notify_allowed = (g_config.alert_cooldown_sec <= 0) ||
-                                     (event->timestamp_usec -
-                                          fail_table[i].last_brute_alert_usec >=
-                                      cooldown_usec);
+                int notify_allowed =
+                    (g_config.alert_cooldown_sec <= 0) ||
+                    (fail_table[i].last_brute_alert_usec == 0) ||
+                    (event->timestamp_usec -
+                         fail_table[i].last_brute_alert_usec >=
+                     cooldown_usec);
 
                 char attempts_str[16];
                 char window_str[16];

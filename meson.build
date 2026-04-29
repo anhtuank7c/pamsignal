@@ -111,4 +111,31 @@ if cmocka_dep.found()
     ),
     protocol: 'exitcode',
   )
+
+  test('test_notify',
+    executable('test_notify',
+      'tests/test_notify.c',
+      'src/notify.c',
+      'src/utils.c',
+      'src/config.c',
+      include_directories: inc,
+      dependencies: [cmocka_dep, libsystemd_dep],
+    ),
+    protocol: 'exitcode',
+  )
+
+  # test_journal_watch #includes ../src/journal_watch.c so it can drive the
+  # file-static fail_table state and ps_track_failed_login. Do NOT also list
+  # src/journal_watch.c here — that would produce duplicate symbols.
+  test('test_journal_watch',
+    executable('test_journal_watch',
+      'tests/test_journal_watch.c',
+      'src/notify.c',
+      'src/utils.c',
+      'src/config.c',
+      include_directories: inc,
+      dependencies: [cmocka_dep, libsystemd_dep],
+    ),
+    protocol: 'exitcode',
+  )
 endif
