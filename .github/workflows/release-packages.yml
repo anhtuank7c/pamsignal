@@ -256,14 +256,17 @@ jobs:
           # file. _gpg_name is the key id; __gpg_sign_cmd overrides the
           # default rpm sign invocation to add --pinentry-mode loopback and
           # --passphrase-file so rpmbuild's signing call is fully unattended.
-          # %{__gpg} already expands to /usr/bin/gpg; do NOT add a literal
-          # "gpg" after it (gpg would interpret the second "gpg" as a
-          # filename and all subsequent flags as more filenames).
-          cat > ~/.rpmmacros <<EOF
-          %_signature gpg
-          %_gpg_name $GPG_KEY_ID
-          %__gpg_sign_cmd %{__gpg} --batch --no-armor --pinentry-mode loopback --passphrase-file /tmp/.gpg-pass --no-secmem-warning -u "%{_gpg_name}" -sbo %{__signature_filename} %{__plaintext_filename}
-          EOF
+          # ~/.rpmmacros must have macro definitions at column 0 — RPM
+          # silently ignores any line that starts with whitespace. Heredoc
+          # bodies inherit YAML's indentation, so we write each line with
+          # explicit echo to keep it left-aligned. Single-quoted strings
+          # preserve %{...} literally so RPM (not the shell) does the
+          # expansion at sign time.
+          {
+            echo '%_signature gpg'
+            echo "%_gpg_name $GPG_KEY_ID"
+            echo '%__gpg_sign_cmd %{__gpg} --batch --no-armor --pinentry-mode loopback --passphrase-file /tmp/.gpg-pass --no-secmem-warning -u "%{_gpg_name}" -sbo %{__signature_filename} %{__plaintext_filename}'
+          } > ~/.rpmmacros
           # Embedded signatures (mutates the .rpm in place). dnf checks these
           # via gpgcheck=1 in the published .repo file.
           rpm --addsign out/*.rpm
