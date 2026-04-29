@@ -295,7 +295,12 @@ jobs:
           # "Header V4 RSA/SHA256 Signature, key ID xxxxxxxx: OK" — we look
           # for 'NOT OK' / 'BAD' as the failure markers and assume any other
           # output is a successful verification.
-          rpm --import <(gpg --armor --export "$GPG_KEY_ID")
+          # Process substitution `<(...)` is a bashism; the EL9 minimal
+          # container runs steps under /bin/sh which doesn't support it.
+          # Use a temp file for portability across both Fedora and EL9.
+          gpg --armor --export "$GPG_KEY_ID" > /tmp/pubkey.asc
+          rpm --import /tmp/pubkey.asc
+          rm -f /tmp/pubkey.asc
           for rpm in out/*.rpm; do
             output=$(rpm -K "$rpm")
             echo "$output"
