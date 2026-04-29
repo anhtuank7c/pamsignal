@@ -77,12 +77,6 @@ See [Deployment](./docs/deployment.md) for production setup with systemd.
 | [Deployment](./docs/deployment.md) | systemd service, production setup, security hardening |
 | [Changelog](./CHANGELOG.md) | What's done, what's next, task tracking |
 
-## Why I built this
-
-- I manage a number of Linux servers with limited resources and needed a monitoring tool that didn't exist the way I wanted.
-- I wanted to learn C, Linux internals, and security by building something real.
-- I wanted to create an open-source project Made in Vietnam.
-
 ## On using AI
 
 This project is built with AI assistance ([Claude Code](https://claude.ai/claude-code)). I want to be straightforward about what that means.
