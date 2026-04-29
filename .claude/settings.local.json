@@ -60,7 +60,9 @@
       "WebFetch(domain:documentation.ubuntu.com)",
       "WebFetch(domain:openbuildservice.org)",
       "Skill(senior-linux-developer)",
-      "Bash(dpkg -l)"
+      "Bash(dpkg -l)",
+      "Bash(git pull:*)",
+      "Bash(git stash:*)"
     ]
   }
 }

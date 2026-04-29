@@ -8,20 +8,55 @@ project('pamsignal', 'c',
   ]
 )
 
+cc = meson.get_compiler('c')
+
+# Always-on flags: portable across gcc/clang and broadly supported on the
+# project's target distros (Debian/Ubuntu/Fedora/RHEL).
 add_project_arguments(
   '-Wshadow',
   '-Wformat=2',
   '-Werror=format-security',
   '-fstack-protector-strong',
-  '-D_FORTIFY_SOURCE=2',
   '-D_GNU_SOURCE',
   language: 'c'
 )
 
+# _FORTIFY_SOURCE=3 strengthens runtime overflow checks (glibc >=2.34, gcc >=12).
+# Undefine first so we don't conflict with dpkg-buildflags / rpm hardening flags
+# that pre-define =2.
+fortify_args = cc.get_supported_arguments(
+  '-U_FORTIFY_SOURCE',
+  '-D_FORTIFY_SOURCE=3',
+)
+if fortify_args.length() == 2
+  add_project_arguments(fortify_args, language: 'c')
+else
+  add_project_arguments('-D_FORTIFY_SOURCE=2', language: 'c')
+endif
+
+# Best-effort hardening flags: enabled only if the toolchain supports them.
+add_project_arguments(
+  cc.get_supported_arguments(
+    '-fstack-clash-protection',  # block large-frame stack-clash attacks
+    '-fcf-protection=full',      # Intel CET (IBT + shadow stack)
+    '-Wnull-dereference',
+    '-Wstrict-overflow=3',
+  ),
+  language: 'c',
+)
+
+# Linker hardening
 add_project_link_arguments(
   '-Wl,-z,relro',
   '-Wl,-z,now',
+  '-Wl,-z,noexecstack',
   language: 'c'
+)
+add_project_link_arguments(
+  cc.get_supported_link_arguments(
+    '-Wl,-z,separate-code',  # disjoint RX / RW segments
+  ),
+  language: 'c',
 )
 
 libsystemd_dep = dependency('libsystemd')
