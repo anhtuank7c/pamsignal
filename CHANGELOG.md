@@ -1,6 +1,37 @@
 # Changelog
 
-## Unreleased
+## 0.1.0 — 2026-04-29
+
+First tagged release. Headlined by a six-phase OWASP 2025 / data-integrity /
+memory-safety audit that closed every Critical, High, Medium, Low, and Info
+finding the audit identified, plus continuous-fuzzing infrastructure for the
+PAM message parser.
+
+Highlights:
+
+- **Alert dispatch** — secrets (Telegram bot token, WhatsApp Bearer, webhook
+  URLs) no longer appear in `/proc/<pid>/cmdline`; they're written to a
+  `memfd_create()`-backed curl config passed via `-K /dev/fd/N`. `execv` on
+  an absolute path with `clearenv()` and a minimal `PATH` defeats `$PATH`
+  injection. `--proto =https` is forced on every invocation.
+- **Config validation** — per-field allowlists for tokens and webhook URLs;
+  config files opened with `O_NOFOLLOW|O_CLOEXEC` and `fstat`-checked for
+  ownership / mode (rejects group-writable, world-writable, and symlinks).
+- **PID file & signals** — `openat`-based pidfile under an `O_DIRECTORY|
+  O_NOFOLLOW` directory fd; stale pidfile only removed after `kill(pid, 0)`
+  confirms `ESRCH`. `volatile sig_atomic_t` flags, `SA_RESTART`,
+  `SIGPIPE = SIG_IGN`, and `sigprocmask`-blocked SIGHUP reload.
+- **Privilege defenses** — `prctl(PR_SET_NO_NEW_PRIVS)` and
+  `setrlimit(RLIMIT_NPROC, 64)` cap the daemon's blast radius even outside
+  the systemd sandbox.
+- **Brute-force tracking** — per-source-IP cooldown (was global), so a
+  flood of login events can no longer mute brute-force alerts.
+- **Build hardening** — `_FORTIFY_SOURCE=3`, `-fstack-clash-protection`,
+  `-fcf-protection=full`, `-Wl,-z,separate-code`; gated through
+  `cc.get_supported_arguments` so older toolchains still build.
+- **Tests** — 78 CMocka tests across four suites covering parser, config
+  validators, dispatch path, and brute-force tracker; opt-in libFuzzer
+  harness for `ps_parse_message` (clang only, sanitizer-instrumented).
 
 ### Security (Phase 6 — libFuzzer harness for ps_parse_message)
 - [x] `tests/fuzz_parse_message.c` — `LLVMFuzzerTestOneInput` harness gated behind `-Dfuzz=enabled`. Builds with clang + `-fsanitize=fuzzer,address,undefined`. Default gcc workflow is unaffected because the option defaults to `disabled` (TST-03)
@@ -112,17 +143,19 @@
 - [x] Development guide — build, test environment, e2e testing
 - [x] Deployment guide — systemd service, production setup, security hardening table
 
+## Unreleased
+
+(no changes yet)
+
 ## To Do
 
 ### Next Up
-- [ ] End-to-end test with real alert channels (Telegram, Slack, etc.)
-- [ ] Per-IP alert cooldown (current cooldown is global, not per-IP)
 - [ ] Curl availability check at startup (log warning if `curl` not found)
+- [ ] Distribution packaging via `/distro-packaging` skill (.deb, .rpm)
 
 ### Ideas (no promises)
 - [ ] GeoIP/ASN lookup for source IPs
 - [ ] Forwarding events to external logging systems
-- [ ] Package distribution (.deb, .rpm)
 - [ ] IPv6 network context from `/proc/net/tcp6`
 - [ ] Configurable event filter (choose which events trigger alerts)
 - [ ] Message templates (customizable alert format)
