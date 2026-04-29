@@ -1,0 +1,47 @@
+Package: pamsignal-dbgsym
+Package-Type: ddeb
+Architecture: amd64
+Version: 0.2.1-1
+Auto-Built-Package: debug-symbols
+Priority: optional
+Section: debug
+Source: pamsignal
+Maintainer: Tuan Nguyen <anhtuank7c@hotmail.com>
+Installed-Size: 66
+Depends: pamsignal (= 0.2.1-1)
+Filename: pool/main/p/pamsignal/pamsignal-dbgsym_0.2.1-1_amd64.ddeb
+Size: 41014
+MD5sum: 82bc0d1b9e3aca9eb2edef33cfde29d4
+SHA1: 2e5d845ce1ccd0939062882436e05b4165dd8fff
+SHA256: 77e6dcea5a6766b9e107098a5f069079c32ba39e91bed72d0e3c2e0814b6a1e1
+SHA512: a2a53eaeb8f9343ba9619b6011f4cc669d37bc1a2254468bf18560f1afa668fbc579a3ab760bca282fa3b0badd851b351ad87edcea38ce68fcf901e803009768
+Description: debug symbols for pamsignal
+Build-Ids: 689b005ffc95b768e479ed779b0390f3704c3352
+
+Package: pamsignal
+Architecture: amd64
+Version: 0.2.1-1
+Priority: optional
+Section: admin
+Maintainer: Tuan Nguyen <anhtuank7c@hotmail.com>
+Installed-Size: 70
+Pre-Depends: adduser
+Depends: libc6 (>= 2.38), libsystemd0, curl, systemd
+Filename: pool/main/p/pamsignal/pamsignal_0.2.1-1_amd64.deb
+Size: 22156
+MD5sum: ae8710f556d736cf1b858bd9b472527d
+SHA1: 1f8ad06743ea87ec6914ff865aa3529bf15e8abf
+SHA256: e11065c34891c882536dfaf07ace6b96b2bcd70b7222b2ad90ab2be285acd6b3
+SHA512: cd0c1a992f5dcae8d9af7b115fbfebe0d4bc99a0168d5d5d7e32a884096097b2e1e8b82c5649918baac4cd96060b3d1e5640729577b0ecb83f03c6121d7d3aa5
+Homepage: https://github.com/anhtuank7c/pamsignal
+Description: Real-time PAM login monitor with multi-channel alerts
+ PAMSignal monitors PAM authentication events via the systemd journal.
+ It detects login attempts, logouts, and brute-force patterns from sshd,
+ sudo, su, and login services, sending alerts to Telegram, Slack, Microsoft
+ Teams, WhatsApp, Discord, or custom webhooks.
+ .
+ The daemon runs as an unprivileged system user with read-only access to
+ the journal, isolates the alert dispatch path via fork+exec of curl, and
+ ships with systemd hardening directives (NoNewPrivileges, ProtectSystem,
+ SystemCallFilter, MemoryDenyWriteExecute, etc.).
+

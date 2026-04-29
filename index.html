@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>pamsignal package repository</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 760px;
+           margin: 2em auto; padding: 0 1em; line-height: 1.5; }
+    code, pre { background: #f4f4f4; }
+    pre { padding: 1em; overflow-x: auto; }
+    h1, h2 { border-bottom: 1px solid #ddd; padding-bottom: .3em; }
+    .fpr { font-family: monospace; font-size: 1.05em; }
+  </style>
+</head>
+<body>
+  <h1>pamsignal package repository</h1>
+  <p>Real-time PAM login monitor with multi-channel alerts. See
+    the <a href="https://github.com/anhtuank7c/pamsignal">project on
+    GitHub</a> for source and documentation.</p>
+
+  <h2>Signing key</h2>
+  <p>Public key: <a href="key.asc">key.asc</a></p>
+  <p>Fingerprint: <span class="fpr">2D2C 828F A6F4 D019 E446 8FBB B106 2235 2862 2F69</span></p>
+
+  <h2>Debian / Ubuntu</h2>
+  <pre><code>curl -fsSL https://anhtuank7c.github.io/pamsignal/key.asc \
+  | sudo gpg --dearmor -o /usr/share/keyrings/pamsignal.gpg
+echo "deb [signed-by=/usr/share/keyrings/pamsignal.gpg] https://anhtuank7c.github.io/pamsignal stable main" \
+  | sudo tee /etc/apt/sources.list.d/pamsignal.list
+sudo apt update
+sudo apt install pamsignal</code></pre>
+
+  <h2>Fedora</h2>
+  <pre><code>sudo dnf config-manager addrepo \
+  --from-repofile=https://anhtuank7c.github.io/pamsignal/rpm/fedora/pamsignal.repo
+sudo dnf install pamsignal</code></pre>
+
+  <h2>RHEL 9 / AlmaLinux 9 / Rocky Linux 9</h2>
+  <pre><code>sudo dnf config-manager --add-repo \
+  https://anhtuank7c.github.io/pamsignal/rpm/el9/pamsignal.repo
+sudo dnf install pamsignal</code></pre>
+
+  <h2>Verifying a downloaded package</h2>
+  <pre><code># Fetch the public key first
+curl -fsSLO https://anhtuank7c.github.io/pamsignal/key.asc
+gpg --import key.asc
+
+# Verify a .deb (using the detached .asc from GitHub releases)
+gpg --verify pamsignal_X.Y.Z-1_amd64.deb.asc \
+             pamsignal_X.Y.Z-1_amd64.deb
+
+# Verify a .rpm (signature is embedded in the file)
+rpm --import key.asc
+rpm -K pamsignal-X.Y.Z-1.\*.rpm</code></pre>
+</body>
+</html>
