@@ -29,14 +29,48 @@ graph LR
     style admin fill:#e9c46a,stroke:#f4a261,color:#000
 ```
 
-## Quick start
+## Install
+
+### Debian / Ubuntu
+
+```bash
+curl -fsSL https://anhtuank7c.github.io/pamsignal/key.asc \
+  | sudo gpg --dearmor -o /usr/share/keyrings/pamsignal.gpg
+echo "deb [signed-by=/usr/share/keyrings/pamsignal.gpg] https://anhtuank7c.github.io/pamsignal stable main" \
+  | sudo tee /etc/apt/sources.list.d/pamsignal.list
+sudo apt update
+sudo apt install pamsignal
+```
+
+### Fedora
+
+```bash
+sudo dnf config-manager addrepo \
+  --from-repofile=https://anhtuank7c.github.io/pamsignal/rpm/fedora/pamsignal.repo
+sudo dnf install pamsignal
+```
+
+### RHEL 9 / AlmaLinux 9 / Rocky Linux 9
+
+```bash
+sudo dnf config-manager --add-repo \
+  https://anhtuank7c.github.io/pamsignal/rpm/el9/pamsignal.repo
+sudo dnf install pamsignal
+```
+
+The signing key fingerprint is `2D2C 828F A6F4 D019 E446  8FBB B106 2235 2862 2F69` — the public key is checked into the repo at [`docs/signing-key.asc`](./docs/signing-key.asc) and served at the install URLs above. Verify it matches before adding the repository.
+
+After install, edit `/etc/pamsignal/pamsignal.conf` (it's `0640 root:pamsignal`, so use `sudo`), drop in your alert credentials, then `sudo systemctl reload pamsignal`.
+
+## Build from source
 
 ```bash
 # Install dependencies
-sudo apt install libsystemd-dev pkg-config build-essential meson ninja-build
+sudo apt install libsystemd-dev pkg-config build-essential meson ninja-build libcmocka-dev
 
 # Build
 meson setup build && meson compile -C build
+meson test -C build
 
 # Create service user
 sudo useradd -r -s /usr/sbin/nologin pamsignal

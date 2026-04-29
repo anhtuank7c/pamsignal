@@ -181,6 +181,12 @@ Highlights:
 
 ## Unreleased
 
+### Distribution
+- [x] Signed apt + dnf repositories published to GitHub Pages on every release. Users install with the standard one-liner via `apt install` (Debian/Ubuntu) or `dnf install` (Fedora / RHEL 9 / Alma 9 / Rocky 9). The repository's `Release` / `InRelease` (apt) and `repomd.xml.asc` (dnf) are signed by the project release key, so transport-layer integrity is enforced even if a mirror is compromised.
+- [x] Each `.deb`, `.ddeb`, `.rpm` artifact gets a detached armored `.asc` signature attached to the GitHub release, for users who download directly from the release page rather than via the apt/dnf repos. RPM packages also carry an embedded signature (`rpm --addsign`) so `dnf install` validates the package contents before running scriptlets.
+- [x] Public signing key committed at `docs/signing-key.asc` and served at `https://anhtuank7c.github.io/pamsignal/key.asc`. Fingerprint: `2D2C 828F A6F4 D019 E446  8FBB B106 2235 2862 2F69`.
+- [x] One-time `bootstrap-signing-key.yml` workflow generates the GPG key inside CI without it ever touching the maintainer's machine. The bootstrap workflow auto-deletes its output artifact after 24h.
+
 ### CI
 - [x] `build-rpm` workflow job converted to a matrix: builds for **Fedora** (`fedora:latest` container, produces `*.fc<N>.rpm`) AND **EL9** (`almalinux:9` container with EPEL + CRB enabled, produces `*.el9.rpm`). The EL9 RPM installs cleanly on AlmaLinux 9, Rocky Linux 9, and RHEL 9 — all three are bit-compatible at the `.el9` dist tag, so a single build covers them.
 - [x] `test-deb` workflow job runs after `build-deb` and exercises the full daemon end-to-end on `ubuntu-24.04`: installs the `.deb`, generates a self-signed cert and adds it to the system trust store (so pamsignal's `--proto =https` curl child can validate without `--insecure`), starts a Python HTTPS mock webhook, configures pamsignal to point at it, injects synthetic sshd events via `logger -t sshd "Failed password for ..."`, then asserts the received ECS payloads have the expected `event.action`, `event.severity`, `event.kind`, `source.ip`, `source.port`, `user.name`, etc. Triggers brute-force detection (threshold=3), verifies SIGHUP reload, then `apt purge` and confirms cleanup.

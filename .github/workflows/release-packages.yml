@@ -95,6 +95,32 @@ jobs:
           dpkg-deb -c "$deb"
           echo "::endgroup::"
 
+      - name: Sign artifacts (detached .asc per file)
+        if: github.event_name == 'release' || inputs.attach_to_release == 'true'
+        env:
+          GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+          GPG_KEY_ID: ${{ secrets.GPG_KEY_ID }}
+        run: |
+          # Configure gpg for non-interactive (loopback) pinentry.
+          mkdir -p ~/.gnupg && chmod 700 ~/.gnupg
+          echo "allow-loopback-pinentry" >> ~/.gnupg/gpg-agent.conf
+          gpgconf --kill gpg-agent || true
+          # Import the project signing key from secret.
+          printf '%s' "$GPG_PRIVATE_KEY" | gpg --batch --import
+          # Detached armored signature for each shippable file. The apt repo
+          # itself is verified via the signed Release/InRelease in the
+          # publish-repo job, but per-file .asc is useful for direct
+          # downloads from the GitHub release page.
+          for f in out/*.deb out/*.ddeb; do
+            [ -f "$f" ] || continue
+            gpg --batch --pinentry-mode loopback \
+                --passphrase "$GPG_PASSPHRASE" \
+                --default-key "$GPG_KEY_ID" \
+                --detach-sign --armor -o "$f.asc" "$f"
+          done
+          ls -la out/*.asc
+
       - name: Upload workflow artifact (90-day retention)
         uses: actions/upload-artifact@v7
         with:
@@ -110,6 +136,7 @@ jobs:
           files: |
             out/*.deb
             out/*.ddeb
+            out/*.asc
 
   # --- RPM builds (Fedora + EL9) ---
   #
@@ -147,7 +174,7 @@ jobs:
         run: |
           ${{ matrix.target.repo_setup }}
           dnf install -y --setopt=install_weak_deps=False \
-            git tar gzip rpm-build rpmdevtools \
+            git tar gzip rpm-build rpmdevtools rpm-sign gnupg2 \
             meson ninja-build gcc pkgconf-pkg-config \
             systemd-devel systemd-rpm-macros libcmocka-devel
 
@@ -210,11 +237,55 @@ jobs:
             echo "::endgroup::"
           done
 
+      - name: Sign RPMs (embedded + detached)
+        if: github.event_name == 'release' || inputs.attach_to_release == 'true'
+        env:
+          GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+          GPG_KEY_ID: ${{ secrets.GPG_KEY_ID }}
+        run: |
+          # rpm --addsign requires gpg-agent to satisfy the passphrase.
+          # Configure loopback pinentry and pass the passphrase via file.
+          mkdir -p ~/.gnupg && chmod 700 ~/.gnupg
+          echo "allow-loopback-pinentry" >> ~/.gnupg/gpg-agent.conf
+          gpgconf --kill gpg-agent || true
+          printf '%s' "$GPG_PRIVATE_KEY" | gpg --batch --import
+          printf '%s' "$GPG_PASSPHRASE" > /tmp/.gpg-pass
+          chmod 600 /tmp/.gpg-pass
+          # ~/.rpmmacros wires rpmsign to use loopback gpg with the passphrase
+          # file. _gpg_name is the key id; __gpg_sign_cmd overrides the
+          # default rpm sign invocation to add --pinentry-mode loopback and
+          # --passphrase-file so rpmbuild's signing call is fully unattended.
+          cat > ~/.rpmmacros <<EOF
+          %_signature gpg
+          %_gpg_name $GPG_KEY_ID
+          %__gpg_sign_cmd %{__gpg} gpg --batch --no-armor --pinentry-mode loopback --passphrase-file /tmp/.gpg-pass --no-secmem-warning -u "%{_gpg_name}" -sbo %{__signature_filename} %{__plaintext_filename}
+          EOF
+          # Embedded signatures (mutates the .rpm in place). dnf checks these
+          # via gpgcheck=1 in the published .repo file.
+          rpm --addsign out/*.rpm
+          # Detached armored signatures for direct-download verification.
+          for rpm in out/*.rpm; do
+            gpg --batch --pinentry-mode loopback \
+                --passphrase-file /tmp/.gpg-pass \
+                --default-key "$GPG_KEY_ID" \
+                --detach-sign --armor -o "$rpm.asc" "$rpm"
+          done
+          # Verify each rpm's embedded sig.
+          rpm --import <(gpg --armor --export "$GPG_KEY_ID")
+          for rpm in out/*.rpm; do
+            rpm -K "$rpm" | grep -q 'pgp.*OK' || \
+              { echo "Signature verification failed for $rpm"; exit 1; }
+          done
+          rm -f /tmp/.gpg-pass
+
       - name: Upload workflow artifact (90-day retention)
         uses: actions/upload-artifact@v7
         with:
           name: pamsignal-rpm-${{ matrix.target.name }}-${{ github.run_number }}
-          path: out/*.rpm
+          path: |
+            out/*.rpm
+            out/*.asc
           if-no-files-found: error
 
       - name: Attach to GitHub release
@@ -222,7 +293,9 @@ jobs:
         uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ github.event_name == 'release' && github.ref_name || inputs.ref }}
-          files: out/*.rpm
+          files: |
+            out/*.rpm
+            out/*.asc
 
   # --- Functional test: install the .deb, exercise the daemon end-to-end ---
   test-deb:
@@ -476,3 +549,245 @@ jobs:
           # The pamsignal user is intentionally retained.
           getent passwd pamsignal >/dev/null && \
             echo "pamsignal user retained as expected"
+
+  # --- Publish signed apt + dnf repository to gh-pages ---
+  #
+  # Runs after both build matrices and both test matrices succeed on a
+  # release: published event. Assembles a static apt repo (Debian/Ubuntu)
+  # and dnf repos (Fedora + EL9) under a gh-pages branch that GitHub Pages
+  # serves at https://<owner>.github.io/<repo>/. Users add a one-line
+  # source / .repo entry and apt/dnf installation works thereafter.
+  publish-repo:
+    name: Publish signed apt+dnf repo to gh-pages
+    runs-on: ubuntu-24.04
+    needs: [build-deb, build-rpm, test-deb, test-rpm]
+    if: github.event_name == 'release' || inputs.attach_to_release == 'true'
+    permissions:
+      contents: write
+    steps:
+      - name: Install repo-building tools
+        run: |
+          sudo apt-get update -qq
+          # apt-utils provides apt-ftparchive (apt repo metadata generator);
+          # createrepo-c is the dnf repo metadata generator (the C variant
+          # is faster than the Python one and is the modern default).
+          sudo apt-get install -y --no-install-recommends \
+            apt-utils createrepo-c gnupg
+
+      - name: Download deb artifacts
+        uses: actions/download-artifact@v7
+        with:
+          name: pamsignal-deb-${{ github.run_number }}
+          path: ./incoming/deb
+
+      - name: Download fedora rpm artifacts
+        uses: actions/download-artifact@v7
+        with:
+          name: pamsignal-rpm-fedora-${{ github.run_number }}
+          path: ./incoming/rpm-fedora
+
+      - name: Download el9 rpm artifacts
+        uses: actions/download-artifact@v7
+        with:
+          name: pamsignal-rpm-el9-${{ github.run_number }}
+          path: ./incoming/rpm-el9
+
+      - name: Set up signing key
+        env:
+          GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+          GPG_KEY_ID: ${{ secrets.GPG_KEY_ID }}
+        run: |
+          mkdir -p ~/.gnupg && chmod 700 ~/.gnupg
+          echo "allow-loopback-pinentry" >> ~/.gnupg/gpg-agent.conf
+          gpgconf --kill gpg-agent || true
+          printf '%s' "$GPG_PRIVATE_KEY" | gpg --batch --import
+          printf '%s' "$GPG_PASSPHRASE" > /tmp/.gpg-pass
+          chmod 600 /tmp/.gpg-pass
+
+      - name: Check out (or initialize) gh-pages branch
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git config --global user.name  "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git clone --depth 1 \
+            "https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}.git" \
+            ghpages-work
+          cd ghpages-work
+          if git ls-remote --exit-code --heads origin gh-pages >/dev/null; then
+            git fetch origin gh-pages
+            git checkout gh-pages
+          else
+            # First publish: create gh-pages as an orphan branch, purge
+            # main-tree contents so the served site is just the repo.
+            git checkout --orphan gh-pages
+            git rm -rf . >/dev/null 2>&1 || true
+            echo "# pamsignal package repository" > README.md
+            git add README.md
+            git commit -m "Initialize gh-pages"
+          fi
+
+      - name: Publish public signing key
+        run: |
+          cd ghpages-work
+          gpg --armor --export "${{ secrets.GPG_KEY_ID }}" > key.asc
+
+      - name: Build apt repository (Debian/Ubuntu)
+        run: |
+          cd ghpages-work
+          # Layout: pool/ holds .deb files; dists/stable/ holds the index.
+          mkdir -p pool/main/p/pamsignal
+          mkdir -p dists/stable/main/binary-amd64
+          # Copy fresh .deb / .ddeb in (overwrites prior version's files).
+          cp -v ../incoming/deb/*.deb  pool/main/p/pamsignal/
+          cp -v ../incoming/deb/*.ddeb pool/main/p/pamsignal/ || true
+          # Generate Packages + Packages.gz (apt-ftparchive scans pool/).
+          apt-ftparchive packages pool/ \
+            > dists/stable/main/binary-amd64/Packages
+          gzip -kf dists/stable/main/binary-amd64/Packages
+          # Generate Release with hashes of the Packages files.
+          cat > /tmp/aptftp.conf <<EOF
+          APT::FTPArchive::Release::Origin "pamsignal";
+          APT::FTPArchive::Release::Label "pamsignal";
+          APT::FTPArchive::Release::Suite "stable";
+          APT::FTPArchive::Release::Codename "stable";
+          APT::FTPArchive::Release::Architectures "amd64";
+          APT::FTPArchive::Release::Components "main";
+          APT::FTPArchive::Release::Description "pamsignal release apt repo";
+          EOF
+          apt-ftparchive -c /tmp/aptftp.conf release dists/stable/ \
+            > dists/stable/Release
+          # Sign Release. Two outputs: detached Release.gpg (legacy apt) and
+          # clearsigned InRelease (modern apt, single-file fetch).
+          gpg --batch --pinentry-mode loopback \
+              --passphrase-file /tmp/.gpg-pass \
+              --default-key "${{ secrets.GPG_KEY_ID }}" \
+              --detach-sign --armor \
+              -o dists/stable/Release.gpg dists/stable/Release
+          gpg --batch --pinentry-mode loopback \
+              --passphrase-file /tmp/.gpg-pass \
+              --default-key "${{ secrets.GPG_KEY_ID }}" \
+              --clearsign \
+              -o dists/stable/InRelease dists/stable/Release
+
+      - name: Build dnf repositories (Fedora + EL9)
+        run: |
+          cd ghpages-work
+          for variant in fedora el9; do
+            mkdir -p rpm/$variant
+            # Copy fresh RPMs (createrepo_c builds metadata from this dir).
+            cp -v ../incoming/rpm-$variant/*.rpm rpm/$variant/ || true
+            # Build/update repodata/. Use --update so a re-publish only
+            # diffs the metadata instead of rebuilding from scratch.
+            createrepo_c --update rpm/$variant/
+            # Sign repomd.xml. dnf with repo_gpgcheck=1 verifies this.
+            gpg --batch --pinentry-mode loopback \
+                --passphrase-file /tmp/.gpg-pass \
+                --default-key "${{ secrets.GPG_KEY_ID }}" \
+                --detach-sign --armor \
+                -o rpm/$variant/repodata/repomd.xml.asc \
+                   rpm/$variant/repodata/repomd.xml
+          done
+          # .repo files. Each variant gets its own pamsignal.repo so
+          # `dnf config-manager --add-repo URL.repo` works directly.
+          OWNER=${{ github.repository_owner }}
+          REPO=$(basename "${{ github.repository }}")
+          BASE="https://${OWNER}.github.io/${REPO}"
+          for variant in fedora el9; do
+            cat > rpm/$variant/pamsignal.repo <<REPO
+          [pamsignal]
+          name=pamsignal ($variant)
+          baseurl=$BASE/rpm/$variant
+          enabled=1
+          gpgcheck=1
+          repo_gpgcheck=1
+          gpgkey=$BASE/key.asc
+          REPO
+          done
+
+      - name: Generate landing page (index.html)
+        run: |
+          cd ghpages-work
+          OWNER=${{ github.repository_owner }}
+          REPO=$(basename "${{ github.repository }}")
+          BASE="https://${OWNER}.github.io/${REPO}"
+          FPR=$(gpg --fingerprint --with-colons "${{ secrets.GPG_KEY_ID }}" \
+                  | awk -F: '/^fpr/ {print $10; exit}')
+          # Pretty-print fingerprint as 5-char groups separated by spaces.
+          FPR_PRETTY=$(echo "$FPR" \
+            | sed 's/.\{4\}/& /g; s/  *$//')
+          cat > index.html <<HTML
+          <!doctype html>
+          <html lang="en">
+          <head>
+            <meta charset="utf-8">
+            <title>pamsignal package repository</title>
+            <style>
+              body { font-family: system-ui, sans-serif; max-width: 760px;
+                     margin: 2em auto; padding: 0 1em; line-height: 1.5; }
+              code, pre { background: #f4f4f4; }
+              pre { padding: 1em; overflow-x: auto; }
+              h1, h2 { border-bottom: 1px solid #ddd; padding-bottom: .3em; }
+              .fpr { font-family: monospace; font-size: 1.05em; }
+            </style>
+          </head>
+          <body>
+            <h1>pamsignal package repository</h1>
+            <p>Real-time PAM login monitor with multi-channel alerts. See
+              the <a href="https://github.com/${OWNER}/${REPO}">project on
+              GitHub</a> for source and documentation.</p>
+
+            <h2>Signing key</h2>
+            <p>Public key: <a href="key.asc">key.asc</a></p>
+            <p>Fingerprint: <span class="fpr">$FPR_PRETTY</span></p>
+
+            <h2>Debian / Ubuntu</h2>
+            <pre><code>curl -fsSL $BASE/key.asc \\
+            | sudo gpg --dearmor -o /usr/share/keyrings/pamsignal.gpg
+          echo "deb [signed-by=/usr/share/keyrings/pamsignal.gpg] $BASE stable main" \\
+            | sudo tee /etc/apt/sources.list.d/pamsignal.list
+          sudo apt update
+          sudo apt install pamsignal</code></pre>
+
+            <h2>Fedora</h2>
+            <pre><code>sudo dnf config-manager addrepo \\
+            --from-repofile=$BASE/rpm/fedora/pamsignal.repo
+          sudo dnf install pamsignal</code></pre>
+
+            <h2>RHEL 9 / AlmaLinux 9 / Rocky Linux 9</h2>
+            <pre><code>sudo dnf config-manager --add-repo \\
+            $BASE/rpm/el9/pamsignal.repo
+          sudo dnf install pamsignal</code></pre>
+
+            <h2>Verifying a downloaded package</h2>
+            <pre><code># Fetch the public key first
+          curl -fsSLO $BASE/key.asc
+          gpg --import key.asc
+
+          # Verify a .deb (using the detached .asc from GitHub releases)
+          gpg --verify pamsignal_X.Y.Z-1_amd64.deb.asc \\
+                       pamsignal_X.Y.Z-1_amd64.deb
+
+          # Verify a .rpm (signature is embedded in the file)
+          rpm --import key.asc
+          rpm -K pamsignal-X.Y.Z-1.\\*.rpm</code></pre>
+          </body>
+          </html>
+          HTML
+
+      - name: Commit + push gh-pages
+        run: |
+          cd ghpages-work
+          git add -A
+          if git diff --cached --quiet; then
+            echo "::notice::No repository changes to publish."
+          else
+            git commit -m "Publish ${GITHUB_REF_NAME:-$GITHUB_SHA}"
+            git push origin gh-pages
+            echo "::notice::Published gh-pages."
+          fi
+
+      - name: Cleanup secrets
+        if: always()
+        run: rm -f /tmp/.gpg-pass
