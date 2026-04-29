@@ -41,15 +41,26 @@ jobs:
           # can introspect the tree without surprises.
           fetch-depth: 0
 
-      # Caches the .deb files apt downloads to /var/cache/apt/archives so the
-      # next run skips the network fetch step. Keyed on the package list +
-      # runner image so a runner upgrade or a Build-Depends change invalidates
-      # cleanly.
-      - name: Cache apt packages
-        uses: awalsh128/cache-apt-pkgs-action@v1
+      # Cache the .deb archives apt downloads. On cache hit, apt-get install
+      # below reuses them instead of re-downloading from the mirror. We cache
+      # FILES (not installed state), then always run apt-get install — this
+      # is more robust than third-party "cache + install" actions that try
+      # to skip apt entirely on cache hit.
+      - name: Restore apt archive cache
+        uses: actions/cache@v4
         with:
-          packages: debhelper meson ninja-build pkg-config libsystemd-dev libcmocka-dev
-          version: 1.0
+          path: |
+            /var/cache/apt/archives/*.deb
+            /var/cache/apt/archives/partial
+          key: apt-${{ runner.os }}-${{ hashFiles('debian/control') }}
+          restore-keys: |
+            apt-${{ runner.os }}-
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            debhelper meson ninja-build pkg-config libsystemd-dev libcmocka-dev
 
       - name: Show toolchain
         run: |
