@@ -1,3 +1,12 @@
+pamsignal (0.2.1-1) unstable; urgency=medium
+
+  * Packaging release: signed apt and dnf repositories published to
+    GitHub Pages. The .deb binary is identical to v0.2.0; this release
+    only adds the signing/distribution infrastructure plus the small
+    spec fix that lets dnf 5 (Fedora 44) install the .rpm cleanly.
+
+ -- Tuan Nguyen <anhtuank7c@hotmail.com>  Thu, 30 Apr 2026 11:00:00 +0000
+
 pamsignal (0.2.0-1) unstable; urgency=medium
 
   * Align alert payloads with Elastic Common Schema (ECS). Breaking change

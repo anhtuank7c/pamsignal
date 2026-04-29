@@ -179,13 +179,22 @@ Highlights:
 - [x] Development guide — build, test environment, e2e testing
 - [x] Deployment guide — systemd service, production setup, security hardening table
 
-## Unreleased
+## 0.2.1 — 2026-04-30
+
+Packaging-only release. Binary is identical to v0.2.0; this release adds signed apt + dnf repositories on GitHub Pages and the small spec fix that lets dnf 5 (Fedora 44) install the `.rpm` cleanly.
 
 ### Distribution
 - [x] Signed apt + dnf repositories published to GitHub Pages on every release. Users install with the standard one-liner via `apt install` (Debian/Ubuntu) or `dnf install` (Fedora / RHEL 9 / Alma 9 / Rocky 9). The repository's `Release` / `InRelease` (apt) and `repomd.xml.asc` (dnf) are signed by the project release key, so transport-layer integrity is enforced even if a mirror is compromised.
 - [x] Each `.deb`, `.ddeb`, `.rpm` artifact gets a detached armored `.asc` signature attached to the GitHub release, for users who download directly from the release page rather than via the apt/dnf repos. RPM packages also carry an embedded signature (`rpm --addsign`) so `dnf install` validates the package contents before running scriptlets.
-- [x] Public signing key committed at `docs/signing-key.asc` and served at `https://anhtuank7c.github.io/pamsignal/key.asc`. Fingerprint: `2D2C 828F A6F4 D019 E446  8FBB B106 2235 2862 2F69`.
+- [x] Public signing key committed at `docs/signing-key.asc` and served at `https://anhtuank7c.github.io/pamsignal/key.asc`. Fingerprint: `2D2C 828F A6F4 D019 E446 8FBB B106 2235 2862 2F69`.
 - [x] One-time `bootstrap-signing-key.yml` workflow generates the GPG key inside CI without it ever touching the maintainer's machine. The bootstrap workflow auto-deletes its output artifact after 24h.
+
+### Spec
+- [x] `pamsignal.spec` declares `Provides: user(pamsignal)` and `Provides: group(pamsignal)` so dnf 5's transaction resolver accepts the auto-generated `Requires: group(pamsignal)` (which RPM derives from the `%attr(...,pamsignal)` entries in `%files`) before the `%pre` scriptlet that creates the user/group runs.
+
+## Unreleased
+
+(no changes yet)
 
 ### CI
 - [x] `build-rpm` workflow job converted to a matrix: builds for **Fedora** (`fedora:latest` container, produces `*.fc<N>.rpm`) AND **EL9** (`almalinux:9` container with EPEL + CRB enabled, produces `*.el9.rpm`). The EL9 RPM installs cleanly on AlmaLinux 9, Rocky Linux 9, and RHEL 9 — all three are bit-compatible at the `.el9` dist tag, so a single build covers them.

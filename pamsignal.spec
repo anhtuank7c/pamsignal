@@ -1,5 +1,5 @@
 Name:           pamsignal
-Version:        0.2.0
+Version:        0.2.1
 Release:        1%{?dist}
 Summary:        Real-time PAM login monitor with multi-channel alerts
 
@@ -105,6 +105,13 @@ fi
 %config(noreplace) %attr(0640,root,pamsignal) %{_sysconfdir}/pamsignal/pamsignal.conf
 
 %changelog
+* Thu Apr 30 2026 Tuan Nguyen <anhtuank7c@hotmail.com> - 0.2.1-1
+- Packaging release: signed apt and dnf repositories published to GitHub
+  Pages. Adds Provides: user(pamsignal) / group(pamsignal) so the auto-
+  generated user/group Requires from %attr(...,pamsignal) in %files
+  resolves cleanly under dnf 5 (Fedora 44).
+- No source code changes — binary is identical to v0.2.0.
+
 * Thu Apr 30 2026 Tuan Nguyen <anhtuank7c@hotmail.com> - 0.2.0-1
 - Align alert payloads with Elastic Common Schema (ECS). Breaking change to
   chat text and JSON webhook formats; see CHANGELOG.md for migration.
