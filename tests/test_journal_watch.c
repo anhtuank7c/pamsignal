@@ -21,6 +21,9 @@
 volatile sig_atomic_t running = 0;
 volatile sig_atomic_t reload_requested = 0;
 
+// Include-the-source-file pattern lets us drive file-static fail_table state
+// and ps_track_failed_login without exposing them in the public header.
+// NOLINTNEXTLINE(bugprone-suspicious-include)
 #include "../src/journal_watch.c"
 
 // --- Fixtures ---
@@ -113,7 +116,7 @@ static void test_track_increments_for_same_ip(void **state) {
 
     for (int i = 0; i < 3; i++) {
         ps_pam_event_t e = make_failed_login("192.0.2.1", "alice",
-                                             (uint64_t)(1000000 + i * 1000000));
+                                             1000000ULL + (uint64_t)i * 1000000);
         ps_track_failed_login(&e);
     }
 
@@ -195,8 +198,8 @@ static void test_track_threshold_resets_count_and_arms_cooldown(void **state) {
     // Threshold reached: count is reset to 0 and the cooldown timestamp is
     // armed at the breaching event's timestamp.
     assert_int_equal(fail_table[0].count, 0);
-    assert_int_equal(fail_table[0].last_brute_alert_usec, t0 + 2 * 1000000);
-    assert_int_equal(fail_table[0].first_attempt_usec, t0 + 2 * 1000000);
+    assert_int_equal(fail_table[0].last_brute_alert_usec, t0 + 2ULL * 1000000);
+    assert_int_equal(fail_table[0].first_attempt_usec, t0 + 2ULL * 1000000);
 }
 
 static void test_track_per_ip_cooldown_suppresses_repeat_alert(void **state) {

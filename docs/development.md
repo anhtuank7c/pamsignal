@@ -67,15 +67,19 @@ CC=clang-21 meson setup -Dfuzz=enabled build-fuzz
 # Build the harness
 meson compile -C build-fuzz fuzz_parse_message
 
-# Run for 60 seconds against the seed corpus
-./build-fuzz/fuzz_parse_message tests/fuzz/parse_message_corpus \
-    -max_total_time=60
+# Run for 60 seconds. The first positional arg is libFuzzer's working corpus
+# (writable — discoveries are saved here); the second is the read-only seed
+# corpus. build-fuzz/ is gitignored, so discoveries stay out of the repo.
+mkdir -p build-fuzz/corpus
+./build-fuzz/fuzz_parse_message build-fuzz/corpus \
+    tests/fuzz/parse_message_corpus -max_total_time=60
 ```
 
-Crashes are written to `crash-<sha1>` in the working directory. Use the
+Crashes are written to `crash-<sha1>` in the current directory. Use the
 crash file as a regression: `./build-fuzz/fuzz_parse_message crash-<sha1>`
-reproduces the failing input. Add interesting cases to `tests/fuzz/parse_message_corpus/`
-to grow the seed set.
+reproduces the failing input. If a discovered corpus entry exercises a
+genuinely new code path worth keeping, copy it into
+`tests/fuzz/parse_message_corpus/` with a descriptive name.
 
 The `fuzz` option defaults to `disabled`, so the regular `meson setup build`
 + gcc workflow is unaffected.
