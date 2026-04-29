@@ -1,0 +1,187 @@
+name: Build release packages
+
+# Triggered automatically when a release is published. Use workflow_dispatch
+# to test the pipeline against any tag/branch without creating a release, or
+# to backfill artifacts on an existing release (set the `attach_to_release`
+# input).
+#
+# Manual run examples:
+#   gh workflow run release-packages.yml -f ref=v0.1.0
+#   gh workflow run release-packages.yml -f ref=v0.1.0 -f attach_to_release=true
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Tag or branch to build"
+        required: false
+        default: ""
+      attach_to_release:
+        description: "Attach the built packages to the GitHub release matching `ref` (must already exist)"
+        required: false
+        default: "false"
+
+permissions:
+  # softprops/action-gh-release needs write access to upload assets to a release.
+  contents: write
+
+jobs:
+  # --- Debian / Ubuntu ---
+  build-deb:
+    name: Build .deb (Ubuntu)
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.ref || github.ref }}
+          # Full history so dpkg-genchanges and any future git-derived metadata
+          # can introspect the tree without surprises.
+          fetch-depth: 0
+
+      # Caches the .deb files apt downloads to /var/cache/apt/archives so the
+      # next run skips the network fetch step. Keyed on the package list +
+      # runner image so a runner upgrade or a Build-Depends change invalidates
+      # cleanly.
+      - name: Cache apt packages
+        uses: awalsh128/cache-apt-pkgs-action@v1
+        with:
+          packages: debhelper meson ninja-build pkg-config libsystemd-dev libcmocka-dev
+          version: 1.0
+
+      - name: Show toolchain
+        run: |
+          dpkg-buildpackage --version | head -1
+          meson --version
+          gcc --version | head -1
+
+      - name: Build .deb (runs `meson test` via dh_auto_test)
+        run: dpkg-buildpackage -us -uc -b
+
+      - name: Collect artifacts
+        run: |
+          mkdir -p out
+          # dpkg-buildpackage writes into the parent directory. Move into a
+          # known location for upload + release attach.
+          mv ../pamsignal_*.deb        out/ 2>/dev/null || true
+          mv ../pamsignal-*.ddeb       out/ 2>/dev/null || true
+          mv ../pamsignal_*.changes    out/ 2>/dev/null || true
+          mv ../pamsignal_*.buildinfo  out/ 2>/dev/null || true
+          ls -la out/
+
+      - name: Inspect package
+        run: |
+          deb=$(ls out/pamsignal_*.deb | head -1)
+          echo "::group::dpkg-deb -I"
+          dpkg-deb -I "$deb"
+          echo "::endgroup::"
+          echo "::group::dpkg-deb -c"
+          dpkg-deb -c "$deb"
+          echo "::endgroup::"
+
+      - name: Upload workflow artifact (90-day retention)
+        uses: actions/upload-artifact@v4
+        with:
+          name: pamsignal-deb-${{ github.run_number }}
+          path: out/*
+          if-no-files-found: error
+
+      - name: Attach to GitHub release
+        if: github.event_name == 'release' || inputs.attach_to_release == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event_name == 'release' && github.ref_name || inputs.ref }}
+          files: |
+            out/*.deb
+            out/*.ddeb
+
+  # --- Fedora (rpmbuild) ---
+  build-rpm:
+    name: Build .rpm (Fedora)
+    runs-on: ubuntu-24.04
+    container:
+      image: fedora:latest
+    steps:
+      # actions/checkout uses git, and the bare fedora:latest container ships
+      # without it. Install before we check out, plus the build toolchain so
+      # the cache step has something concrete to populate later.
+      - name: Install build tooling
+        run: |
+          dnf install -y --setopt=install_weak_deps=False \
+            git tar gzip rpm-build rpmdevtools \
+            meson ninja-build gcc pkgconf-pkg-config \
+            systemd-devel systemd-rpm-macros libcmocka-devel
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.ref || github.ref }}
+          fetch-depth: 0
+
+      # Container filesystem is ephemeral, so dnf metadata + downloaded RPMs
+      # survive across runs only via this cache. Keyed on the spec so a
+      # BuildRequires change invalidates correctly.
+      - name: Cache DNF state
+        uses: actions/cache@v4
+        with:
+          path: |
+            /var/cache/dnf
+            /var/lib/dnf
+          key: dnf-fedora-${{ hashFiles('pamsignal.spec') }}
+          restore-keys: |
+            dnf-fedora-
+
+      - name: Mark workspace safe for git (container runs as root)
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      - name: Show toolchain
+        run: |
+          rpmbuild --version
+          meson --version
+          gcc --version | head -1
+
+      - name: Build SRPM and RPM
+        run: |
+          rpmdev-setuptree
+          VERSION=$(rpmspec -q --queryformat='%{version}\n' pamsignal.spec | head -n1)
+          echo "Building pamsignal ${VERSION}"
+          # Source tarball must match Source0 (%{name}-%{version}.tar.gz) and
+          # the prefix must match %autosetup -n. git archive HEAD captures the
+          # current ref's tree exactly.
+          git archive --format=tar.gz \
+            --prefix="pamsignal-${VERSION}/" \
+            -o ~/rpmbuild/SOURCES/pamsignal-${VERSION}.tar.gz HEAD
+          rpmbuild -ba pamsignal.spec
+
+      - name: Collect artifacts
+        run: |
+          mkdir -p out
+          find ~/rpmbuild/RPMS ~/rpmbuild/SRPMS -name '*.rpm' -exec cp -v {} out/ \;
+          ls -la out/
+
+      - name: Inspect package
+        run: |
+          for rpm in out/*.rpm; do
+            echo "::group::rpm -qpi $rpm"
+            rpm -qpi "$rpm"
+            echo "::endgroup::"
+            echo "::group::rpm -qpl $rpm"
+            rpm -qpl "$rpm"
+            echo "::endgroup::"
+          done
+
+      - name: Upload workflow artifact (90-day retention)
+        uses: actions/upload-artifact@v4
+        with:
+          name: pamsignal-rpm-${{ github.run_number }}
+          path: out/*.rpm
+          if-no-files-found: error
+
+      - name: Attach to GitHub release
+        if: github.event_name == 'release' || inputs.attach_to_release == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event_name == 'release' && github.ref_name || inputs.ref }}
+          files: out/*.rpm

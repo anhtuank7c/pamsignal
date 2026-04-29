@@ -150,6 +150,9 @@ Highlights:
 - [x] `pamsignal.spec` — Fedora/CentOS/AlmaLinux/Rocky Linux RPM spec. Build with `rpmbuild -ba pamsignal.spec`. `%pre` creates the system user via `useradd -r`; `%post` enforces config-file permissions; `%config(noreplace)` preserves admin edits across upgrades.
 - Both formats fix the two known `meson.build` issues in the install step: relocate the systemd unit from `/etc/systemd/system/` to the vendor path (`/usr/lib/systemd/system/` for deb, `%{_unitdir}` for rpm), and patch `ExecStart=/usr/local/bin/pamsignal` → `/usr/bin/pamsignal` (or `%{_bindir}` for rpm).
 
+### CI
+- [x] `.github/workflows/release-packages.yml` — builds `.deb` (Ubuntu 24.04) and `.rpm` (Fedora container) automatically when a GitHub release is published. apt and dnf caches reuse downloaded packages across runs, keyed on the build-deps hash. Both jobs upload workflow artifacts (90-day retention) and attach the binaries to the triggering release. Manual runs via `workflow_dispatch` accept a `ref` input plus an `attach_to_release` flag for backfilling existing releases.
+
 ## To Do
 
 ### Next Up
