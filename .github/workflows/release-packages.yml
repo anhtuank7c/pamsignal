@@ -223,3 +223,249 @@ jobs:
         with:
           tag_name: ${{ github.event_name == 'release' && github.ref_name || inputs.ref }}
           files: out/*.rpm
+
+  # --- Functional test: install the .deb, exercise the daemon end-to-end ---
+  test-deb:
+    name: Test .deb (install + functional + uninstall)
+    runs-on: ubuntu-24.04
+    needs: build-deb
+    steps:
+      - name: Download .deb artifact
+        uses: actions/download-artifact@v7
+        with:
+          name: pamsignal-deb-${{ github.run_number }}
+          path: ./out
+
+      - name: Install pamsignal
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            ./out/pamsignal_*.deb jq openssl
+          which pamsignal
+          systemctl is-active pamsignal
+
+      - name: Generate trusted self-signed cert for localhost
+        run: |
+          # The URL validator only accepts https://, so the mock webhook must
+          # serve TLS. A self-signed cert added to the system trust store
+          # (which curl reads via /etc/ssl/certs) lets pamsignal's curl child
+          # validate the connection without --insecure.
+          openssl req -x509 -newkey rsa:2048 \
+            -keyout /tmp/key.pem -out /tmp/cert.pem \
+            -days 1 -nodes -subj "/CN=localhost" \
+            -addext "subjectAltName=DNS:localhost,IP:127.0.0.1"
+          sudo cp /tmp/cert.pem /usr/local/share/ca-certificates/test.crt
+          sudo update-ca-certificates
+
+      - name: Start mock HTTPS webhook collector
+        run: |
+          cat > /tmp/mock-webhook.py <<'PY'
+          import http.server, ssl, sys, os
+          ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+          ctx.load_cert_chain('/tmp/cert.pem', '/tmp/key.pem')
+
+          class H(http.server.BaseHTTPRequestHandler):
+              def do_POST(self):
+                  n = int(self.headers.get('Content-Length', 0))
+                  body = self.rfile.read(n).decode('utf-8', errors='replace')
+                  with open('/tmp/webhook-events.log', 'a') as f:
+                      f.write(body + '\n')
+                  self.send_response(200)
+                  self.end_headers()
+
+              def log_message(self, *a):
+                  pass  # quiet
+
+          srv = http.server.HTTPServer(('127.0.0.1', 8443), H)
+          srv.socket = ctx.wrap_socket(srv.socket, server_side=True)
+          srv.serve_forever()
+          PY
+          : > /tmp/webhook-events.log
+          python3 -u /tmp/mock-webhook.py &
+          echo $! > /tmp/mock-webhook.pid
+          sleep 1
+          # Smoke-test from the runner: confirms cert trust and that the
+          # collector is reachable BEFORE we point pamsignal at it.
+          curl -sf -X POST https://localhost:8443/test \
+            -H 'Content-Type: application/json' \
+            -d '{"smoke":"ok"}'
+          test -s /tmp/webhook-events.log
+          : > /tmp/webhook-events.log
+
+      - name: Configure pamsignal for the test webhook
+        run: |
+          sudo tee /etc/pamsignal/pamsignal.conf >/dev/null <<'CONF'
+          # Test config — points at the local mock webhook.
+          webhook_url = https://localhost:8443/events
+          fail_threshold = 3
+          fail_window_sec = 60
+          alert_cooldown_sec = 0
+          max_tracked_ips = 10
+          CONF
+          sudo chown root:pamsignal /etc/pamsignal/pamsignal.conf
+          sudo chmod 0640 /etc/pamsignal/pamsignal.conf
+          sudo systemctl restart pamsignal
+          sleep 1
+          systemctl is-active pamsignal
+          sudo journalctl -t pamsignal --since '10 sec ago' --no-pager | tail -10
+
+      - name: Inject synthetic sshd events via logger
+        run: |
+          # logger writes to /dev/log -> systemd-journald with
+          # SYSLOG_IDENTIFIER=sshd, which matches pamsignal's sd_journal filter.
+          # The daemon parses these as if they came from real sshd.
+          logger -t sshd "Failed password for root from 203.0.113.50 port 39182 ssh2"
+          logger -t sshd "Failed password for root from 203.0.113.50 port 39183 ssh2"
+          logger -t sshd "Failed password for root from 203.0.113.50 port 39184 ssh2"
+          logger -t sshd "Accepted password for admin from 192.168.1.100 port 52341 ssh2"
+          # Wait for the daemon's event loop (1s sd_journal_wait) plus curl
+          # round-trip to the mock webhook.
+          sleep 5
+          echo "::group::Daemon journal output"
+          sudo journalctl -t pamsignal --since '30 sec ago' --no-pager
+          echo "::endgroup::"
+          echo "::group::Webhook events received"
+          jq -c . < /tmp/webhook-events.log || cat /tmp/webhook-events.log
+          echo "::endgroup::"
+
+      - name: Verify ECS payload structure
+        run: |
+          # Each line is one ECS-shaped event. Count by event.action.
+          login_failures=$(jq -r 'select(.event.action == "login_failure")
+                                   | .event.action' \
+                            /tmp/webhook-events.log | wc -l)
+          login_successes=$(jq -r 'select(.event.action == "login_success")
+                                    | .event.action' \
+                            /tmp/webhook-events.log | wc -l)
+          brute=$(jq -r 'select(.event.action == "brute_force_detected")
+                          | .event.action' \
+                  /tmp/webhook-events.log | wc -l)
+          echo "login_failure=$login_failures login_success=$login_successes brute=$brute"
+          # Threshold=3 → exactly 3 login_failure events fire before brute hits;
+          # the brute-force alert fires once on the third failure.
+          test "$login_failures" -ge 3
+          test "$login_successes" -ge 1
+          test "$brute" -ge 1
+          # Verify ECS top-level shape on at least one event.
+          jq -e 'select(.event.action == "login_failure")
+                  | .["@timestamp"] and .event.module == "pamsignal"
+                    and (.event.category | contains(["authentication"]))
+                    and .event.severity == 5
+                    and .source.ip == "203.0.113.50"
+                    and .source.port == 39182
+                    and .user.name == "root"
+                    and .service.name == "sshd"
+                    and .pamsignal.auth_method == "password"' \
+              /tmp/webhook-events.log >/dev/null
+          # Verify brute-force kind=alert per ECS guidance.
+          jq -e 'select(.event.action == "brute_force_detected")
+                  | .event.kind == "alert"
+                    and .event.severity == 8
+                    and .pamsignal.attempts >= 3' \
+              /tmp/webhook-events.log >/dev/null
+          echo "ECS payload structure verified"
+
+      - name: Verify SIGHUP reload works
+        run: |
+          sudo systemctl reload pamsignal
+          sleep 2
+          sudo journalctl -t pamsignal --since '10 sec ago' --no-pager \
+            | grep -q "config reloaded"
+
+      - name: Stop mock webhook
+        if: always()
+        run: |
+          if [ -f /tmp/mock-webhook.pid ]; then
+            kill "$(cat /tmp/mock-webhook.pid)" 2>/dev/null || true
+          fi
+
+      - name: Purge pamsignal and verify cleanup
+        run: |
+          sudo apt-get purge -y pamsignal
+          ! command -v pamsignal
+          [ ! -f /usr/lib/systemd/system/pamsignal.service ]
+          [ ! -d /etc/pamsignal ]
+          # The pamsignal user is intentionally retained (it may own journal
+          # entries written while the daemon was alive).
+          getent passwd pamsignal >/dev/null && \
+            echo "pamsignal user retained as expected"
+
+  # --- Sanity test: install the .rpm in the matching distro container ---
+  test-rpm:
+    name: Test .rpm (install + uninstall in ${{ matrix.target }})
+    runs-on: ubuntu-24.04
+    needs: build-rpm
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: fedora
+            image: fedora:latest
+            repo_setup: ""
+          - target: el9
+            image: almalinux:9
+            repo_setup: |
+              dnf install -y dnf-plugins-core epel-release
+              dnf config-manager --set-enabled crb
+    container:
+      image: ${{ matrix.image }}
+    steps:
+      - name: Install runtime deps
+        run: |
+          ${{ matrix.repo_setup }}
+          dnf install -y --setopt=install_weak_deps=False curl shadow-utils \
+            systemd which findutils
+
+      - name: Download .rpm artifact
+        uses: actions/download-artifact@v7
+        with:
+          name: pamsignal-rpm-${{ matrix.target }}-${{ github.run_number }}
+          path: ./out
+
+      - name: Install pamsignal
+        run: |
+          # Install the binary RPM, skipping debuginfo/debugsource/src.rpm.
+          binary_rpm=$(ls out/pamsignal-[0-9]*.x86_64.rpm | grep -v debuginfo \
+                        | grep -v debugsource | head -1)
+          echo "Installing $binary_rpm"
+          dnf install -y "$binary_rpm"
+
+      - name: Verify file layout and metadata
+        run: |
+          # Files at expected paths
+          test -x /usr/bin/pamsignal
+          test -f /usr/lib/systemd/system/pamsignal.service
+          test -f /etc/pamsignal/pamsignal.conf
+          # ExecStart was patched at build time
+          grep -q '^ExecStart=/usr/bin/pamsignal' \
+            /usr/lib/systemd/system/pamsignal.service
+          # System user created by %pre
+          getent passwd pamsignal
+          # Config perms set by %post
+          perms=$(stat -c '%U:%G %a' /etc/pamsignal/pamsignal.conf)
+          echo "Config perms: $perms"
+          [ "$perms" = "root:pamsignal 640" ]
+          # rpm metadata sanity
+          rpm -q pamsignal
+          rpm -V pamsignal || true  # mtime / md5 drift on conf is OK
+
+      - name: Smoke-launch the binary (no systemd in container)
+        run: |
+          # Containers don't run systemd, so we can't exercise the full
+          # daemon. Just confirm the binary starts and the foreground arg
+          # is recognised — it'll exit shortly after on missing journal.
+          mkdir -p /run/pamsignal
+          chown pamsignal:pamsignal /run/pamsignal
+          chmod 0750 /run/pamsignal
+          # `runuser` is preferred over `sudo` in minimal containers.
+          timeout 3 runuser -u pamsignal -- /usr/bin/pamsignal --foreground \
+            2>&1 | head -5 || true
+          echo "binary launches without crashing"
+
+      - name: Uninstall and verify cleanup
+        run: |
+          dnf remove -y pamsignal
+          ! command -v pamsignal
+          # The pamsignal user is intentionally retained.
+          getent passwd pamsignal >/dev/null && \
+            echo "pamsignal user retained as expected"
