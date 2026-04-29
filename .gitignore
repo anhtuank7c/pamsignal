@@ -1,9 +1,13 @@
 archive/
 bin/
 build/
+build-*/
 .vscode/
 *.o
 *.log
 *.tmp
 pamsignal
 .cache/
+crash-*
+leak-*
+timeout-*

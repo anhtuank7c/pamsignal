@@ -139,3 +139,39 @@ if cmocka_dep.found()
     protocol: 'exitcode',
   )
 endif
+
+# --- Fuzzing ---
+#
+# Opt-in libFuzzer harness for ps_parse_message. Requires clang because
+# -fsanitize=fuzzer is a clang-only feature. Configure with:
+#   CC=clang-21 meson setup -Dfuzz=enabled build-fuzz
+#   meson compile -C build-fuzz fuzz_parse_message
+#   ./build-fuzz/fuzz_parse_message tests/fuzz/parse_message_corpus -max_total_time=60
+#
+# The harness binary is intentionally NOT registered with `test()` — fuzzing
+# runs for as long as you let it; CI should call it with -max_total_time.
+
+fuzz_opt = get_option('fuzz')
+if fuzz_opt.allowed()
+  if cc.get_id() == 'clang'
+    fuzz_args = [
+      '-fsanitize=fuzzer,address,undefined',
+      '-fno-sanitize-recover=undefined',
+      '-O1',
+      '-g',
+    ]
+    executable('fuzz_parse_message',
+      'tests/fuzz_parse_message.c',
+      'src/utils.c',
+      include_directories: inc,
+      c_args: fuzz_args,
+      link_args: fuzz_args,
+      build_by_default: false,
+    )
+  elif fuzz_opt.enabled()
+    error(
+      '-Dfuzz=enabled requires clang (got @0@). Reconfigure with CC=clang.'
+      .format(cc.get_id())
+    )
+  endif
+endif

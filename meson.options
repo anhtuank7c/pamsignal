@@ -1,0 +1,5 @@
+option('fuzz',
+  type: 'feature',
+  value: 'disabled',
+  description: 'Build the libFuzzer harness for ps_parse_message. Requires clang; build with CC=clang meson setup -Dfuzz=enabled <builddir>.',
+)
