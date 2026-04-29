@@ -111,18 +111,41 @@ jobs:
             out/*.deb
             out/*.ddeb
 
-  # --- Fedora (rpmbuild) ---
+  # --- RPM builds (Fedora + EL9) ---
+  #
+  # Matrix produces:
+  #   - pamsignal-X.Y.Z-1.fcNN.* — Fedora N
+  #   - pamsignal-X.Y.Z-1.el9.* — installs on AlmaLinux 9, Rocky Linux 9, RHEL 9
+  #     (RHEL clones are bit-for-bit binary compatible at the .el9 dist tag, so
+  #     a single el9 build covers all three).
   build-rpm:
-    name: Build .rpm (Fedora)
+    name: Build .rpm (${{ matrix.target.name }})
     runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - name: fedora
+            image: fedora:latest
+            # Fedora ships meson + systemd-rpm-macros in the base repos.
+            repo_setup: ""
+          - name: el9
+            image: almalinux:9
+            # RHEL 9 family doesn't ship meson in base. EPEL provides it; CRB
+            # (CodeReady Builder) provides systemd-rpm-macros and other -devel
+            # bits the build needs.
+            repo_setup: |
+              dnf install -y dnf-plugins-core epel-release
+              dnf config-manager --set-enabled crb
     container:
-      image: fedora:latest
+      image: ${{ matrix.target.image }}
     steps:
-      # actions/checkout uses git, and the bare fedora:latest container ships
-      # without it. Install before we check out, plus the build toolchain so
-      # the cache step has something concrete to populate later.
+      # actions/checkout uses git, and the bare distro containers ship without
+      # it. Install before we check out, plus the build toolchain so the
+      # cache step has something concrete to populate later.
       - name: Install build tooling
         run: |
+          ${{ matrix.target.repo_setup }}
           dnf install -y --setopt=install_weak_deps=False \
             git tar gzip rpm-build rpmdevtools \
             meson ninja-build gcc pkgconf-pkg-config \
@@ -135,17 +158,18 @@ jobs:
           fetch-depth: 0
 
       # Container filesystem is ephemeral, so dnf metadata + downloaded RPMs
-      # survive across runs only via this cache. Keyed on the spec so a
-      # BuildRequires change invalidates correctly.
+      # survive across runs only via this cache. Keyed per matrix entry +
+      # spec so a BuildRequires change or different distro invalidates
+      # correctly.
       - name: Cache DNF state
         uses: actions/cache@v5
         with:
           path: |
             /var/cache/dnf
             /var/lib/dnf
-          key: dnf-fedora-${{ hashFiles('pamsignal.spec') }}
+          key: dnf-${{ matrix.target.name }}-${{ hashFiles('pamsignal.spec') }}
           restore-keys: |
-            dnf-fedora-
+            dnf-${{ matrix.target.name }}-
 
       - name: Mark workspace safe for git (container runs as root)
         run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
@@ -160,7 +184,7 @@ jobs:
         run: |
           rpmdev-setuptree
           VERSION=$(rpmspec -q --queryformat='%{version}\n' pamsignal.spec | head -n1)
-          echo "Building pamsignal ${VERSION}"
+          echo "Building pamsignal ${VERSION} for ${{ matrix.target.name }}"
           # Source tarball must match Source0 (%{name}-%{version}.tar.gz) and
           # the prefix must match %autosetup -n. git archive HEAD captures the
           # current ref's tree exactly.
@@ -189,7 +213,7 @@ jobs:
       - name: Upload workflow artifact (90-day retention)
         uses: actions/upload-artifact@v7
         with:
-          name: pamsignal-rpm-${{ github.run_number }}
+          name: pamsignal-rpm-${{ matrix.target.name }}-${{ github.run_number }}
           path: out/*.rpm
           if-no-files-found: error
 

@@ -181,7 +181,11 @@ Highlights:
 
 ## Unreleased
 
-(no changes yet)
+### CI
+- [x] `build-rpm` workflow job converted to a matrix: builds for **Fedora** (`fedora:latest` container, produces `*.fc<N>.rpm`) AND **EL9** (`almalinux:9` container with EPEL + CRB enabled, produces `*.el9.rpm`). The EL9 RPM installs cleanly on AlmaLinux 9, Rocky Linux 9, and RHEL 9 — all three are bit-compatible at the `.el9` dist tag, so a single build covers them.
+
+### Notes
+- Alpine Linux is **not supported** and won't be added without significant restructuring: pamsignal's only input source is `sd-journal` (libsystemd), and Alpine ships OpenRC instead of systemd. There's no `journald` to read from. A future major version could add a `/var/log/auth.log` tail-mode for non-systemd hosts; until then Alpine deployments would need to run pamsignal in a sidecar container with systemd, monitoring the host's auth events via a shared journal.
 
 ## To Do
 
