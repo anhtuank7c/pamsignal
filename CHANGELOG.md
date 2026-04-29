@@ -103,6 +103,7 @@
 - [x] CLAUDE.md — project conventions, pre-commit workflow, commit message standard
 - [x] `.clang-format` — LLVM-based, 4-space indent, 80-column, right-aligned pointers
 - [x] `.clang-tidy` — clang-analyzer, bugprone, cert, security checks with project naming rules
+- [x] `test_e2e.sh` — pre-flight checks the `pamsignal` user exists, creates `/run/pamsignal/` (replicates systemd's `RuntimeDirectory=` for non-systemd runs), and points failures at `journalctl -t pamsignal` for diagnosis
 
 ### Documentation
 - [x] Architecture — C4 model (context, container, component), alert isolation diagram
