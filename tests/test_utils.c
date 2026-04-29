@@ -245,6 +245,27 @@ static void test_parse_long_username_truncated(void **state) {
     int ret = ps_parse_message(msg, &event);
     assert_int_equal(ret, PS_OK);
     assert_int_equal(strlen(event.username), 63);
+    // Truncation marker: the last byte is replaced with '+' so two distinct
+    // long usernames cannot silently alias to the same prefix in alerts.
+    assert_int_equal(event.username[62], '+');
+}
+
+static void test_parse_username_at_boundary_no_marker(void **state) {
+    (void)state;
+    ps_pam_event_t event;
+    // Username exactly fills the buffer to len-1 with the natural delimiter
+    // following — should NOT receive the truncation marker.
+    char msg[512];
+    char user63[64];
+    memset(user63, 'b', 63);
+    user63[63] = '\0';
+    snprintf(msg, sizeof(msg),
+             "Accepted password for %s from 10.0.0.1 port 22 ssh2", user63);
+
+    int ret = ps_parse_message(msg, &event);
+    assert_int_equal(ret, PS_OK);
+    assert_int_equal(strlen(event.username), 63);
+    assert_int_equal(event.username[62], 'b');
 }
 
 static void test_parse_control_chars_sanitized(void **state) {
@@ -297,13 +318,16 @@ static void test_format_timestamp(void **state) {
     char buf[32];
     // 2024-01-01 00:00:00 UTC = 1704067200 seconds
     ps_format_timestamp(1704067200ULL * 1000000, buf, sizeof(buf));
-    // Just verify it produces a non-empty, correctly formatted string
-    assert_int_equal(strlen(buf), 19); // "YYYY-MM-DD HH:MM:SS"
+    // ISO 8601 with timezone offset: "YYYY-MM-DDTHH:MM:SS+HHMM" = 24 chars,
+    // or "...HHMMSS-HHMM" depending on TZ sign.
+    assert_int_equal(strlen(buf), 24);
     assert_int_equal(buf[4], '-');
     assert_int_equal(buf[7], '-');
-    assert_int_equal(buf[10], ' ');
+    assert_int_equal(buf[10], 'T');
     assert_int_equal(buf[13], ':');
     assert_int_equal(buf[16], ':');
+    // Position 19 is '+' or '-' (the timezone sign).
+    assert_true(buf[19] == '+' || buf[19] == '-');
 }
 
 // --- ps_event_type_str ---
@@ -373,6 +397,7 @@ int main(void) {
         cmocka_unit_test(test_parse_empty_message),
         cmocka_unit_test(test_parse_invalid_ip_cleared),
         cmocka_unit_test(test_parse_long_username_truncated),
+        cmocka_unit_test(test_parse_username_at_boundary_no_marker),
         cmocka_unit_test(test_parse_control_chars_sanitized),
         cmocka_unit_test(test_parse_event_zeroed),
         cmocka_unit_test(test_parse_invalid_port_ignored),

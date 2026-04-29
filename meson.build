@@ -14,6 +14,7 @@ add_project_arguments(
   '-Werror=format-security',
   '-fstack-protector-strong',
   '-D_FORTIFY_SOURCE=2',
+  '-D_GNU_SOURCE',
   language: 'c'
 )
 

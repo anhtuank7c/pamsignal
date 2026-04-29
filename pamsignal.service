@@ -13,6 +13,11 @@ Restart=on-failure
 RestartSec=5
 ExecReload=/bin/kill -HUP $MAINPID
 
+# Minimal PATH for the alert dispatch path. The daemon execs curl by absolute
+# path (/usr/bin/curl) but clearenv()s the child anyway; this Environment=
+# closes the gap if the binary is launched directly (not via this unit).
+Environment=PATH=/usr/bin:/bin
+
 # Runtime directory for PID file (/run/pamsignal/)
 RuntimeDirectory=pamsignal
 ConfigurationDirectory=pamsignal

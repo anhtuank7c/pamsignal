@@ -1,6 +1,14 @@
+// clearenv(), memfd_create(), and close_range() are GNU extensions exposed by
+// _GNU_SOURCE, which is defined globally via meson.build.
+
+#include <errno.h>
+#include <fcntl.h>
 #include <signal.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
+#include <sys/mman.h>
+#include <sys/syscall.h>
 #include <syslog.h>
 #include <systemd/sd-journal.h>
 #include <time.h>
@@ -10,11 +18,18 @@
 #include "utils.h"
 
 // --- JSON escaping ---
+//
+// RFC 8259 §7 requires escaping for `"`, `\`, and the control range 0x00–0x1F.
+// Upstream sanitize_string() already replaces control bytes with `?`, but we
+// escape them defensively here too: a sanitization regression must not be
+// able to inject raw control characters into an alert payload.
 
 static size_t json_escape(const char *src, char *dst, size_t dst_len) {
+    static const char hex[] = "0123456789abcdef";
     size_t j = 0;
     for (size_t i = 0; src[i] && j + 6 < dst_len; i++) {
-        switch (src[i]) {
+        unsigned char c = (unsigned char)src[i];
+        switch (c) {
         case '"':
             dst[j++] = '\\';
             dst[j++] = '"';
@@ -23,8 +38,37 @@ static size_t json_escape(const char *src, char *dst, size_t dst_len) {
             dst[j++] = '\\';
             dst[j++] = '\\';
             break;
+        case '\b':
+            dst[j++] = '\\';
+            dst[j++] = 'b';
+            break;
+        case '\f':
+            dst[j++] = '\\';
+            dst[j++] = 'f';
+            break;
+        case '\n':
+            dst[j++] = '\\';
+            dst[j++] = 'n';
+            break;
+        case '\r':
+            dst[j++] = '\\';
+            dst[j++] = 'r';
+            break;
+        case '\t':
+            dst[j++] = '\\';
+            dst[j++] = 't';
+            break;
         default:
-            dst[j++] = src[i];
+            if (c < 0x20) {
+                dst[j++] = '\\';
+                dst[j++] = 'u';
+                dst[j++] = '0';
+                dst[j++] = '0';
+                dst[j++] = hex[(c >> 4) & 0xF];
+                dst[j++] = hex[c & 0xF];
+            } else {
+                dst[j++] = (char)c;
+            }
             break;
         }
     }
@@ -32,28 +76,149 @@ static size_t json_escape(const char *src, char *dst, size_t dst_len) {
     return j;
 }
 
-// --- Fork+exec core ---
+// --- Truncation-safe snprintf ---
+//
+// snprintf returns the would-be length, so n >= size means the result was
+// truncated. Truncated alerts are dropped — sending a partial JSON body or a
+// half-formed URL is worse than silently doing nothing, and validated config
+// values mean truncation only happens on logic bugs.
 
-static void fire_curl(char *const argv[]) {
+#define PS_FMT_OK(buf, fmt, ...)                                   \
+    ({                                                             \
+        int _n = snprintf((buf), sizeof(buf), (fmt), __VA_ARGS__); \
+        (_n >= 0 && (size_t)_n < sizeof(buf));                     \
+    })
+
+// --- Curl invocation ---
+//
+// Secrets (webhook URLs, bearer tokens, Telegram bot tokens) MUST NOT appear
+// in the curl child's argv: argv is exposed via /proc/<pid>/cmdline to every
+// local user. We write a curl config file to a memfd and pass it to curl as
+// "-K /dev/fd/<N>". The memfd has CLOEXEC cleared via dup2 so it survives
+// execv; everything else is closed in the child before exec.
+
+static int build_secrets_memfd(const char *url, const char *auth_header) {
+    int fd = memfd_create("pamsignal-curl", MFD_CLOEXEC);
+    if (fd < 0) {
+        sd_journal_print(LOG_WARNING,
+                         "pamsignal: memfd_create failed: %m, dropping alert");
+        return -1;
+    }
+
+    char buf[2048];
+    int n;
+    if (auth_header) {
+        n = snprintf(buf, sizeof(buf), "url = \"%s\"\nheader = \"%s\"\n", url,
+                     auth_header);
+    } else {
+        n = snprintf(buf, sizeof(buf), "url = \"%s\"\n", url);
+    }
+    if (n < 0 || (size_t)n >= sizeof(buf)) {
+        close(fd);
+        return -1;
+    }
+
+    ssize_t total = 0;
+    while (total < n) {
+        ssize_t w = write(fd, buf + total, (size_t)(n - total));
+        if (w < 0) {
+            close(fd);
+            return -1;
+        }
+        total += w;
+    }
+    if (lseek(fd, 0, SEEK_SET) < 0) {
+        close(fd);
+        return -1;
+    }
+    return fd;
+}
+
+static void fire_curl(int memfd, char *body) {
     pid_t pid = fork();
     if (pid < 0) {
         sd_journal_print(LOG_WARNING, "pamsignal: fork failed for alert");
+        if (memfd >= 0)
+            close(memfd);
         return;
     }
     if (pid == 0) {
-        // Child: close inherited fds (journal fd, pidfile fd, etc.)
-        for (int fd = 3; fd < 1024; fd++)
-            close(fd);
+        // Child: pin memfd at fd 9 (dup2 clears CLOEXEC on the destination)
+        // so curl inherits it across execv.
+        const int target_fd = 9;
+        if (memfd >= 0 && memfd != target_fd) {
+            if (dup2(memfd, target_fd) < 0)
+                _exit(127);
+        }
 
-        // Reset signal handlers
+        // Close every other inherited fd (journal stream, pidfile, etc.).
+        // close_range avoids the RLIMIT_NOFILE>1024 leak hazard of a manual
+        // loop. We split into two ranges so we keep target_fd. Fall back to a
+        // bounded loop if the kernel doesn't have close_range (Linux <5.9).
+#ifdef SYS_close_range
+        if (syscall(SYS_close_range, 3, (unsigned)target_fd - 1, 0) != 0 &&
+            errno == ENOSYS) {
+            for (int fd = 3; fd < target_fd; fd++)
+                close(fd);
+        }
+        if (syscall(SYS_close_range, (unsigned)target_fd + 1, ~0U, 0) != 0 &&
+            errno == ENOSYS) {
+            for (int fd = target_fd + 1; fd < 1024; fd++)
+                close(fd);
+        }
+#else
+        for (int fd = 3; fd < 1024; fd++) {
+            if (fd == target_fd)
+                continue;
+            close(fd);
+        }
+#endif
+
+        // Reset signal handlers inherited from the parent.
         signal(SIGTERM, SIG_DFL);
         signal(SIGHUP, SIG_DFL);
         signal(SIGINT, SIG_DFL);
 
-        execvp("curl", argv);
-        _exit(127); // exec failed
+        // Sanitize the environment so a tampered PATH or LD_PRELOAD cannot
+        // redirect the curl invocation.
+        clearenv();
+        setenv("PATH", "/usr/bin:/bin", 1);
+
+        char fdpath[32];
+        snprintf(fdpath, sizeof(fdpath), "/dev/fd/%d", target_fd);
+
+        char *argv[] = {"curl",
+                        "-s",
+                        "-S",
+                        "--max-time",
+                        "10",
+                        "--proto",
+                        "=https",
+                        "--proto-redir",
+                        "=https",
+                        "-H",
+                        "Content-Type: application/json",
+                        "-K",
+                        fdpath,
+                        "-d",
+                        body,
+                        NULL};
+
+        // Absolute path: avoid PATH search even though we just sanitized PATH.
+        execv("/usr/bin/curl", argv);
+        _exit(127);
     }
-    // Parent: returns immediately, child is fire-and-forget
+    // Parent: fire-and-forget; SIGCHLD is set to SIG_IGN | SA_NOCLDWAIT so
+    // the kernel reaps the child.
+    if (memfd >= 0)
+        close(memfd);
+}
+
+static void post_alert(const char *url, const char *auth_header, char *body) {
+    int memfd = build_secrets_memfd(url, auth_header);
+    if (memfd < 0)
+        return;
+    fire_curl(memfd, body);
 }
 
 // --- Message formatting ---
@@ -130,40 +295,6 @@ static void format_brute_json(const char *ip, int attempts, int window,
              (unsigned long long)ts);
 }
 
-// --- HTTP POST helpers ---
-
-static void post_json(char *url, char *body) {
-    char *argv[] = {"curl",
-                    "-s",
-                    "-S",
-                    "--max-time",
-                    "10",
-                    "-H",
-                    "Content-Type: application/json",
-                    "-d",
-                    body,
-                    url,
-                    NULL};
-    fire_curl(argv);
-}
-
-static void post_json_auth(char *url, char *auth_header, char *body) {
-    char *argv[] = {"curl",
-                    "-s",
-                    "-S",
-                    "--max-time",
-                    "10",
-                    "-H",
-                    "Content-Type: application/json",
-                    "-H",
-                    auth_header,
-                    "-d",
-                    body,
-                    url,
-                    NULL};
-    fire_curl(argv);
-}
-
 // --- Per-channel senders ---
 
 static void send_telegram(const ps_config_t *cfg, const char *text) {
@@ -171,18 +302,25 @@ static void send_telegram(const ps_config_t *cfg, const char *text) {
         return;
 
     char url[768];
-    snprintf(url, sizeof(url), "https://api.telegram.org/bot%s/sendMessage",
-             cfg->telegram_bot_token);
+    if (!PS_FMT_OK(url, "https://api.telegram.org/bot%s/sendMessage",
+                   cfg->telegram_bot_token)) {
+        sd_journal_print(LOG_WARNING,
+                         "pamsignal: telegram URL truncated, dropping alert");
+        return;
+    }
 
     char esc_text[2048];
     json_escape(text, esc_text, sizeof(esc_text));
 
     char body[2560];
-    snprintf(body, sizeof(body),
-             "{\"chat_id\":\"%s\",\"text\":\"%s\",\"parse_mode\":\"HTML\"}",
-             cfg->telegram_chat_id, esc_text);
+    if (!PS_FMT_OK(body, "{\"chat_id\":\"%s\",\"text\":\"%s\"}",
+                   cfg->telegram_chat_id, esc_text)) {
+        sd_journal_print(LOG_WARNING,
+                         "pamsignal: telegram body truncated, dropping alert");
+        return;
+    }
 
-    post_json(url, body);
+    post_alert(url, NULL, body);
 }
 
 static void send_simple_webhook(const char *url, const char *text_key,
@@ -191,9 +329,13 @@ static void send_simple_webhook(const char *url, const char *text_key,
     json_escape(text, esc_text, sizeof(esc_text));
 
     char body[2560];
-    snprintf(body, sizeof(body), "{\"%s\":\"%s\"}", text_key, esc_text);
+    if (!PS_FMT_OK(body, "{\"%s\":\"%s\"}", text_key, esc_text)) {
+        sd_journal_print(LOG_WARNING,
+                         "pamsignal: webhook body truncated, dropping alert");
+        return;
+    }
 
-    post_json((char *)url, body);
+    post_alert(url, NULL, body);
 }
 
 static void send_whatsapp(const ps_config_t *cfg, const char *text) {
@@ -202,43 +344,59 @@ static void send_whatsapp(const ps_config_t *cfg, const char *text) {
         return;
 
     char url[256];
-    snprintf(url, sizeof(url), "https://graph.facebook.com/v21.0/%s/messages",
-             cfg->whatsapp_phone_number_id);
+    if (!PS_FMT_OK(url, "https://graph.facebook.com/v21.0/%s/messages",
+                   cfg->whatsapp_phone_number_id)) {
+        sd_journal_print(LOG_WARNING,
+                         "pamsignal: whatsapp URL truncated, dropping alert");
+        return;
+    }
 
     char auth[576];
-    snprintf(auth, sizeof(auth), "Authorization: Bearer %s",
-             cfg->whatsapp_access_token);
+    if (!PS_FMT_OK(auth, "Authorization: Bearer %s",
+                   cfg->whatsapp_access_token)) {
+        sd_journal_print(LOG_WARNING, "pamsignal: whatsapp auth header "
+                                      "truncated, dropping alert");
+        return;
+    }
 
     char esc_text[2048];
     json_escape(text, esc_text, sizeof(esc_text));
 
     char body[2560];
-    snprintf(body, sizeof(body),
-             "{\"messaging_product\":\"whatsapp\",\"to\":\"%s\","
-             "\"type\":\"text\",\"text\":{\"body\":\"%s\"}}",
-             cfg->whatsapp_recipient, esc_text);
+    if (!PS_FMT_OK(body,
+                   "{\"messaging_product\":\"whatsapp\",\"to\":\"%s\","
+                   "\"type\":\"text\",\"text\":{\"body\":\"%s\"}}",
+                   cfg->whatsapp_recipient, esc_text)) {
+        sd_journal_print(LOG_WARNING,
+                         "pamsignal: whatsapp body truncated, dropping alert");
+        return;
+    }
 
-    post_json_auth(url, auth, body);
+    post_alert(url, auth, body);
 }
 
 // --- Cooldown ---
+//
+// Cooldown is split per event class: a flood of login events cannot suppress
+// a brute-force alert (or vice versa). Per-source-IP cooldown for brute-force
+// is handled by the caller in journal_watch.c using fail_entry state.
 
-static time_t last_alert_time = 0;
+static time_t last_event_alert = 0;
 
-static int is_cooled_down(const ps_config_t *cfg) {
+static int event_cooled_down(const ps_config_t *cfg) {
     if (cfg->alert_cooldown_sec <= 0)
         return 1;
     time_t now = time(NULL);
-    if (now - last_alert_time < cfg->alert_cooldown_sec)
+    if (now - last_event_alert < cfg->alert_cooldown_sec)
         return 0;
-    last_alert_time = now;
+    last_event_alert = now;
     return 1;
 }
 
 // --- Public API ---
 
 void ps_notify_event(const ps_config_t *cfg, const ps_pam_event_t *event) {
-    if (!is_cooled_down(cfg))
+    if (!event_cooled_down(cfg))
         return;
 
     char text[1024];
@@ -253,19 +411,20 @@ void ps_notify_event(const ps_config_t *cfg, const ps_pam_event_t *event) {
     if (cfg->discord_webhook_url[0])
         send_simple_webhook(cfg->discord_webhook_url, "content", text);
 
-    char json[2048];
-    format_event_json(event, json, sizeof(json));
-    if (cfg->webhook_url[0])
-        post_json((char *)cfg->webhook_url, json);
+    if (cfg->webhook_url[0]) {
+        char json[2048];
+        format_event_json(event, json, sizeof(json));
+        post_alert(cfg->webhook_url, NULL, json);
+    }
 }
 
 void ps_notify_brute_force(const ps_config_t *cfg, const char *source_ip,
                            int attempts, int window_sec,
                            const char *last_username, const char *hostname,
                            uint64_t timestamp_usec) {
-    if (!is_cooled_down(cfg))
-        return;
-
+    // Caller (journal_watch.c) applies the per-source-IP cooldown using
+    // fail_entry state, so we don't gate brute-force alerts here. Suppressing
+    // them globally would let a chatty login flood mute brute-force signals.
     char text[1024];
     format_brute_text(source_ip, attempts, window_sec, last_username, hostname,
                       timestamp_usec, text, sizeof(text));
@@ -279,9 +438,10 @@ void ps_notify_brute_force(const ps_config_t *cfg, const char *source_ip,
     if (cfg->discord_webhook_url[0])
         send_simple_webhook(cfg->discord_webhook_url, "content", text);
 
-    char json[2048];
-    format_brute_json(source_ip, attempts, window_sec, last_username, hostname,
-                      timestamp_usec, json, sizeof(json));
-    if (cfg->webhook_url[0])
-        post_json((char *)cfg->webhook_url, json);
+    if (cfg->webhook_url[0]) {
+        char json[2048];
+        format_brute_json(source_ip, attempts, window_sec, last_username,
+                          hostname, timestamp_usec, json, sizeof(json));
+        post_alert(cfg->webhook_url, NULL, json);
+    }
 }

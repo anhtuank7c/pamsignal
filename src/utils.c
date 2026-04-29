@@ -55,6 +55,11 @@ static ps_service_t parse_service_from_pam(const char *msg) {
 
 // Extract username from "for user USERNAME" or "for USERNAME from"
 // Handles newer PAM format: "for user root(uid=0)" -> "root"
+//
+// On truncation (input longer than the output buffer), the last byte is
+// overwritten with '+' so alerts and journal entries visibly mark the
+// truncation rather than letting two distinct long usernames silently alias
+// to the same prefix.
 static void extract_username(const char *start, char *username, size_t len) {
     if (len == 0)
         return;
@@ -64,15 +69,29 @@ static void extract_username(const char *start, char *username, size_t len) {
         username[i++] = *start++;
     }
     username[i] = '\0';
+
+    if (i == len - 1 && *start && *start != ' ' && *start != '\n' &&
+        *start != '(') {
+        username[i - 1] = '+';
+    }
 }
 
 // Parse "USER from IP port PORT [ssh2]" into event fields.
-// Uses strtol for port to satisfy cert-err34-c (sscanf doesn't report
-// conversion errors for integers).
+//
+// The username is extracted via extract_username so a too-long input gets
+// the '+' truncation marker — sscanf("%63s") would silently truncate without
+// any signal to the alert reader. Port uses strtol to satisfy cert-err34-c.
 static int parse_login_fields(const char *p, ps_pam_event_t *event) {
+    extract_username(p, event->username, sizeof(event->username));
+    if (event->username[0] == '\0')
+        return -1;
+
+    const char *from = strstr(p, " from ");
+    if (!from)
+        return -1;
+
     char port_str[16] = {0};
-    if (sscanf(p, "%63s from %45s port %15s", event->username, event->source_ip,
-               port_str) < 2)
+    if (sscanf(from + 6, "%45s port %15s", event->source_ip, port_str) < 1)
         return -1;
 
     sanitize_string(event->username);
@@ -168,7 +187,9 @@ void ps_format_timestamp(uint64_t usec, char *buf, size_t buflen) {
     time_t sec = (time_t)(usec / 1000000);
     struct tm tm;
     localtime_r(&sec, &tm);
-    strftime(buf, buflen, "%Y-%m-%d %H:%M:%S", &tm);
+    // ISO 8601 with timezone offset — alerts include the offset so a
+    // forensic reader doesn't have to guess which TZ produced them.
+    strftime(buf, buflen, "%Y-%m-%dT%H:%M:%S%z", &tm);
 }
 
 const char *ps_event_type_str(ps_event_type_t type) {

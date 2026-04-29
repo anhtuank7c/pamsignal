@@ -1,8 +1,11 @@
+#include <errno.h>
 #include <grp.h>
 #include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/prctl.h>
+#include <sys/resource.h>
 #include <syslog.h>
 #include <systemd/sd-journal.h>
 #include <unistd.h>
@@ -94,12 +97,23 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    // Resolve config path to absolute before daemonize calls chdir("/")
+    // Resolve config path to absolute before daemonize calls chdir("/").
+    // Failure modes:
+    //   ENOENT — file doesn't exist; ps_config_load will fall back to
+    //            defaults. Keep the original (likely default) path.
+    //   anything else (EACCES, ELOOP, ENAMETOOLONG, ...) — refuse to start.
+    //   Continuing with an unresolvable user-supplied path could surface a
+    //   symlink swap or permission misconfiguration.
     static char resolved_path[PATH_MAX];
-    if (realpath(config_path, resolved_path))
+    if (realpath(config_path, resolved_path)) {
         g_config_path = resolved_path;
-    else
-        g_config_path = config_path; // Use as-is (may be default /etc/... path)
+    } else if (errno == ENOENT) {
+        g_config_path = config_path;
+    } else {
+        fprintf(stderr, "pamsignal: cannot resolve config path %s: %s\n",
+                config_path, strerror(errno));
+        return 1;
+    }
 
     int ret = ps_config_load(g_config_path, &g_config);
     if (ret != PS_OK) {
@@ -130,6 +144,24 @@ int main(int argc, char *argv[]) {
                              "or cannot create PID file");
             return ret;
         }
+    }
+
+    // Refuse setuid escalation in any descendant (curl alert children).
+    // A no-op under the systemd unit (NoNewPrivileges=yes already sets it),
+    // but covers manual / non-systemd launches.
+    if (prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) < 0) {
+        sd_journal_print(LOG_WARNING,
+                         "pamsignal: PR_SET_NO_NEW_PRIVS failed: %m");
+    }
+
+    // Cap concurrent processes for this UID. A flood of journal events that
+    // trigger alerts cannot fork-bomb the system: extra fork() calls return
+    // EAGAIN and the alert is dropped. 64 leaves headroom for the daemon
+    // plus a burst of fire-and-forget curl children.
+    struct rlimit rl_nproc = {.rlim_cur = 64, .rlim_max = 64};
+    if (setrlimit(RLIMIT_NPROC, &rl_nproc) < 0) {
+        sd_journal_print(LOG_WARNING,
+                         "pamsignal: setrlimit(RLIMIT_NPROC) failed: %m");
     }
 
     ret = ps_signal_init();

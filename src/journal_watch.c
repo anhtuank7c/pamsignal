@@ -1,3 +1,6 @@
+#include <errno.h>
+#include <limits.h>
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -18,6 +21,7 @@ typedef struct {
     int count;
     uint64_t first_attempt_usec;
     uint64_t last_attempt_usec;
+    uint64_t last_brute_alert_usec;
 } ps_fail_entry_t;
 
 static ps_fail_entry_t *fail_table = NULL;
@@ -25,17 +29,29 @@ static int fail_table_count = 0;
 static int fail_table_capacity = 0;
 
 int ps_fail_table_init(int capacity) {
-    free(fail_table);
-    fail_table = calloc((size_t)capacity, sizeof(ps_fail_entry_t));
-    if (!fail_table)
+    if (capacity <= 0)
         return PS_ERR_INIT;
+
+    // Allocate-then-swap: if calloc fails we must not leave a freed pointer
+    // behind, otherwise a SIGHUP-triggered reset would silently lose
+    // brute-force tracking after one OOM.
+    ps_fail_entry_t *t = calloc((size_t)capacity, sizeof(ps_fail_entry_t));
+    if (!t)
+        return PS_ERR_INIT;
+
+    free(fail_table);
+    fail_table = t;
     fail_table_count = 0;
     fail_table_capacity = capacity;
     return PS_OK;
 }
 
 void ps_fail_table_reset(void) {
-    ps_fail_table_init(g_config.max_tracked_ips);
+    if (ps_fail_table_init(g_config.max_tracked_ips) != PS_OK) {
+        sd_journal_print(LOG_WARNING,
+                         "pamsignal: fail_table reset failed; "
+                         "brute-force tracking continues with prior state");
+    }
 }
 
 static void ps_track_failed_login(const ps_pam_event_t *event) {
@@ -58,6 +74,17 @@ static void ps_track_failed_login(const ps_pam_event_t *event) {
             fail_table[i].last_attempt_usec = event->timestamp_usec;
 
             if (fail_table[i].count >= g_config.fail_threshold) {
+                // Per-IP cooldown: don't spam alerts for the same source.
+                // The journal log entry is written every time so post-mortem
+                // forensics still see every threshold breach; only the
+                // outbound notification is rate-limited.
+                uint64_t cooldown_usec =
+                    (uint64_t)g_config.alert_cooldown_sec * 1000000ULL;
+                int notify_allowed = (g_config.alert_cooldown_sec <= 0) ||
+                                     (event->timestamp_usec -
+                                          fail_table[i].last_brute_alert_usec >=
+                                      cooldown_usec);
+
                 char attempts_str[16];
                 char window_str[16];
                 snprintf(attempts_str, sizeof(attempts_str), "%d",
@@ -77,10 +104,13 @@ static void ps_track_failed_login(const ps_pam_event_t *event) {
                     "PAMSIGNAL_USERNAME=%s", event->username,
                     "PAMSIGNAL_HOSTNAME=%s", event->hostname, NULL);
 
-                ps_notify_brute_force(&g_config, fail_table[i].ip,
-                                      fail_table[i].count,
-                                      g_config.fail_window_sec, event->username,
-                                      event->hostname, event->timestamp_usec);
+                if (notify_allowed) {
+                    ps_notify_brute_force(
+                        &g_config, fail_table[i].ip, fail_table[i].count,
+                        g_config.fail_window_sec, event->username,
+                        event->hostname, event->timestamp_usec);
+                    fail_table[i].last_brute_alert_usec = event->timestamp_usec;
+                }
 
                 fail_table[i].count = 0;
                 fail_table[i].first_attempt_usec = event->timestamp_usec;
@@ -200,8 +230,10 @@ static void ps_process_entry(sd_journal *j) {
             memcpy(fieldbuf, val, vlen);
             fieldbuf[vlen] = '\0';
             char *end;
+            errno = 0;
             long pid_val = strtol(fieldbuf, &end, 10);
-            if (end != fieldbuf)
+            if (end != fieldbuf && errno != ERANGE && pid_val >= 0 &&
+                pid_val <= INT_MAX)
                 event.pid = (pid_t)pid_val;
         }
     }
@@ -215,8 +247,10 @@ static void ps_process_entry(sd_journal *j) {
             memcpy(fieldbuf, val, vlen);
             fieldbuf[vlen] = '\0';
             char *end;
+            errno = 0;
             long uid_val = strtol(fieldbuf, &end, 10);
-            if (end != fieldbuf)
+            if (end != fieldbuf && errno != ERANGE && uid_val >= 0 &&
+                uid_val <= INT_MAX)
                 event.uid = (uid_t)uid_val;
         }
     }
@@ -297,6 +331,17 @@ int ps_journal_watch_run(sd_journal *j) {
     while (running) {
         if (reload_requested) {
             reload_requested = 0;
+
+            // Block signals around the swap so a second SIGHUP cannot land
+            // mid-copy and leave g_config / fail_table out of sync. The
+            // pending signal is delivered when sigprocmask restores the mask.
+            sigset_t newmask, oldmask;
+            sigemptyset(&newmask);
+            sigaddset(&newmask, SIGHUP);
+            sigaddset(&newmask, SIGINT);
+            sigaddset(&newmask, SIGTERM);
+            sigprocmask(SIG_BLOCK, &newmask, &oldmask);
+
             ps_config_t tmp;
             if (ps_config_load(g_config_path, &tmp) == PS_OK) {
                 g_config = tmp;
@@ -307,6 +352,8 @@ int ps_journal_watch_run(sd_journal *j) {
                                  "pamsignal: config reload failed, "
                                  "keeping current config");
             }
+
+            sigprocmask(SIG_SETMASK, &oldmask, NULL);
         }
 
         int r = sd_journal_wait(j, 1000000); // 1 second timeout
