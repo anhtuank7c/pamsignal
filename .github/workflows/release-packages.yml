@@ -647,7 +647,12 @@ jobs:
             ghpages-work
           cd ghpages-work
           if git ls-remote --exit-code --heads origin gh-pages >/dev/null; then
-            git fetch origin gh-pages
+            # `git clone --depth 1` only sets up the origin/main remote-tracking
+            # ref, so a plain `git fetch origin gh-pages` updates FETCH_HEAD
+            # without creating origin/gh-pages — which makes a subsequent
+            # `git checkout gh-pages` fail with "pathspec did not match". Use a
+            # refspec that materializes a local branch directly.
+            git fetch origin gh-pages:gh-pages
             git checkout gh-pages
           else
             # First publish: create gh-pages as an orphan branch, purge
