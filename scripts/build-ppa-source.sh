@@ -127,12 +127,19 @@ ARTIFACTS=(
 )
 
 # 5) Move artifacts up to the project's parent so the user can find them.
+#    The orig tarball is symlinked in from its real location at ${DEST_DIR},
+#    so cp -L would fail with "same file" — skip it (it's already there).
 DEST_DIR="$(realpath "${REPO_ROOT}/..")"
 for f in "${ARTIFACTS[@]}"; do
-    if [ -f "$f" ]; then
-        cp -f "$f" "$DEST_DIR/"
-        echo "==> $DEST_DIR/$f"
+    src="${WORK_DIR}/${f}"
+    dst="${DEST_DIR}/${f}"
+    if [ ! -e "$src" ]; then continue; fi
+    if [ "$(realpath "$src")" = "$dst" ]; then
+        echo "==> $dst (already in place)"
+        continue
     fi
+    cp -f "$src" "$dst"
+    echo "==> $dst"
 done
 
 echo
