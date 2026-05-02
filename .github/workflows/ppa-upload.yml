@@ -51,7 +51,8 @@ jobs:
           sudo apt-get install -y --no-install-recommends \
             devscripts debhelper dput gnupg \
             meson ninja-build pkg-config \
-            libsystemd-dev libcmocka-dev
+            libsystemd-dev libcmocka-dev \
+            libdistro-info-perl
 
       - name: Import signing key
         env:
@@ -100,11 +101,16 @@ jobs:
           # This sets the distribution and PPA version string without
           # modifying the committed history — the debian/changelog edit
           # only lives in this job's workspace.
+          # --force-bad-version (-b) is required because 0.2.3-1~noble1
+          # intentionally sorts below 0.2.3-1 (~ is a pre-release marker
+          # in Debian versioning) so that a future official Ubuntu package
+          # takes priority, but dch refuses such versions without -b.
           DEBFULLNAME="Tuan Nguyen" \
           DEBEMAIL="anhtuank7c@hotmail.com" \
           dch --newversion "${{ steps.ver.outputs.ppa }}" \
               --distribution "${{ matrix.series }}" \
               --force-distribution \
+              --force-bad-version \
               "PPA release for Ubuntu ${{ matrix.series }}."
 
       - name: Build signed source package
@@ -115,8 +121,14 @@ jobs:
           # gpg-agent has the passphrase cached from the warm-up step.
           dpkg-buildpackage -S -sa --sign-key="$GPG_KEY_ID"
 
-      - name: List generated files
-        run: ls -la ../pamsignal_* 2>/dev/null || ls -la ../
+      - name: Collect source package files
+        run: |
+          mkdir -p out-ppa
+          cp -v ../pamsignal_*.dsc           out-ppa/ 2>/dev/null || true
+          cp -v ../pamsignal_*.orig.tar.gz   out-ppa/ 2>/dev/null || true
+          cp -v ../pamsignal_*.debian.tar.xz out-ppa/ 2>/dev/null || true
+          cp -v ../pamsignal_*_source.changes out-ppa/ 2>/dev/null || true
+          ls -la out-ppa/
 
       - name: Upload to Launchpad PPA
         if: github.event_name == 'release' || inputs.dry_run != 'true'
@@ -132,9 +144,5 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: pamsignal-ppa-${{ matrix.series }}-${{ github.run_number }}
-          path: |
-            ../pamsignal_*.dsc
-            ../pamsignal_*.orig.tar.gz
-            ../pamsignal_*.debian.tar.xz
-            ../pamsignal_*_source.changes
+          path: out-ppa/
           if-no-files-found: warn
