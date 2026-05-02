@@ -1,0 +1,140 @@
+name: Upload to Launchpad PPA
+
+# Triggered automatically when a release is published.
+# Use workflow_dispatch to test the pipeline or do a dry run.
+#
+# Manual examples:
+#   gh workflow run ppa-upload.yml -f ref=v0.2.3
+#   gh workflow run ppa-upload.yml -f ref=v0.2.3 -f dry_run=true
+#
+# To add Ubuntu 22.04 (jammy) support, uncomment the jammy entry in the
+# matrix below and re-run the workflow.
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Tag or branch to build"
+        required: false
+        default: ""
+      dry_run:
+        description: "Build and sign but skip the dput upload (true/false)"
+        required: false
+        default: "false"
+
+permissions:
+  contents: read
+
+jobs:
+  ppa-upload:
+    name: PPA upload (${{ matrix.series }})
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        series:
+          - noble     # Ubuntu 24.04 LTS
+          # - jammy   # Ubuntu 22.04 LTS — uncomment to enable
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.ref || github.ref }}
+          fetch-depth: 0
+
+      - name: Install packaging tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            devscripts debhelper dput gnupg \
+            meson ninja-build pkg-config \
+            libsystemd-dev libcmocka-dev
+
+      - name: Import signing key
+        env:
+          GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+          GPG_KEY_ID: ${{ secrets.GPG_KEY_ID }}
+        run: |
+          mkdir -p ~/.gnupg && chmod 700 ~/.gnupg
+          echo "allow-loopback-pinentry" >> ~/.gnupg/gpg-agent.conf
+          gpgconf --kill gpg-agent || true
+          printf '%s' "$GPG_PRIVATE_KEY" | gpg --batch --import
+          # Warm the agent cache so dpkg-buildpackage/debsign signs without
+          # an interactive pinentry prompt.
+          echo warmup | gpg --batch --pinentry-mode loopback \
+              --passphrase "$GPG_PASSPHRASE" \
+              --local-user "$GPG_KEY_ID" \
+              --sign --output /dev/null
+
+      - name: Derive version strings
+        id: ver
+        run: |
+          # BASE   = e.g. 0.2.3-1
+          # UPSTREAM = e.g. 0.2.3    (used for orig tarball filename)
+          # PPA    = e.g. 0.2.3-1~noble1
+          BASE=$(dpkg-parsechangelog -S Version)
+          PURE=${BASE%%~*}          # strip any prior ~series suffix
+          UPSTREAM=${PURE%%-*}      # strip Debian revision
+          PPA_VERSION="${PURE}~${{ matrix.series }}1"
+          echo "base=${BASE}"         >> "$GITHUB_OUTPUT"
+          echo "upstream=${UPSTREAM}" >> "$GITHUB_OUTPUT"
+          echo "ppa=${PPA_VERSION}"   >> "$GITHUB_OUTPUT"
+
+      - name: Create upstream orig tarball
+        run: |
+          UPSTREAM=${{ steps.ver.outputs.upstream }}
+          REF="${{ github.event.inputs.ref || github.ref }}"
+          # Launchpad needs pamsignal_X.Y.Z.orig.tar.gz in the parent dir.
+          git archive --format=tar.gz \
+            --prefix="pamsignal-${UPSTREAM}/" \
+            -o "../pamsignal_${UPSTREAM}.orig.tar.gz" \
+            "${REF}"
+
+      - name: Stamp series-specific changelog entry
+        run: |
+          # Prepend a throwaway changelog entry for this Ubuntu series.
+          # This sets the distribution and PPA version string without
+          # modifying the committed history — the debian/changelog edit
+          # only lives in this job's workspace.
+          DEBFULLNAME="Tuan Nguyen" \
+          DEBEMAIL="anhtuank7c@hotmail.com" \
+          dch --newversion "${{ steps.ver.outputs.ppa }}" \
+              --distribution "${{ matrix.series }}" \
+              --force-distribution \
+              "PPA release for Ubuntu ${{ matrix.series }}."
+
+      - name: Build signed source package
+        env:
+          GPG_KEY_ID: ${{ secrets.GPG_KEY_ID }}
+        run: |
+          # -S = source only, -sa = always include orig.tar.gz
+          # gpg-agent has the passphrase cached from the warm-up step.
+          dpkg-buildpackage -S -sa --sign-key="$GPG_KEY_ID"
+
+      - name: List generated files
+        run: ls -la ../pamsignal_* 2>/dev/null || ls -la ../
+
+      - name: Upload to Launchpad PPA
+        if: github.event_name == 'release' || inputs.dry_run != 'true'
+        run: |
+          # dput reads ppa:user/name and uploads via SFTP to Launchpad.
+          # Launchpad emails acceptance/rejection within ~2 minutes and
+          # builds the binary .deb in ~10-20 minutes.
+          dput "ppa:anhtuank7c/pamsignal" \
+            "../pamsignal_${{ steps.ver.outputs.ppa }}_source.changes"
+
+      - name: Upload source package as workflow artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pamsignal-ppa-${{ matrix.series }}-${{ github.run_number }}
+          path: |
+            ../pamsignal_*.dsc
+            ../pamsignal_*.orig.tar.gz
+            ../pamsignal_*.debian.tar.xz
+            ../pamsignal_*_source.changes
+          if-no-files-found: warn
