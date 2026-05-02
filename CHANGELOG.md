@@ -202,11 +202,7 @@ Packaging-only release. Binary is identical to v0.2.0; this release adds signed 
 
 ## Unreleased
 
-### Distribution
-- [x] Packaging prep for **Debian official archive** submission via mentors.debian.net. `debian/source/format` switched from `3.0 (native)` → `3.0 (quilt)` so a single upstream `pamsignal_X.Y.Z.orig.tar.xz` can be reused across rebuilds; `.gitattributes` marks `debian/`, `.github/`, `.claude/`, and dev tooling as `export-ignore` so `git archive` produces a clean upstream tarball without the packaging directory inside it.
-- [x] `debian/watch` (uscan format 4) — Debian's automated upstream-version tracker can now detect new GitHub releases.
-- [x] `scripts/build-debian-source.sh` orchestrates the source-only build: regenerates the orig tarball if absent, stages an isolated worktree, runs `dpkg-buildpackage -S -sa`. `--no-sign` flag for local verification builds.
-- [x] `docs/debian.md` runbook: mentors.debian.net upload flow, RFS (Request For Sponsorship) bug, sponsor coordination, NEW queue review, and the rough timeline expectations.
+(no changes yet)
 
 ### CI
 - [x] `build-rpm` workflow job converted to a matrix: builds for **Fedora** (`fedora:latest` container, produces `*.fc<N>.rpm`) AND **EL9** (`almalinux:9` container with EPEL + CRB enabled, produces `*.el9.rpm`). The EL9 RPM installs cleanly on AlmaLinux 9, Rocky Linux 9, and RHEL 9 — all three are bit-compatible at the `.el9` dist tag, so a single build covers them.
@@ -220,8 +216,7 @@ Packaging-only release. Binary is identical to v0.2.0; this release adds signed 
 
 ### Next Up
 - [ ] Curl availability check at startup (log warning if `curl` not found)
-- [ ] Submit first sponsored upload to Debian unstable (packaging is ready — see `docs/debian.md`; remaining gaps before mentors upload: write a `pamsignal.8` manpage, find a sponsor)
-- [ ] Fedora COPR equivalent for the rpm side
+- [ ] Sign and publish .deb / .rpm to a hosted repository (Launchpad PPA, COPR)
 
 ### Ideas (no promises)
 - [ ] GeoIP/ASN lookup for source IPs
