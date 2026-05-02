@@ -42,6 +42,10 @@ sudo apt update
 sudo apt install pamsignal
 ```
 
+#### Ubuntu PPA (alternative)
+
+A Launchpad PPA is in preparation — once published, Ubuntu users will be able to use the standard `add-apt-repository` flow instead of the manual key/source steps above. See [`docs/ppa.md`](./docs/ppa.md) for the maintainer-side runbook and end-user install snippet.
+
 ### Fedora
 
 ```bash
