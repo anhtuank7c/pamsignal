@@ -1,5 +1,5 @@
 Name:           pamsignal
-Version:        0.2.1
+Version:        0.2.2
 Release:        1%{?dist}
 Summary:        Real-time PAM login monitor with multi-channel alerts
 
@@ -105,6 +105,14 @@ fi
 %config(noreplace) %attr(0640,root,pamsignal) %{_sysconfdir}/pamsignal/pamsignal.conf
 
 %changelog
+* Sat May 02 2026 Tuan Nguyen <anhtuank7c@hotmail.com> - 0.2.2-1
+- Republish signed apt + dnf repository on the canonical GitHub Pages URL
+  (https://anhtuank7c.github.io/pamsignal/) after the custom domain was
+  removed from the gh-pages site. No source or packaging logic changes —
+  binary is identical to v0.2.1; this release simply triggers the
+  publish-repo workflow against the github.io origin so users following
+  the install instructions in README.md get a working repo.
+
 * Thu Apr 30 2026 Tuan Nguyen <anhtuank7c@hotmail.com> - 0.2.1-1
 - Packaging release: signed apt and dnf repositories published to GitHub
   Pages. Adds Provides: user(pamsignal) / group(pamsignal) so the auto-

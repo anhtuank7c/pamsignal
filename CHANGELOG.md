@@ -179,6 +179,14 @@ Highlights:
 - [x] Development guide — build, test environment, e2e testing
 - [x] Deployment guide — systemd service, production setup, security hardening table
 
+## 0.2.2 — 2026-05-02
+
+Republish-only release. No source code or packaging logic changes; the `.deb` and `.rpm` binaries are bit-for-bit equivalent to v0.2.1 modulo their version stamp.
+
+### Distribution
+- [x] Custom domain removed from the `gh-pages` site. The package repository is now served exclusively at the canonical GitHub Pages URL: `https://anhtuank7c.github.io/pamsignal/`. The README, the `release-packages.yml` `BASE` derivation (`https://${OWNER}.github.io/${REPO}`), and the generated `index.html` / `pamsignal.repo` files were already pointed at the github.io origin, so no in-tree change was required — this release exists to retrigger `publish-repo`, which regenerates `dists/stable/InRelease`, `repomd.xml.asc`, and the per-variant `pamsignal.repo` files on the github.io origin and overwrites any cached references to the prior custom domain.
+- [x] Signing key fingerprint unchanged: `2D2C 828F A6F4 D019 E446 8FBB B106 2235 2862 2F69`. Existing users do not need to re-import the key — only the repository URL changes (and only for users who had configured the custom domain manually; users following the README's `apt`/`dnf` instructions were already on the github.io URL).
+
 ## 0.2.1 — 2026-04-30
 
 Packaging-only release. Binary is identical to v0.2.0; this release adds signed apt + dnf repositories on GitHub Pages and the small spec fix that lets dnf 5 (Fedora 44) install the `.rpm` cleanly.

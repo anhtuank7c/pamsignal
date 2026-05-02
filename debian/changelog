@@ -1,3 +1,14 @@
+pamsignal (0.2.2-1) unstable; urgency=medium
+
+  * Republish signed apt repository on the canonical GitHub Pages URL
+    (https://anhtuank7c.github.io/pamsignal/) after the custom domain was
+    removed from the gh-pages site. No source or packaging logic changes —
+    the .deb binary is identical to v0.2.1; this release simply triggers
+    the publish-repo workflow against the github.io origin so users
+    following the install instructions in README.md get a working repo.
+
+ -- Tuan Nguyen <anhtuank7c@hotmail.com>  Sat, 02 May 2026 10:00:00 +0000
+
 pamsignal (0.2.1-1) unstable; urgency=medium
 
   * Packaging release: signed apt and dnf repositories published to
