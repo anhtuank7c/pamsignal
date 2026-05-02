@@ -31,6 +31,7 @@ jobs:
   ppa-upload:
     name: PPA upload (${{ matrix.series }})
     runs-on: ubuntu-24.04
+    environment: release
     strategy:
       fail-fast: false
       matrix:
