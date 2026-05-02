@@ -695,13 +695,16 @@ jobs:
           apt-ftparchive -c /tmp/aptftp.conf release dists/stable/ \
             > dists/stable/Release
           # Sign Release. Two outputs: detached Release.gpg (legacy apt) and
-          # clearsigned InRelease (modern apt, single-file fetch).
-          gpg --batch --pinentry-mode loopback \
+          # clearsigned InRelease (modern apt, single-file fetch). --yes is
+          # required because the fetched gh-pages branch carries the prior
+          # release's Release.gpg / InRelease at the same paths; without
+          # --yes, gpg aborts with "signing failed: File exists".
+          gpg --batch --yes --pinentry-mode loopback \
               --passphrase-file /tmp/.gpg-pass \
               --default-key "${{ secrets.GPG_KEY_ID }}" \
               --detach-sign --armor \
               -o dists/stable/Release.gpg dists/stable/Release
-          gpg --batch --pinentry-mode loopback \
+          gpg --batch --yes --pinentry-mode loopback \
               --passphrase-file /tmp/.gpg-pass \
               --default-key "${{ secrets.GPG_KEY_ID }}" \
               --clearsign \
@@ -717,8 +720,10 @@ jobs:
             # Build/update repodata/. Use --update so a re-publish only
             # diffs the metadata instead of rebuilding from scratch.
             createrepo_c --update rpm/$variant/
-            # Sign repomd.xml. dnf with repo_gpgcheck=1 verifies this.
-            gpg --batch --pinentry-mode loopback \
+            # Sign repomd.xml. dnf with repo_gpgcheck=1 verifies this. --yes
+            # overwrites the prior release's repomd.xml.asc at the same path
+            # (gpg refuses by default).
+            gpg --batch --yes --pinentry-mode loopback \
                 --passphrase-file /tmp/.gpg-pass \
                 --default-key "${{ secrets.GPG_KEY_ID }}" \
                 --detach-sign --armor \
