@@ -1,3 +1,20 @@
+pamsignal (0.2.3-1) unstable; urgency=medium
+
+  * Security: enforce a _EXE allowlist on every journal entry so
+    unprivileged users can no longer inject fake PAM events via
+    logger(1) to trigger false alerts or brute-force lockouts. Only
+    entries whose _EXE resolves to sshd / sudo / su / login /
+    systemd-logind under a system prefix are processed; entries with a
+    missing _EXE are dropped.
+  * Fix brute-force tracker: zero last_brute_alert_usec on the
+    evict-and-reuse path so a new IP doesn't inherit the evicted IP's
+    alert cooldown.
+  * Fix SIGHUP reload: preserve the in-memory brute-force tracking
+    table across reloads instead of zeroing it. Existing per-IP attempt
+    counts and cooldowns survive a config reload.
+
+ -- Tuan Nguyen <anhtuank7c@hotmail.com>  Sat, 02 May 2026 12:00:00 +0000
+
 pamsignal (0.2.2-1) unstable; urgency=medium
 
   * Republish signed apt repository on the canonical GitHub Pages URL

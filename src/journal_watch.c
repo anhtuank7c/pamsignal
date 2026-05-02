@@ -283,23 +283,23 @@ static void ps_process_entry(sd_journal *j) {
                 vlen = sizeof(fieldbuf) - 1;
             memcpy(fieldbuf, val, vlen);
             fieldbuf[vlen] = '\0';
-            
+
             int is_trusted = 0;
-            // Require the executable to be in a system path to prevent execution
-            // from /tmp or /home by an unprivileged user spoofing the daemon name.
+            // Require the executable to be in a system path to prevent
+            // execution from /tmp or /home by an unprivileged user spoofing the
+            // daemon name.
             if (strncmp(fieldbuf, "/usr/", 5) == 0 ||
                 strncmp(fieldbuf, "/bin/", 5) == 0 ||
                 strncmp(fieldbuf, "/sbin/", 6) == 0 ||
                 strncmp(fieldbuf, "/lib/", 5) == 0 ||
                 strncmp(fieldbuf, "/lib64/", 7) == 0 ||
                 strncmp(fieldbuf, "/opt/", 5) == 0) {
-                
+
                 const char *base = strrchr(fieldbuf, '/');
                 if (base) {
                     base++;
                     if (strcmp(base, "sshd") == 0 ||
-                        strcmp(base, "sudo") == 0 ||
-                        strcmp(base, "su") == 0 ||
+                        strcmp(base, "sudo") == 0 || strcmp(base, "su") == 0 ||
                         strcmp(base, "login") == 0 ||
                         strcmp(base, "systemd-logind") == 0) {
                         is_trusted = 1;

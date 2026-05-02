@@ -1,5 +1,5 @@
 Name:           pamsignal
-Version:        0.2.2
+Version:        0.2.3
 Release:        1%{?dist}
 Summary:        Real-time PAM login monitor with multi-channel alerts
 
@@ -105,6 +105,20 @@ fi
 %config(noreplace) %attr(0640,root,pamsignal) %{_sysconfdir}/pamsignal/pamsignal.conf
 
 %changelog
+* Sat May 02 2026 Tuan Nguyen <anhtuank7c@hotmail.com> - 0.2.3-1
+- Security: enforce a `_EXE` allowlist on every journal entry so
+  unprivileged users can no longer inject fake PAM events via logger(1)
+  to trigger false alerts or brute-force lockouts. Only entries whose
+  `_EXE` resolves to sshd / sudo / su / login / systemd-logind under a
+  system prefix (/usr/, /bin/, /sbin/, /lib/, /lib64/, /opt/) are
+  processed; entries with a missing `_EXE` are dropped.
+- Fix: brute-force tracker now zeroes `last_brute_alert_usec` on the
+  evict-and-reuse path so a new IP doesn't inherit the evicted IP's
+  alert cooldown.
+- Fix: `SIGHUP` reload preserves the in-memory brute-force tracking
+  table instead of zeroing it. Existing per-IP attempt counts and
+  cooldowns survive a config reload.
+
 * Sat May 02 2026 Tuan Nguyen <anhtuank7c@hotmail.com> - 0.2.2-1
 - Republish signed apt + dnf repository on the canonical GitHub Pages URL
   (https://anhtuank7c.github.io/pamsignal/) after the custom domain was
