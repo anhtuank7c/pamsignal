@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.2.3 — 2026-05-02
+
+Security and bugfix release.
+
+### Security
+- [x] **Log Spoofing Prevention**: Added strict `_EXE` journal field verification. Unprivileged users can no longer inject fake PAM events via `logger` to trigger false alerts or brute-force lockouts. Only trusted system binaries (`sshd`, `sudo`, `su`, `login`, `systemd-logind`) are processed.
+
+### Fixes
+- [x] **Brute-force cooldown bug**: Fixed an issue where evicting an old IP from a full tracking table failed to zero the `last_brute_alert_usec` timestamp, causing the new IP to incorrectly inherit the evicted IP's alert cooldown.
+- [x] **State loss on reload**: Sending `SIGHUP` to reload the configuration no longer destroys the active brute-force tracking table. Existing IP tracking state is now preserved seamlessly across reloads.
+
 ## 0.2.0 — 2026-04-30
 
 **Breaking change**: alert payload format moves to [Elastic Common Schema (ECS)] for both chat text and webhook JSON. Anyone parsing the previous pipe-delimited text or the flat `{"event":..., "username":...}` JSON needs to update their consumers — see `docs/alerts.md` for the new schema and a Vector example for non-ECS SIEMs.

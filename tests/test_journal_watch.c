@@ -79,7 +79,7 @@ static void test_init_positive_capacity(void **state) {
     assert_int_equal(fail_table_count, 0);
 }
 
-static void test_init_replaces_previous_table(void **state) {
+static void test_init_preserves_previous_table(void **state) {
     (void)state;
     assert_int_equal(ps_fail_table_init(4), PS_OK);
     setup_config(3, 60, 4, 0);
@@ -87,10 +87,11 @@ static void test_init_replaces_previous_table(void **state) {
     ps_track_failed_login(&e);
     assert_int_equal(fail_table_count, 1);
 
-    // Reinit with a different capacity must reset the table.
+    // Reinit with a different capacity must preserve the table.
     assert_int_equal(ps_fail_table_init(16), PS_OK);
     assert_int_equal(fail_table_capacity, 16);
-    assert_int_equal(fail_table_count, 0);
+    assert_int_equal(fail_table_count, 1);
+    assert_string_equal(fail_table[0].ip, "192.0.2.1");
 }
 
 // --- ps_track_failed_login: counting ---
@@ -305,7 +306,7 @@ int main(void) {
         cmocka_unit_test_teardown(test_init_negative_capacity_rejected,
                                   teardown),
         cmocka_unit_test_teardown(test_init_positive_capacity, teardown),
-        cmocka_unit_test_teardown(test_init_replaces_previous_table, teardown),
+        cmocka_unit_test_teardown(test_init_preserves_previous_table, teardown),
         cmocka_unit_test_teardown(test_track_first_attempt_creates_entry,
                                   teardown),
         cmocka_unit_test_teardown(test_track_increments_for_same_ip, teardown),

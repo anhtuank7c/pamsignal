@@ -32,16 +32,22 @@ int ps_fail_table_init(int capacity) {
     if (capacity <= 0)
         return PS_ERR_INIT;
 
-    // Allocate-then-swap: if calloc fails we must not leave a freed pointer
-    // behind, otherwise a SIGHUP-triggered reset would silently lose
-    // brute-force tracking after one OOM.
     ps_fail_entry_t *t = calloc((size_t)capacity, sizeof(ps_fail_entry_t));
     if (!t)
         return PS_ERR_INIT;
 
+    if (fail_table) {
+        int copy_count = fail_table_count;
+        if (copy_count > capacity)
+            copy_count = capacity;
+        memcpy(t, fail_table, (size_t)copy_count * sizeof(ps_fail_entry_t));
+        fail_table_count = copy_count;
+    } else {
+        fail_table_count = 0;
+    }
+
     free(fail_table);
     fail_table = t;
-    fail_table_count = 0;
     fail_table_capacity = capacity;
     return PS_OK;
 }
@@ -144,6 +150,7 @@ static void ps_track_failed_login(const ps_pam_event_t *event) {
         e->count = 1;
         e->first_attempt_usec = event->timestamp_usec;
         e->last_attempt_usec = event->timestamp_usec;
+        e->last_brute_alert_usec = 0;
         return;
     }
 
@@ -159,6 +166,7 @@ static void ps_track_failed_login(const ps_pam_event_t *event) {
     e->count = 1;
     e->first_attempt_usec = event->timestamp_usec;
     e->last_attempt_usec = event->timestamp_usec;
+    e->last_brute_alert_usec = 0;
 }
 
 // --- Event processing ---
@@ -263,6 +271,49 @@ static void ps_process_entry(sd_journal *j) {
 
     // Extract additional metadata into null-terminated buffers
     char fieldbuf[256];
+
+    // Prevent log spoofing by verifying the executable path.
+    // Unprivileged users can inject logs via logger(1), but systemd-journald
+    // records the actual executable path in _EXE. We only trust known paths.
+    if (sd_journal_get_data(j, "_EXE", &data, &length) == 0) {
+        const char *val = ps_field_value(data, length);
+        if (val) {
+            size_t vlen = length - (size_t)(val - (const char *)data);
+            if (vlen >= sizeof(fieldbuf))
+                vlen = sizeof(fieldbuf) - 1;
+            memcpy(fieldbuf, val, vlen);
+            fieldbuf[vlen] = '\0';
+            
+            int is_trusted = 0;
+            // Require the executable to be in a system path to prevent execution
+            // from /tmp or /home by an unprivileged user spoofing the daemon name.
+            if (strncmp(fieldbuf, "/usr/", 5) == 0 ||
+                strncmp(fieldbuf, "/bin/", 5) == 0 ||
+                strncmp(fieldbuf, "/sbin/", 6) == 0 ||
+                strncmp(fieldbuf, "/lib/", 5) == 0 ||
+                strncmp(fieldbuf, "/lib64/", 7) == 0 ||
+                strncmp(fieldbuf, "/opt/", 5) == 0) {
+                
+                const char *base = strrchr(fieldbuf, '/');
+                if (base) {
+                    base++;
+                    if (strcmp(base, "sshd") == 0 ||
+                        strcmp(base, "sudo") == 0 ||
+                        strcmp(base, "su") == 0 ||
+                        strcmp(base, "login") == 0 ||
+                        strcmp(base, "systemd-logind") == 0) {
+                        is_trusted = 1;
+                    }
+                }
+            }
+            if (!is_trusted) {
+                return;
+            }
+        }
+    } else {
+        // If _EXE is missing entirely, this is likely spoofed from /dev/log.
+        return;
+    }
 
     if (sd_journal_get_data(j, "_PID", &data, &length) == 0) {
         const char *val = ps_field_value(data, length);

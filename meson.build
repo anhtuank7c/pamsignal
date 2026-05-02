@@ -1,5 +1,5 @@
 project('pamsignal', 'c',
-  version: '0.2.2',
+  version: '0.2.3',
   default_options: [
     'c_std=gnu17',
     'warning_level=2',
