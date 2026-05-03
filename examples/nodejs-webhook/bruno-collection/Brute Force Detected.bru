@@ -1,0 +1,30 @@
+meta {
+  name: Brute Force Detected
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{WEBHOOK_URL}}
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{WEBHOOK_SECRET}}
+}
+
+body:json {
+  {
+    "event": {
+      "action": "brute_force_detected"
+    },
+    "source": {
+      "ip": "203.0.113.50"
+    },
+    "pamsignal": {
+      "attempts": 12,
+      "window_sec": 300
+    }
+  }
+}

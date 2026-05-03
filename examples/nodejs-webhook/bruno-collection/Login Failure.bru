@@ -1,0 +1,35 @@
+meta {
+  name: Login Failure
+  type: http
+  seq: 3
+}
+
+post {
+  url: {{WEBHOOK_URL}}
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{WEBHOOK_SECRET}}
+}
+
+body:json {
+  {
+    "event": {
+      "action": "login_failure"
+    },
+    "user": {
+      "name": "root"
+    },
+    "source": {
+      "ip": "192.168.1.55"
+    },
+    "host": {
+      "hostname": "server-01"
+    },
+    "pamsignal": {
+      "event_type": "LOGIN_FAILED"
+    }
+  }
+}

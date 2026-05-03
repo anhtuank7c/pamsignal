@@ -1,0 +1,38 @@
+meta {
+  name: Login Success
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{WEBHOOK_URL}}
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{WEBHOOK_SECRET}}
+}
+
+body:json {
+  {
+    "event": {
+      "action": "login_success"
+    },
+    "user": {
+      "name": "admin"
+    },
+    "source": {
+      "ip": "10.0.0.1"
+    },
+    "host": {
+      "hostname": "server-01"
+    },
+    "process": {
+      "pid": 1234
+    },
+    "pamsignal": {
+      "event_type": "LOGIN_SUCCESS"
+    }
+  }
+}
