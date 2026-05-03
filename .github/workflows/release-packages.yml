@@ -642,7 +642,14 @@ jobs:
           binary_rpm=$(ls out/pamsignal-[0-9]*.x86_64.rpm | grep -v debuginfo \
                         | grep -v debugsource | head -1)
           echo "Installing $binary_rpm"
-          dnf install -y "$binary_rpm"
+          # Override tsflags=nodocs which fedora:latest sets in
+          # /etc/dnf/dnf.conf to keep the container minimal — without this
+          # override, man pages (and any %doc/%license files) get stripped
+          # at install time, breaking the man-page presence check in the
+          # next step. Real Fedora desktops/servers don't ship with this
+          # default; the container does. EL9 / almalinux:9 doesn't set it,
+          # which is why this only bites on the fedora target.
+          dnf install -y --setopt=tsflags= "$binary_rpm"
 
       - name: Verify file layout and metadata
         run: |
