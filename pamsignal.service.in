@@ -4,7 +4,18 @@ Documentation=https://github.com/anhtuank7c/pamsignal
 After=systemd-journald.service
 
 [Service]
-Type=simple
+# Type=notify: the daemon explicitly signals readiness via sd_notify(READY=1)
+# AFTER ps_journal_watch_init() succeeds. systemd considers the unit "active"
+# only at that point — not the moment fork() returns — so Wants=/After= chains
+# resolve correctly and `systemctl status` doesn't lie about state during the
+# brief startup window.
+#
+# WatchdogSec=30s + sd_notify(WATCHDOG=1) on every main-loop iteration: if
+# sd_journal_wait wedges (kernel bug, journal corruption) the daemon is
+# auto-restarted instead of silently going dark on auth events.
+Type=notify
+NotifyAccess=main
+WatchdogSec=30s
 ExecStart=@bindir@/pamsignal --foreground
 User=pamsignal
 Group=pamsignal

@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+### Operations
+- [x] **`Type=notify` + `WatchdogSec=30s`** in `pamsignal.service`. The daemon now signals readiness via `sd_notify(READY=1)` after `ps_journal_watch_init()` succeeds (and not before), so systemd holds the unit in `activating` until pamsignal can actually process events — `Wants=`/`After=` chains resolve correctly and `systemctl status` doesn't briefly lie about state during the startup window. The main loop also pings `sd_notify(WATCHDOG=1)` every iteration; if `sd_journal_wait` ever wedges (kernel bug, journal corruption) systemd auto-restarts pamsignal at the 30 s threshold instead of letting the daemon silently stop processing auth events. `NotifyAccess=main` confines notification socket access to the parent process so the fork+exec curl children can't spoof readiness/watchdog messages. No-op when `NOTIFY_SOCKET` is unset (manual launch, tests).
+
 ### Documentation
 - [x] **`SECURITY.md`** at the repo root documents the responsible-disclosure channel (GitHub Security Advisories preferred, email fallback with the same PGP key fingerprint that signs the release packages), 90-day coordinated-disclosure timeline, supported version policy (latest minor only), and a scope table separating in-scope findings (parser bypasses, brute-force tracker bugs, alert-payload injection, hardening regressions) from out-of-scope dependencies (curl, libsystemd, alert delivery channels, root-already-on-host scenarios).
 

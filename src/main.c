@@ -7,6 +7,7 @@
 #include <sys/prctl.h>
 #include <sys/resource.h>
 #include <syslog.h>
+#include <systemd/sd-daemon.h>
 #include <systemd/sd-journal.h>
 #include <unistd.h>
 
@@ -187,6 +188,12 @@ int main(int argc, char *argv[]) {
 
     sd_journal_print(LOG_INFO,
                      "pamsignal: daemon started, monitoring PAM events");
+
+    // Tell systemd we're ready to process events. With Type=notify in the
+    // unit, systemd holds the unit in "activating" until this fires. On
+    // platforms without a notification socket (manual launch outside
+    // systemd, test runs) sd_notify is a no-op and returns 0.
+    sd_notify(0, "READY=1");
 
     ret = ps_journal_watch_run(j);
 

@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <syslog.h>
+#include <systemd/sd-daemon.h>
 #include <systemd/sd-journal.h>
 
 #include "config.h"
@@ -500,6 +501,16 @@ int ps_journal_watch_init(sd_journal **j) {
 
 int ps_journal_watch_run(sd_journal *j) {
     while (running) {
+        // Pet the systemd watchdog at the top of every iteration. The unit
+        // declares WatchdogSec=30s; we wake at most every 1s via the
+        // sd_journal_wait timeout below, so this is comfortably under the
+        // half-period cadence systemd expects. If sd_journal_wait ever
+        // wedges (kernel bug, journal corruption) the watchdog fires and
+        // systemd restarts us instead of letting the daemon silently stop
+        // processing auth events. No-op when NOTIFY_SOCKET is unset (manual
+        // launch outside systemd, test runs).
+        sd_notify(0, "WATCHDOG=1");
+
         if (reload_requested) {
             reload_requested = 0;
 
