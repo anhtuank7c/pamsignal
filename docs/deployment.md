@@ -2,49 +2,87 @@
 
 ## Install
 
+The recommended path is the published `.deb` or `.rpm` from the project repo (the same one-liners in the [README quick start](../README.md#1-install)). The packages create the `pamsignal` system user, set the config-file permissions to `root:pamsignal 0640`, and arm the systemd unit for you — when you install via `apt` or `dnf` you can skip straight to [Configure](#configure).
+
+If you build from source, you do those steps yourself; see the "Source build" subsection below.
+
+### Debian / Ubuntu (apt)
+
+```bash
+curl -fsSL https://anhtuank7c.github.io/pamsignal/key.asc \
+  | sudo gpg --dearmor -o /usr/share/keyrings/pamsignal.gpg
+echo "deb [signed-by=/usr/share/keyrings/pamsignal.gpg] https://anhtuank7c.github.io/pamsignal stable main" \
+  | sudo tee /etc/apt/sources.list.d/pamsignal.list
+sudo apt update && sudo apt install pamsignal
+```
+
+The package installs `/usr/sbin/pamsignal`, `/usr/lib/systemd/system/pamsignal.service`, `/etc/pamsignal/pamsignal.conf`, and `/usr/share/man/man8/pamsignal.8.gz`. The `pamsignal` user and `systemd-journal` group membership are created in `postinst`. Continue at [Configure](#configure).
+
+### Fedora / RHEL / AlmaLinux / Rocky (dnf)
+
+```bash
+# Fedora / CentOS
+sudo dnf config-manager addrepo \
+  --from-repofile=https://anhtuank7c.github.io/pamsignal/rpm/fedora/pamsignal.repo
+
+# RHEL 9 / AlmaLinux 9 / Rocky Linux 9
+sudo dnf config-manager --add-repo \
+  https://anhtuank7c.github.io/pamsignal/rpm/el9/pamsignal.repo
+
+sudo dnf install pamsignal
+```
+
+Same layout as the deb (`/usr/sbin`, `/usr/lib/systemd/system`, `/etc/pamsignal`, `/usr/share/man/man8/pamsignal.8.gz`). The `pamsignal` user and group are created by the spec's `%pre` block. Continue at [Configure](#configure).
+
+### Source build (`meson install`)
+
 ```bash
 # Build
 meson setup build
 meson compile -C build
 
-# Install binary, service file, and example config
+# Install binary, service file, example config, and man page
 sudo meson install -C build
 ```
 
-This installs (with the default `--prefix=/usr/local`):
+With the default `--prefix=/usr/local` you get:
+
 - `/usr/local/sbin/pamsignal` — the binary (FHS §4.10: system administration daemons live in `sbin`)
 - `/usr/local/lib/systemd/system/pamsignal.service` — the systemd unit (vendor unit search path)
 - `/usr/local/etc/pamsignal/pamsignal.conf` — the example config (from `pamsignal.conf.example`)
+- `/usr/local/share/man/man8/pamsignal.8` — the man page
 
 For a system-wide install that mirrors the packaged layout (`/usr/sbin`, `/usr/lib/systemd/system`, `/etc/pamsignal`), reconfigure with `meson setup build --prefix=/usr --sysconfdir=/etc`.
 
-## Create the service user
+A source build does **not** create the `pamsignal` system user or lock down the config-file permissions — do those steps yourself before starting the service:
 
 ```bash
 sudo useradd -r -s /usr/sbin/nologin pamsignal
 sudo usermod -aG systemd-journal pamsignal
+
+# Locks down the example config so its credentials are readable by the
+# daemon (group=pamsignal) but not world-readable. The deb/rpm postinst
+# scripts do this for you on packaged installs.
+sudo chown root:pamsignal /usr/local/etc/pamsignal/pamsignal.conf
+sudo chmod 0640 /usr/local/etc/pamsignal/pamsignal.conf
 ```
 
 ## Configure
 
-Edit the config file (all values are optional — defaults are sane):
+Edit the config file. The path depends on how you installed:
+
+- Packaged install (deb/rpm) or source build with `--prefix=/usr --sysconfdir=/etc`: `/etc/pamsignal/pamsignal.conf`
+- Source build with default `--prefix=/usr/local`: `/usr/local/etc/pamsignal/pamsignal.conf`
 
 ```bash
 sudo editor /etc/pamsignal/pamsignal.conf
 ```
 
-To enable alerts, add your channel credentials (e.g. Telegram, Slack):
+All values are optional — defaults are sane. To enable alerts, add your channel credentials (e.g. Telegram, Slack):
 
 ```ini
 telegram_bot_token = <bot_token>
 telegram_chat_id = <chat_id>
-```
-
-Since the config may contain credentials, set restricted permissions:
-
-```bash
-sudo chown root:pamsignal /etc/pamsignal/pamsignal.conf
-sudo chmod 0640 /etc/pamsignal/pamsignal.conf
 ```
 
 See [Configuration](./configuration.md) for all options.
