@@ -130,19 +130,13 @@ static void emit_brute_force_alert(const ps_fail_entry_t *entry,
     snprintf(window_str, sizeof(window_str), "%d", g_config.fail_window_sec);
 
     if (entry->key_type == PS_FAIL_KEY_IP) {
+        // ECS-aligned structured fields only. event.kind=alert because
+        // brute-force detection is a security alert per ECS.
         sd_journal_send(
             "MESSAGE=pamsignal: BRUTE_FORCE_DETECTED ip=%s attempts=%s "
             "window=%ss user=%s",
             entry->key, attempts_str, window_str, event->username,
             "PRIORITY=%d", LOG_WARNING, "SYSLOG_IDENTIFIER=pamsignal",
-            // Legacy PAMSIGNAL_* fields kept for backward compat with any
-            // existing journalctl queries; retired in v0.3.0.
-            "PAMSIGNAL_EVENT=BRUTE_FORCE_DETECTED", "PAMSIGNAL_SOURCE_IP=%s",
-            entry->key, "PAMSIGNAL_ATTEMPTS=%s", attempts_str,
-            "PAMSIGNAL_WINDOW_SEC=%s", window_str, "PAMSIGNAL_USERNAME=%s",
-            event->username, "PAMSIGNAL_HOSTNAME=%s", event->hostname,
-            // ECS-aligned structured fields. event.kind=alert here because
-            // brute-force detection is a security alert per ECS.
             "EVENT_ACTION=brute_force_detected",
             "EVENT_CATEGORY=authentication,intrusion_detection",
             "EVENT_KIND=alert", "EVENT_OUTCOME=unknown", "EVENT_SEVERITY=8",
@@ -157,24 +151,15 @@ static void emit_brute_force_alert(const ps_fail_entry_t *entry,
                                   event->pid);
         }
     } else {
-        // Local sudo/su brute-force. No source.ip; ECS user.target.name
-        // captures the elevation target.
+        // Local sudo/su brute-force. user.name = actor (the one pressing
+        // keys); user.target.name = the user being elevated to. No source.*
+        // because there's no remote host for a pure-local sudo brute-force.
         sd_journal_send(
             "MESSAGE=pamsignal: BRUTE_FORCE_DETECTED actor=%s target=%s "
             "service=%s attempts=%s window=%ss",
             entry->key, entry->target_username, ps_service_str(entry->service),
             attempts_str, window_str, "PRIORITY=%d", LOG_WARNING,
-            "SYSLOG_IDENTIFIER=pamsignal",
-            // Legacy PAMSIGNAL_* fields kept for backward compat.
-            "PAMSIGNAL_EVENT=BRUTE_FORCE_DETECTED", "PAMSIGNAL_USERNAME=%s",
-            entry->key, "PAMSIGNAL_TARGET_USER=%s", entry->target_username,
-            "PAMSIGNAL_SERVICE=%s", ps_service_str(entry->service),
-            "PAMSIGNAL_ATTEMPTS=%s", attempts_str, "PAMSIGNAL_WINDOW_SEC=%s",
-            window_str, "PAMSIGNAL_HOSTNAME=%s", event->hostname,
-            // ECS fields. user.name = actor (the one pressing keys);
-            // user.target.name = the user being elevated to. No source.* —
-            // there's no remote host for a pure-local sudo brute-force.
-            "EVENT_ACTION=brute_force_detected",
+            "SYSLOG_IDENTIFIER=pamsignal", "EVENT_ACTION=brute_force_detected",
             "EVENT_CATEGORY=authentication,intrusion_detection",
             "EVENT_KIND=alert", "EVENT_OUTCOME=unknown", "EVENT_SEVERITY=8",
             "EVENT_MODULE=pamsignal", "USER_NAME=%s", entry->key,
@@ -292,24 +277,16 @@ static void ps_log_event(const ps_pam_event_t *event) {
                  ps_event_type_str(event->type), event->username,
                  ps_service_str(event->service), timebuf);
 
-        sd_journal_send(
-            "MESSAGE=%s", msg, "PRIORITY=%d", LOG_NOTICE,
-            "SYSLOG_IDENTIFIER=pamsignal",
-            // Legacy PAMSIGNAL_* fields (retired in v0.3.0)
-            "PAMSIGNAL_EVENT=%s", ps_event_type_str(event->type),
-            "PAMSIGNAL_USERNAME=%s", event->username, "PAMSIGNAL_SERVICE=%s",
-            ps_service_str(event->service), "PAMSIGNAL_HOSTNAME=%s",
-            event->hostname, "PAMSIGNAL_PID=%s", pid_str, "PAMSIGNAL_UID=%s",
-            uid_str,
-            // ECS-aligned structured fields
-            "EVENT_ACTION=%s", ps_event_action_str(event->type),
-            "EVENT_CATEGORY=%s", ps_event_category_str(event->type),
-            "EVENT_KIND=%s", ps_event_kind_str(event->type), "EVENT_OUTCOME=%s",
-            ps_event_outcome_str(event->type), "EVENT_SEVERITY=%s",
-            severity_str, "EVENT_MODULE=pamsignal", "USER_NAME=%s",
-            event->username, "SERVICE_NAME=%s", ps_service_str(event->service),
-            "HOST_HOSTNAME=%s", event->hostname, "PROCESS_PID=%s", pid_str,
-            NULL);
+        sd_journal_send("MESSAGE=%s", msg, "PRIORITY=%d", LOG_NOTICE,
+                        "SYSLOG_IDENTIFIER=pamsignal", "EVENT_ACTION=%s",
+                        ps_event_action_str(event->type), "EVENT_CATEGORY=%s",
+                        ps_event_category_str(event->type), "EVENT_KIND=%s",
+                        ps_event_kind_str(event->type), "EVENT_OUTCOME=%s",
+                        ps_event_outcome_str(event->type), "EVENT_SEVERITY=%s",
+                        severity_str, "EVENT_MODULE=pamsignal", "USER_NAME=%s",
+                        event->username, "SERVICE_NAME=%s",
+                        ps_service_str(event->service), "HOST_HOSTNAME=%s",
+                        event->hostname, "PROCESS_PID=%s", pid_str, NULL);
     } else {
         snprintf(msg, sizeof(msg),
                  "pamsignal: %s user=%s from=%s port=%d service=%s auth=%s "
@@ -318,27 +295,17 @@ static void ps_log_event(const ps_pam_event_t *event) {
                  event->source_ip, event->port, ps_service_str(event->service),
                  ps_auth_method_str(event->auth_method), timebuf);
 
-        sd_journal_send(
-            "MESSAGE=%s", msg, "PRIORITY=%d", LOG_NOTICE,
-            "SYSLOG_IDENTIFIER=pamsignal",
-            // Legacy PAMSIGNAL_* fields (retired in v0.3.0)
-            "PAMSIGNAL_EVENT=%s", ps_event_type_str(event->type),
-            "PAMSIGNAL_USERNAME=%s", event->username, "PAMSIGNAL_SOURCE_IP=%s",
-            event->source_ip, "PAMSIGNAL_PORT=%s", port_str,
-            "PAMSIGNAL_SERVICE=%s", ps_service_str(event->service),
-            "PAMSIGNAL_AUTH_METHOD=%s", ps_auth_method_str(event->auth_method),
-            "PAMSIGNAL_HOSTNAME=%s", event->hostname, "PAMSIGNAL_PID=%s",
-            pid_str, "PAMSIGNAL_UID=%s", uid_str,
-            // ECS-aligned structured fields
-            "EVENT_ACTION=%s", ps_event_action_str(event->type),
-            "EVENT_CATEGORY=%s", ps_event_category_str(event->type),
-            "EVENT_KIND=%s", ps_event_kind_str(event->type), "EVENT_OUTCOME=%s",
-            ps_event_outcome_str(event->type), "EVENT_SEVERITY=%s",
-            severity_str, "EVENT_MODULE=pamsignal", "USER_NAME=%s",
-            event->username, "SOURCE_IP=%s", event->source_ip, "SOURCE_PORT=%s",
-            port_str, "SERVICE_NAME=%s", ps_service_str(event->service),
-            "HOST_HOSTNAME=%s", event->hostname, "PROCESS_PID=%s", pid_str,
-            NULL);
+        sd_journal_send("MESSAGE=%s", msg, "PRIORITY=%d", LOG_NOTICE,
+                        "SYSLOG_IDENTIFIER=pamsignal", "EVENT_ACTION=%s",
+                        ps_event_action_str(event->type), "EVENT_CATEGORY=%s",
+                        ps_event_category_str(event->type), "EVENT_KIND=%s",
+                        ps_event_kind_str(event->type), "EVENT_OUTCOME=%s",
+                        ps_event_outcome_str(event->type), "EVENT_SEVERITY=%s",
+                        severity_str, "EVENT_MODULE=pamsignal", "USER_NAME=%s",
+                        event->username, "SOURCE_IP=%s", event->source_ip,
+                        "SOURCE_PORT=%s", port_str, "SERVICE_NAME=%s",
+                        ps_service_str(event->service), "HOST_HOSTNAME=%s",
+                        event->hostname, "PROCESS_PID=%s", pid_str, NULL);
     }
 }
 

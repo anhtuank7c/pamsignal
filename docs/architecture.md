@@ -161,27 +161,26 @@ graph LR
 
 ## Structured journal fields
 
-PAMSignal writes events using `sd_journal_send()` with custom fields that both humans and machines can read:
+PAMSignal writes events using `sd_journal_send()` with [Elastic Common Schema (ECS)] aligned field names so existing SIEM tooling can ingest the journal directly via the standard ECS field names rather than a vendor-specific dictionary. (Through the v0.2.x series PAMSignal also emitted a parallel `PAMSIGNAL_*` field set; those legacy fields were retired in v0.3.0 — update any `journalctl PAMSIGNAL_EVENT=…` queries to the ECS forms below.)
+
+For login / session events:
 
 | Field | Example | Description |
 |-------|---------|-------------|
-| `PAMSIGNAL_EVENT` | `LOGIN_FAILED` | Event type |
-| `PAMSIGNAL_USERNAME` | `root` | Username from PAM message |
-| `PAMSIGNAL_SOURCE_IP` | `203.0.113.45` | Remote IP (validated) |
-| `PAMSIGNAL_PORT` | `22` | Remote port |
-| `PAMSIGNAL_SERVICE` | `sshd` | PAM service |
-| `PAMSIGNAL_AUTH_METHOD` | `password` | Auth method |
-| `PAMSIGNAL_HOSTNAME` | `web-01` | Server hostname |
+| `EVENT_ACTION` | `login_failure` | One of `session_opened`, `session_closed`, `login_success`, `login_failure`, `brute_force_detected` |
+| `EVENT_CATEGORY` | `authentication` | Comma-separated list; sessions add `session`, brute-force adds `intrusion_detection` |
+| `EVENT_KIND` | `event` | `event` for observations, `alert` for brute-force |
+| `EVENT_OUTCOME` | `failure` | `success`, `failure`, or `unknown` |
+| `EVENT_SEVERITY` | `5` | 3=info, 4=notice, 5=warning, 8=alert |
+| `EVENT_MODULE` | `pamsignal` | Always `pamsignal` |
+| `USER_NAME` | `root` | For sshd this is the account being attacked; for sudo/su this is the local actor (`ruser`) |
+| `SOURCE_IP` | `203.0.113.45` | Remote IP (validated). Empty / absent for pure-local sudo/su brute-force |
+| `SOURCE_PORT` | `22` | Remote port (login events only) |
+| `SERVICE_NAME` | `sshd` | PAM service: `sshd`, `sudo`, `su`, `login`, `other` |
+| `HOST_HOSTNAME` | `web-01` | Server hostname |
+| `PROCESS_PID` | `12345` | The sshd / sudo / su PID associated with the event |
 
-For brute-force events:
-
-| Field | Example | Description |
-|-------|---------|-------------|
-| `PAMSIGNAL_EVENT` | `BRUTE_FORCE_DETECTED` | Event type |
-| `PAMSIGNAL_SOURCE_IP` | `203.0.113.45` | Offending IP |
-| `PAMSIGNAL_ATTEMPTS` | `5` | Number of failed attempts |
-| `PAMSIGNAL_WINDOW_SEC` | `300` | Time window |
-| `PAMSIGNAL_USERNAME` | `root` | Last username attempted |
+For brute-force events the same `EVENT_*` set applies plus, for the local-actor variant only, `USER_TARGET_NAME` (e.g. `root`) — the user the actor was trying to elevate to.
 
 Query examples:
 
@@ -190,17 +189,19 @@ Query examples:
 journalctl -t pamsignal
 
 # Only failed logins
-journalctl -t pamsignal PAMSIGNAL_EVENT=LOGIN_FAILED
+journalctl -t pamsignal EVENT_ACTION=login_failure
 
-# Only brute-force alerts
-journalctl -t pamsignal PAMSIGNAL_EVENT=BRUTE_FORCE_DETECTED
+# Only brute-force alerts (both IP-keyed and local-actor-keyed)
+journalctl -t pamsignal EVENT_ACTION=brute_force_detected
 
 # Events from a specific IP
-journalctl -t pamsignal PAMSIGNAL_SOURCE_IP=203.0.113.45
+journalctl -t pamsignal SOURCE_IP=203.0.113.45
 
 # JSON output (for scripting)
 journalctl -t pamsignal -o json
 ```
+
+[Elastic Common Schema (ECS)]: https://www.elastic.co/guide/en/ecs/current/index.html
 
 ## Design decisions
 

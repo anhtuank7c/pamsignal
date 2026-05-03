@@ -145,12 +145,18 @@ journalctl _SYSTEMD_UNIT=pamsignal.service EVENT_ACTION=brute_force_detected
 .EE
 .RE
 .PP
-The
+Journal events carry the ECS-aligned
+.BR EVENT_* ", " USER_* ", " SOURCE_* ", " HOST_* ", " SERVICE_* ", and " PROCESS_*
+fields. The legacy
 .B PAMSIGNAL_*
-field set is retained as a backward-compatibility shim through the 0.2.x
-series alongside the ECS-aligned
-.BR EVENT_* / USER_* / SOURCE_* / HOST_* / SERVICE_* / PROCESS_*
-fields, and is scheduled to retire in 0.3.0.
+parallel field set retained through 0.2.x for backward compatibility was
+removed in 0.3.0; update any saved
+.BR journalctl
+queries that still use the
+.B PAMSIGNAL_EVENT=...
+form to
+.BR EVENT_ACTION=...
+instead.
 .SH EXIT STATUS
 .TP
 .B 0
