@@ -1,5 +1,5 @@
 Name:           pamsignal
-Version:        0.2.4
+Version:        0.3.0
 Release:        1%{?dist}
 Summary:        Real-time PAM login monitor with multi-channel alerts
 
@@ -98,6 +98,35 @@ fi
 %config(noreplace) %attr(0640,root,pamsignal) %{_sysconfdir}/pamsignal/pamsignal.conf
 
 %changelog
+* Sun May 03 2026 Tuan Nguyen <anhtuank7c@hotmail.com> - 0.3.0-1
+- NEW: detect failed sudo/su password attempts and emit a brute-force
+  alert when the per-actor threshold is crossed. Parser recognizes the
+  `pam_unix(<svc>:auth): authentication failure;` form; tracker keys by
+  source IP when `rhost=` is set (SSH→sudo chains) or by `ruser=`
+  otherwise. Per-event chat alerts suppressed for sudo/su login
+  failures so a single mistyped password does not spam channels.
+- BREAKING: daemon binary moves from `%{_bindir}/pamsignal` to
+  `%{_sbindir}/pamsignal` (FHS §4.10). rpm handles the relocation
+  atomically on upgrade; the unit's `ExecStart` is updated in lockstep
+  via meson `configure_file`. Update any scripts referencing the
+  absolute `/usr/bin/pamsignal` path.
+- BREAKING: legacy `PAMSIGNAL_*` journal fields removed. Update saved
+  `journalctl PAMSIGNAL_EVENT=LOGIN_FAILED` queries to
+  `EVENT_ACTION=login_failure` etc. Mapping in CHANGELOG.md.
+- Packaging: %install drops the post-install `mv` (out of
+  /etc/systemd/system) and `sed` (`%{_bindir}` → `%{_sbindir}`)
+  workarounds — meson now lays the unit down in `%{_unitdir}` directly
+  with the right ExecStart path. %pre creates the `pamsignal` group
+  explicitly before `useradd` so `Provides: group(pamsignal)` holds
+  even on hosts with `USERGROUPS_ENAB` unset.
+- Add `pamsignal(8)` man page; %files glob `%{_mandir}/man8/pamsignal.8*`
+  tolerates either compressed or uncompressed.
+- Security: close two clang-analyzer taint-source findings (config-file
+  isspace and getgroups malloc) — both defensive narrowings, no
+  exploitable vulnerabilities closed.
+- Docs: docs/deployment.md Install and Uninstall sections split by
+  install path (apt / dnf / source build).
+
 * Sun May 03 2026 Tuan Nguyen <anhtuank7c@hotmail.com> - 0.2.4-1
 - Add optional server context tags (`provider`, `service_name`) to alert
   payloads. When configured in `pamsignal.conf` they are appended to

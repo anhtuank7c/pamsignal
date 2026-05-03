@@ -1,3 +1,39 @@
+pamsignal (0.3.0-1) unstable; urgency=medium
+
+  * NEW: detect failed sudo/su password attempts and emit a
+    brute-force alert when the per-actor threshold is crossed.
+    pam_unix authentication-failure messages are now parsed; the
+    tracker keys by source IP when rhost is set (covers SSH→sudo
+    chains) and by ruser otherwise. Per-event chat alerts are
+    suppressed for sudo/su login failures so a single mistyped
+    password does not spam Telegram/Slack.
+  * BREAKING: daemon binary moves from /usr/bin/pamsignal to
+    /usr/sbin/pamsignal (FHS §4.10). dpkg handles the relocation
+    atomically on upgrade; the unit's ExecStart is updated in
+    lockstep via meson configure_file. Update any scripts that
+    reference the absolute /usr/bin/pamsignal path.
+  * BREAKING: legacy PAMSIGNAL_* journal fields removed. Saved
+    journalctl queries need PAMSIGNAL_EVENT=LOGIN_FAILED →
+    EVENT_ACTION=login_failure (and similar for the rest of the
+    set; see CHANGELOG.md for the full mapping).
+  * Packaging cleanup: meson now installs the systemd unit to the
+    vendor path reported by pkg-config; ExecStart is templated via
+    configure_file. debian/rules drops the post-install mv/sed
+    workarounds that relocated the unit and rewrote ExecStart at
+    package-build time.
+  * Add a section-8 man page (pamsignal.8). Installed and
+    auto-compressed by dh_compress; verified by the test-deb CI
+    job after install and after purge.
+  * Security: close two clang-analyzer taint-source warnings
+    (taint into __ctype_b_loc table from isspace() and tainted
+    malloc size from getgroups). No exploitable vulnerabilities
+    closed; both were defensive narrowings.
+  * Docs: docs/deployment.md Install and Uninstall sections split
+    by install path (apt / dnf / source build). Documents apt
+    remove vs apt purge semantics and the .rpmsave behavior.
+
+ -- Tuan Nguyen <anhtuank7c@hotmail.com>  Sun, 03 May 2026 14:00:00 +0000
+
 pamsignal (0.2.4-1) unstable; urgency=medium
 
   * Add optional server context tags (provider, service_name) to alert
