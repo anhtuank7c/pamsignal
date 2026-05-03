@@ -112,6 +112,7 @@ PAMSignal calculates brute-force thresholds for you. You can take this a step fu
 - 🔔 **[Alerts](./docs/alerts.md)** — Webhook payloads and channel setup
 - 🔒 **[Deployment](./docs/deployment.md)** — Security hardening and systemd setup
 - 🎯 **[Threat Model](./docs/threat-model.md)** — What pamsignal defends against, what it deliberately does not, and the design rationale behind the split
+- 🐧 **[Supported Distributions](./docs/distros.md)** — Three-tier matrix (CI-tested / expected to work / unsupported) with reasoning per row
 - 🛠️ **[Development](./docs/development.md)** — Building from source and testing
 - 🔐 **[Security Policy](./SECURITY.md)** — Responsible-disclosure channel and supported versions
 - 📝 **[Changelog](./CHANGELOG.md)** — Status, task tracking, and updates

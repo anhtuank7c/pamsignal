@@ -32,7 +32,9 @@ When reporting, please include:
 
 ## Supported Versions
 
-Only the most recent **minor** release line receives security fixes. Patch releases for older minors are case-by-case and only when the fix is one-line obvious — anyone running the project should expect to upgrade to the latest minor for security work.
+Two axes:
+
+**Release line.** Only the most recent **minor** release line receives security fixes. Patch releases for older minors are case-by-case and only when the fix is one-line obvious — anyone running the project should expect to upgrade to the latest minor for security work.
 
 | Version | Supported |
 |---------|-----------|
@@ -41,6 +43,8 @@ Only the most recent **minor** release line receives security fixes. Patch relea
 | `0.1.x` | ❌ |
 
 The recommended install path is the signed apt or dnf repository documented in [`README.md`](./README.md#1-install); `apt upgrade` / `dnf upgrade` keeps you on the supported line automatically.
+
+**Operating system / distribution.** Pamsignal supports modern systemd-native Linux only. The full distribution matrix — CI-tested distributions, expected-to-work distributions with their per-row caveats, and explicit unsupported releases with the technical reason for each cutoff — lives in [`docs/distros.md`](./docs/distros.md). A vulnerability report against a Tier 3 distribution will be closed with a pointer to that document; vulnerabilities affecting Tier 1 or Tier 2 distributions are in scope for security review per this policy.
 
 ## Scope
 

@@ -387,6 +387,17 @@ jobs:
             out/*.asc
 
   # --- Functional test: install the .deb, exercise the daemon end-to-end ---
+  #
+  # TODO: Tier 1 matrix expansion. docs/distros.md currently lists Ubuntu
+  # 24.04 as the only Tier 1 deb-side distribution because that's all this
+  # job tests. Ubuntu 22.04 and Ubuntu 26.04 are Tier 2 (expected to work,
+  # one-time validated by tests/scenario.sh on the maintainer's host) but
+  # not continuously verified. Promoting them to Tier 1 means turning this
+  # job into a strategy.matrix over runs-on: [ubuntu-22.04, ubuntu-24.04,
+  # ubuntu-26.04 (when available)] and ensuring the deb's libsystemd
+  # dependency string is satisfiable on each (which probably means
+  # building a separate .deb per target). Tracked in docs/distros.md
+  # under "Adding a distribution to Tier 1".
   test-deb:
     name: Test .deb (install + functional + uninstall)
     runs-on: ubuntu-24.04

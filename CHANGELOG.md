@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+### Documentation
+- [x] **`docs/distros.md`** — canonical supported-distribution matrix. Three tiers: **Tier 1 (CI-tested)** = Ubuntu 24.04, Fedora latest, AlmaLinux 9; **Tier 2 (expected to work, one-time validated)** = Ubuntu 22.04, Ubuntu 26.04, Debian 12/13, Rocky/RHEL 9, older Fedora — with each row noting the install-method caveat (the published gh-pages `.deb` pins to Ubuntu 24.04's libsystemd version so non-Tier-1 Ubuntu/Debian users build from source until per-distroseries pockets exist); **Tier 3 (not supported, with technical reason)** = Ubuntu ≤20.04 (`debhelper-compat (= 13)` + missing systemd directives), Ubuntu 16.04 specifically (won't compile — `memfd_create()` missing from glibc 2.23, would force argv-credential exposure that contradicts threat-model attack #3), Debian ≤11, RHEL/CentOS ≤8. Plus an architecture row (x86_64 Tier 1, aarch64 Tier 2 by default since CI doesn't test ARM), a "container runtimes / musl / BSD" out-of-scope note, and an explicit "Adding a distribution to Tier 1" section that names the four-step promotion criteria. SECURITY.md's Supported Versions section now references this doc rather than implying distribution support is open-ended; README's docs index links it; `release-packages.yml`'s test-deb job has a `# TODO: Tier 1 matrix expansion` comment naming the two Ubuntu releases on the roadmap. The shape lets bug reports against unsupported distributions get closed with a single pointer.
+
 ## 0.3.4 — 2026-05-03
 
 Security release. Fixes a real production defect: pamsignal silently dropped every sshd auth event on Ubuntu 26.04, Fedora 41+, and Debian Trixie (any host running OpenSSH 9.8+). Surfaced by an end-to-end scenario test on Ubuntu 26.04 / OpenSSH 9.10p2 / OpenSSL 3.5.5 / systemd 259 — a stack CI doesn't currently exercise. Bundles repository-hygiene additions (`CONTRIBUTING.md`, issue templates, PR template) that accumulated under `## Unreleased` since v0.3.3, plus the `tests/scenario.sh` script that caught the sshd-session bug, plus forward-compat hardening of the CI mock webhook for OpenSSL 3.5+.
