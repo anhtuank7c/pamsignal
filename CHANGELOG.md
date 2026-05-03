@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+### Documentation
+- [x] **`SECURITY.md`** at the repo root documents the responsible-disclosure channel (GitHub Security Advisories preferred, email fallback with the same PGP key fingerprint that signs the release packages), 90-day coordinated-disclosure timeline, supported version policy (latest minor only), and a scope table separating in-scope findings (parser bypasses, brute-force tracker bugs, alert-payload injection, hardening regressions) from out-of-scope dependencies (curl, libsystemd, alert delivery channels, root-already-on-host scenarios).
+
 ## 0.3.1 — 2026-05-03
 
 Patch release that reverts the `/usr/bin` → `/usr/sbin` move from v0.3.0. The reasoning that landed v0.3.0 cited FHS §4.10's letter ("system administration daemons live in `sbin`"), but the systemd-era convention has moved past that distinction: `journalctl`, `systemctl`, `loginctl`, `udevadm`, `podman`, and `containerd` all ship in `/usr/bin` despite being administrator commands. Fedora 42+ has formally retired the bin/sbin split — `%{_sbindir} == %{_bindir} == /usr/bin` — and Debian Trixie has the merge on its roadmap. The v0.3.0 layout was on the wrong side of that trajectory and produced two CI-test bugs we had to fix during the v0.3.0 release run; reverting now is cheaper than keeping the migration as the ecosystem unwinds in the same direction.
