@@ -1,45 +1,122 @@
 name: Feature request
-description: Propose a new capability, configuration option, or improvement
+description: Propose a new operator-facing surface — config key, journal field, webhook payload field, unit-file directive, or CLI flag
 labels: [enhancement]
 body:
   - type: markdown
     attributes:
       value: |
-        Thanks for the suggestion. Please read
-        [`docs/threat-model.md`](https://github.com/anhtuank7c/pamsignal/blob/main/docs/threat-model.md)
-        before filing — features that pull pamsignal toward
-        durable-queue / multi-host-correlation / authenticated-delivery /
-        alert-channel-specific logic are explicit non-goals (NS6 / NS7 /
-        NS8 in the threat model). The shorter your proposed feature stays
-        from those non-goals, the more likely it lands.
+        Thanks for the suggestion. pamsignal's contract with the
+        operator is its **public surface area**: the
+        `pamsignal.conf` keys, the `EVENT_*` / `USER_*` /
+        `SOURCE_*` journal fields it writes, the chat-text and
+        ECS-JSON webhook payloads it sends, the systemd unit's
+        directives, and the CLI flags. A feature request that
+        names which surface changes, in which compatible direction
+        (additive, deprecated-with-overlap, breaking) gets reviewed
+        much faster than one framed in "the daemon should also do X."
 
-        For requests outside the threat model, the recommendation is:
-        send pamsignal's JSON output to a custom webhook *you* control,
-        and put the feature you want into your webhook receiver. We
-        keep `examples/nodejs-webhook/` in this repo as a starting
-        template for that approach.
+        **Before filing**, please read
+        [`docs/threat-model.md`](https://github.com/anhtuank7c/pamsignal/blob/main/docs/threat-model.md) —
+        in particular the ten explicit out-of-scope non-goals
+        (NS1–NS10). If your feature falls into one of them, the
+        threat-model-amendment field below is the right place to
+        argue for the rule change rather than for the feature
+        itself. Features that try to slip an out-of-scope behavior
+        in without acknowledging the threat-model line will get
+        bounced.
+
+        For features outside the daemon's scope, the
+        recommendation is: send pamsignal's ECS JSON to a custom
+        webhook **you control** and put the new behavior into your
+        webhook receiver. We keep
+        [`examples/nodejs-webhook/`](https://github.com/anhtuank7c/pamsignal/tree/main/examples/nodejs-webhook)
+        as a starting template for that approach.
 
   - type: textarea
     id: use_case
     attributes:
-      label: Use case
+      label: Operational use case
       description: |
-        What are you trying to do? Describe the actual operational
-        problem, not a proposed solution. ("I need to know when my
-        prod hosts get a brute-force burst, but I run 30 hosts and
-        Telegram drowns" is more useful than "add multi-host
-        aggregation".)
+        What are you actually trying to do, in concrete operator
+        terms? Describe the deployment, the auth-event volume, the
+        alert channel, what you currently see vs what you need to
+        see. ("On 30 production hosts behind a load balancer, a
+        coordinated SSH brute-force across many IPs hits each host
+        only 3 times — below threshold — but the cumulative
+        signal is obvious. I need pamsignal-the-aggregate to fire
+        even when no single host's tracker does." is more useful
+        than "add multi-host correlation").
+    validations:
+      required: true
+
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Operator-facing surface that would change
+      description: |
+        Pick the closest match. Multiple-surface changes are fine
+        but should typically split into separate proposals.
+      options:
+        - 'New `/etc/pamsignal/pamsignal.conf` key'
+        - 'Change to existing `pamsignal.conf` key (default value, range, or behavior)'
+        - 'New `EVENT_*` / `USER_*` / `SOURCE_*` etc. journal field written by pamsignal'
+        - 'Change to existing journal field (rename / removal — requires deprecation cycle)'
+        - 'New field in the chat-text alert format (Telegram / Slack / Teams / WhatsApp / Discord)'
+        - 'New field in the ECS JSON webhook payload'
+        - 'New native alert channel (alongside the existing six)'
+        - 'New `pamsignal.service` unit directive'
+        - 'New `pamsignal --flag` CLI option'
+        - 'New man-page section / documentation surface'
+        - 'No operator-facing change — purely internal refactor or build/CI'
+        - 'Other (please describe)'
     validations:
       required: true
 
   - type: textarea
     id: proposal
     attributes:
-      label: Proposal
+      label: Concrete proposal
       description: |
-        What change to pamsignal would solve your use case? Be
-        specific — name the config keys, the journal fields, the
-        unit-file directives that would change.
+        Name the surface change in detail. For a config key, the
+        key name + type + valid range + default + example value.
+        For a journal field, the field name in the ECS schema +
+        the source data + the events on which it appears. For a
+        unit directive, the directive name + value + interaction
+        with existing directives. The more specific, the easier
+        to review.
+      placeholder: |
+        New config key `cluster_id = <string>` (max 64 chars,
+        default empty). When set, pamsignal includes it as
+        `labels.cluster_id` in the ECS JSON webhook payload and
+        as `cluster_id=...` in the chat-text alert. Allows
+        operators running pamsignal across N hosts in the same
+        logical cluster to disambiguate alerts at the SIEM /
+        chat-channel side.
+
+        Schema impact: webhook JSON gains
+        `"labels": {"cluster_id": "<value>"}` alongside the
+        existing `labels.provider` / `labels.service_name`
+        fields from v0.2.4. Chat text gains a trailing
+        `cluster_id=...` token in the same `provider=...
+        service_name=...` group.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: compatibility
+    attributes:
+      label: Compatibility commitment
+      description: |
+        How does this affect operators upgrading from a previous
+        minor? The PAMSIGNAL_* journal-field retirement in v0.3.0
+        is the reference precedent — renames or removals get a
+        full minor of overlap before the old form is dropped.
+      options:
+        - 'Purely additive — older versions ignore it, newer versions emit it. No deprecation needed.'
+        - 'Default-on but operator-overridable — adds new behavior the operator can turn off if it surprises them.'
+        - 'Default-off, opt-in — adds the surface but only activates when explicitly configured.'
+        - 'Replaces an existing surface — needs a deprecation cycle (1+ minors of overlap, retire in a later major or minor with explicit changelog migration notes).'
+        - 'Breaking change — needs an explicit BREAKING CHANGE footer + migration guide. Expect the bar to be high.'
     validations:
       required: true
 
@@ -48,38 +125,62 @@ body:
     attributes:
       label: Alternatives considered
       description: |
-        What else did you try? "Custom webhook receiver", "fail2ban
-        in parallel", "configure pamsignal differently" all count.
-        If you tried and it didn't work, say why.
+        What else did you try before reaching for a code change?
+        Common alternatives:
+
+        - Pipe the ECS JSON webhook output to a receiver you
+          control and put the logic there.
+        - Filter / aggregate via a SIEM consuming
+          `journalctl -t pamsignal --output=json`.
+        - Use a fail2ban jail in parallel for active blocking.
+        - Tune the existing `fail_threshold` / `fail_window_sec`
+          / `alert_cooldown_sec` numbers.
+
+        If you tried and none worked, say specifically why the
+        in-pamsignal change is the only reasonable answer.
     validations:
       required: true
 
   - type: textarea
-    id: threat_model_alignment
+    id: threat_model
     attributes:
-      label: Threat model alignment
+      label: Threat-model alignment
       description: |
-        Pick the closest match from `docs/threat-model.md`:
+        Pick the closest from
+        [`docs/threat-model.md`](https://github.com/anhtuank7c/pamsignal/blob/main/docs/threat-model.md):
 
-        - **Strengthens an in-scope mitigation** (attacks 1–9). Specify
-          which one.
-        - **Tightens an existing defense** (compiler hardening, sandbox
-          directive, parser validator).
-        - **New surface that's not yet covered** but logically belongs
-          to one of the in-scope adversary classes.
-        - **Out-of-scope but I think it should be in scope.** Make the
-          case — what changes about the threat model itself.
+        - **Strengthens an in-scope mitigation** (attacks 1–9 in
+          the threat model). State which one and how.
+        - **Tightens an existing defense** (a sandbox directive,
+          a parser validator, a compiler hardening flag).
+        - **New surface that's logically in-scope but not yet
+          covered** — make the case for which adversary class
+          (A through E) it defends against.
+        - **Argues for moving an out-of-scope non-goal (NS1–NS10)
+          into scope.** This is the highest bar — describe what
+          changes about the threat model itself, what new
+          attacker class the project would now defend against,
+          and what the cost is in code surface / dependencies /
+          attack surface.
       placeholder: |
-        Strengthens attack #2 (brute-force tracker bypass): currently
-        the tracker only keys by source IP, so a distributed scanner
-        across 50 IPs hitting one user 4 times each goes undetected
-        despite obviously being one attack...
+        Strengthens attack #2 (brute-force tracker bypass): a
+        coordinated multi-IP attacker currently evades detection
+        because each per-IP counter stays under threshold. The
+        cluster_id field doesn't directly address attack #2 —
+        but cumulating cluster_id at the SIEM level (which this
+        feature enables) does. Stays squarely on the
+        "out-of-band aggregation via custom webhook" story
+        articulated in NS7's reasoning, just makes that
+        aggregation easier to wire up.
+    validations:
+      required: true
 
   - type: textarea
     id: prior_art
     attributes:
       label: Prior art / references
       description: |
-        Existing projects, RFCs, ECS schema sections, kernel features,
-        or systemd directives that informed your proposal. Optional but
-        speeds up review.
+        ECS schema sections, kernel features, systemd directives,
+        existing daemons that solve a similar problem. Optional
+        but speeds up review when you're proposing a non-obvious
+        design choice.

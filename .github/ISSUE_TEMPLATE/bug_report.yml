@@ -1,53 +1,89 @@
 name: Bug report
-description: A real bug — something pamsignal does that contradicts its documented behavior
+description: pamsignal is doing — or failing to do — something its documentation says it should
 labels: [bug]
 body:
   - type: markdown
     attributes:
       value: |
-        Thanks for taking the time to file a bug report. Please fill in the
-        sections below — issues missing key reproduction info usually sit
-        unactionable until somebody else hits the same thing.
+        Thanks for taking the time to file a bug. pamsignal is a daemon
+        running under systemd, reading journald, and dispatching HTTPS
+        alerts. Most actionable bug reports therefore include
+        **standard system state** (`systemctl status`, `journalctl -u`,
+        kernel + systemd versions, MAC-policy state) rather than free-form
+        descriptions — those are what we'd ask you to gather first anyway.
 
         **Before filing**:
-        - For security vulnerabilities, **do not file a public issue**. Use
-          the disclosure channel in [`SECURITY.md`](https://github.com/anhtuank7c/pamsignal/blob/main/SECURITY.md).
-        - For "is this even a bug?" questions, check
+        - Security vulnerability? **Don't file a public issue.** Use
+          [GitHub Security Advisories](https://github.com/anhtuank7c/pamsignal/security/advisories/new).
+          See [`SECURITY.md`](https://github.com/anhtuank7c/pamsignal/blob/main/SECURITY.md).
+        - Behavior you think is a bug but it's an explicit non-goal in
           [`docs/threat-model.md`](https://github.com/anhtuank7c/pamsignal/blob/main/docs/threat-model.md)
-          first — some behaviors that look like bugs are documented
-          non-goals (e.g. fire-and-forget alert delivery).
+          (durable alert delivery, multi-host correlation, authenticated
+          delivery, etc.) — please file as a feature request instead, with
+          the threat-model-amendment framing the feature template asks for.
+        - Operator question rather than a defect — check the existing
+          [`question`-labeled issues](https://github.com/anhtuank7c/pamsignal/issues?q=is%3Aissue+label%3Aquestion).
 
-  - type: textarea
-    id: summary
+  - type: dropdown
+    id: component
     attributes:
-      label: Summary
-      description: One-paragraph description of the bug.
-      placeholder: |
-        SIGHUP after a config reload causes the brute-force counter for
-        an active attacker IP to reset, letting the attacker stay below
-        the threshold by triggering reloads.
+      label: Affected component
+      description: Which subsystem is misbehaving? Pick the closest match.
+      options:
+        - PAM-event parser (sshd / sudo / su / login / pam_unix message recognition)
+        - Brute-force tracker (per-key counter, threshold, cooldown, eviction)
+        - Alert dispatch (curl invocation, JSON formatting, channel-specific senders)
+        - systemd unit / sandbox (Type=notify, watchdog, hardening directive)
+        - Packaging (apt / dnf install, postinst / %pre / %post, systemctl daemon-reload)
+        - Journald integration (_EXE allowlist, sd_journal subscription, structured fields written by pamsignal)
+        - Configuration parsing (/etc/pamsignal/pamsignal.conf load, validation, SIGHUP reload)
+        - Other (please describe in summary)
     validations:
       required: true
 
   - type: input
-    id: version
+    id: pamsignal_version
     attributes:
-      label: Version
+      label: pamsignal version
       description: |
-        Output of `apt show pamsignal | grep ^Version` (Debian/Ubuntu) or
-        `dnf info pamsignal | grep ^Version` (Fedora/RHEL/AlmaLinux/Rocky),
-        or the `git describe` if you built from source.
-      placeholder: 0.3.3
+        ```
+        apt show pamsignal 2>/dev/null | grep ^Version
+        # or
+        dnf info pamsignal 2>/dev/null | grep ^Version
+        # or, for source builds
+        git describe --tags --always
+        ```
+      placeholder: 0.3.3-1
     validations:
       required: true
 
   - type: input
     id: distro
     attributes:
-      label: Distribution
+      label: Distribution + version
       description: |
-        Run `cat /etc/os-release | grep PRETTY_NAME` and paste the value.
-      placeholder: Ubuntu 24.04.1 LTS
+        ```
+        cat /etc/os-release | grep -E '^(NAME|VERSION_ID)='
+        ```
+      placeholder: Ubuntu 24.04 / Fedora 44 / AlmaLinux 9.4 / etc.
+    validations:
+      required: true
+
+  - type: input
+    id: kernel
+    attributes:
+      label: Kernel version
+      description: '`uname -r`'
+      placeholder: 6.8.0-45-generic
+    validations:
+      required: true
+
+  - type: input
+    id: systemd_version
+    attributes:
+      label: systemd version
+      description: '`systemctl --version | head -1`'
+      placeholder: systemd 255 (255.4-1ubuntu8)
     validations:
       required: true
 
@@ -56,29 +92,155 @@ body:
     attributes:
       label: Install method
       options:
-        - apt (signed gh-pages repo)
-        - dnf (signed gh-pages repo)
+        - apt — signed gh-pages repo (https://anhtuank7c.github.io/pamsignal/ stable main)
+        - dnf — signed gh-pages repo (Fedora)
+        - dnf — signed gh-pages repo (EL9 / AlmaLinux 9 / Rocky 9)
         - source build (`meson install`)
-        - other (please describe in Additional context)
+        - other (please describe)
     validations:
       required: true
+
+  - type: dropdown
+    id: mac_policy
+    attributes:
+      label: Mandatory access control
+      description: |
+        Both SELinux and AppArmor can override the systemd unit's
+        directives in either direction — knowing which is enforcing
+        and whether the relevant rules are in place is often the
+        decisive triage step.
+      options:
+        - SELinux enforcing
+        - SELinux permissive
+        - SELinux disabled / not installed
+        - AppArmor enforcing
+        - AppArmor complain
+        - AppArmor disabled / not installed
+        - Other / unsure
+    validations:
+      required: true
+
+  - type: textarea
+    id: systemctl_status
+    attributes:
+      label: systemctl status pamsignal
+      description: |
+        ```
+        sudo systemctl status pamsignal --no-pager -l
+        ```
+        Paste the full output. This shows unit state, ExecStart, restart
+        history, the most recent log lines, and any AVC denials systemd
+        captured.
+      render: text
+    validations:
+      required: true
+
+  - type: textarea
+    id: pamsignal_journal
+    attributes:
+      label: journalctl -u pamsignal
+      description: |
+        ```
+        sudo journalctl -u pamsignal --since "30 minutes ago" --no-pager
+        ```
+        Capture the time window where the bug is observable. If the
+        daemon's structured fields are relevant, include them:
+        ```
+        sudo journalctl -u pamsignal --output=verbose --since "30 minutes ago" --no-pager
+        ```
+        Redact anything containing alert credentials (Telegram tokens,
+        webhook URLs).
+      render: text
+    validations:
+      required: true
+
+  - type: textarea
+    id: source_journal
+    attributes:
+      label: Source-of-truth auth events
+      description: |
+        The PAM events that should have been picked up — grouped by the
+        underlying systemd unit so the `_EXE` allowlist context is
+        preserved:
+        ```
+        # sshd
+        sudo journalctl _SYSTEMD_UNIT=ssh.service _SYSTEMD_UNIT=sshd.service \
+          --since "30 minutes ago" --no-pager
+        # sudo / su / login
+        sudo journalctl SYSLOG_IDENTIFIER=sudo SYSLOG_IDENTIFIER=su SYSLOG_IDENTIFIER=login \
+          --since "30 minutes ago" --no-pager
+        ```
+        Paste the relevant slice. These are the entries pamsignal
+        consumes; without them we can't tell whether the bug is in
+        what was *written* to the journal or in how pamsignal *read*
+        it.
+      render: text
+
+  - type: textarea
+    id: drop_ins
+    attributes:
+      label: Custom systemd unit overrides
+      description: |
+        Drop-in overrides take precedence over the shipped unit and are
+        a frequent source of "directive X isn't behaving" reports.
+        ```
+        sudo systemd-delta --type=extended pamsignal.service
+        ls -la /etc/systemd/system/pamsignal.service.d/ 2>/dev/null
+        # And any drop-in contents:
+        sudo cat /etc/systemd/system/pamsignal.service.d/*.conf 2>/dev/null
+        ```
+        Paste the output. If there are no overrides, write "none".
+      render: text
+    validations:
+      required: true
+
+  - type: textarea
+    id: config
+    attributes:
+      label: Configuration (with credentials redacted)
+      description: |
+        ```
+        sudo cat /etc/pamsignal/pamsignal.conf
+        ```
+        Replace `telegram_bot_token`, `telegram_chat_id`, `slack_webhook_url`,
+        `teams_webhook_url`, `whatsapp_access_token`, `whatsapp_phone_number_id`,
+        `whatsapp_recipient`, `discord_webhook_url`, and `webhook_url` values
+        with `<redacted>`.
+      render: ini
+    validations:
+      required: true
+
+  - type: input
+    id: security_score
+    attributes:
+      label: systemd-analyze security score
+      description: |
+        ```
+        sudo systemd-analyze security pamsignal.service --no-pager | tail -1
+        ```
+        We CI-gate this at 20 (internal) on every release; a score above
+        20 on your host suggests a drop-in override or distribution
+        repackaging has loosened a hardening directive.
+      placeholder: '→ Overall exposure level for pamsignal.service: 1.3 OK 🙂'
 
   - type: textarea
     id: reproduce
     attributes:
       label: Steps to reproduce
       description: |
-        The minimal sequence to trigger the bug. If it depends on a
-        specific journal-event shape, include the `journalctl --output=export`
-        excerpt — that's the format pamsignal actually consumes.
+        Concrete operational sequence — what auth events did you generate,
+        in what order, with what `fail_threshold` / `fail_window_sec` /
+        `alert_cooldown_sec`. Include the commands you ran (e.g. `ssh -p
+        22 root@host` from a remote attacker, `sudo -k && sudo whoami`
+        with wrong password). The `journalctl` excerpt above shows what
+        the system saw; this section explains what you *did*.
       placeholder: |
-        1. Configure pamsignal with `fail_threshold = 5` and
-           `alert_cooldown_sec = 60`.
-        2. Trigger 4 failed sshd auth events from 192.0.2.1 over 30 seconds.
-        3. Send the daemon SIGHUP.
-        4. Trigger 4 more failed sshd auth events from 192.0.2.1.
-        5. Observe: no brute-force alert (expected: alert at attempt 5
-           regardless of the SIGHUP).
+        1. Configured `/etc/pamsignal/pamsignal.conf` with
+           `fail_threshold = 5`, `fail_window_sec = 300`,
+           `alert_cooldown_sec = 60`, `slack_webhook_url = https://...`
+        2. From a remote host, ran `sshpass -p wrong ssh root@target`
+           five times in succession.
+        3. Watched `journalctl -t pamsignal -f`.
     validations:
       required: true
 
@@ -86,6 +248,13 @@ body:
     id: expected
     attributes:
       label: Expected behavior
+      description: |
+        What pamsignal should have done — preferably in the same terms
+        the docs use. ("A `[ALERT] auth.brute_force_detected ...` chat
+        message should appear in Slack" / "An ECS-formatted JSON should
+        POST to `webhook_url` with `event.action=brute_force_detected`"
+        / "`journalctl -t pamsignal EVENT_ACTION=brute_force_detected`
+        should show the entry").
     validations:
       required: true
 
@@ -97,29 +266,12 @@ body:
       required: true
 
   - type: textarea
-    id: journal
-    attributes:
-      label: Journal output
-      description: |
-        Paste `journalctl -u pamsignal --since "1 hour ago" --no-pager`
-        for the relevant time window. If the output contains alert
-        credentials (Telegram tokens, webhook URLs), redact those.
-      render: text
-
-  - type: textarea
-    id: config
-    attributes:
-      label: Configuration (with credentials redacted)
-      description: |
-        The relevant subset of `/etc/pamsignal/pamsignal.conf`. Replace
-        any tokens / webhook URLs with `<redacted>`.
-      render: ini
-
-  - type: textarea
     id: context
     attributes:
       label: Additional context
       description: |
-        Anything else relevant — was this working in a previous version?
-        Did you recently change anything else on the host? Which alert
-        channel were you using?
+        Anything else relevant. Was this working in a previous version
+        of pamsignal (which one)? Did you recently change the systemd
+        unit, kernel, distro, MAC policy, journal-rotation settings? Are
+        there other services on this host that filter or rewrite journal
+        entries before pamsignal sees them?
