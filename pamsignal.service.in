@@ -34,6 +34,10 @@ RuntimeDirectory=pamsignal
 ConfigurationDirectory=pamsignal
 
 # Security hardening
+#
+# Below: directives applied via systemd-analyze security analysis to drive
+# the exposure score down to ≤10 internal ("very safe" band). Each line is
+# justified against the daemon's actual behavior — no defensive copy-paste.
 NoNewPrivileges=yes
 ProtectSystem=strict
 ProtectHome=yes
@@ -51,6 +55,59 @@ PrivateDevices=yes
 CapabilityBoundingSet=
 SystemCallFilter=@system-service
 SystemCallFilter=~@privileged @resources
+
+# Daemon never sets the wall clock or hostname; deny both. The two are
+# cheap defense-in-depth: an attacker who somehow obtains arbitrary syscall
+# execution as the daemon cannot use it to skew time-based detection on the
+# host or to manipulate per-host alert routing keyed on hostname.
+ProtectClock=yes
+ProtectHostname=yes
+
+# /proc hardening. ProtectProc=invisible hides /proc/<pid> entries belonging
+# to other users (the daemon only inspects its own state). ProcSubset=pid
+# restricts the daemon to /proc/<pid> entries — no /proc/cpuinfo, /proc/
+# kcore, /proc/kallsyms exposure. libsystemd's journal client uses an
+# AF_UNIX socket to journald and does not read /proc itself; sd_notify
+# similarly writes to NOTIFY_SOCKET (also AF_UNIX). Verified by the test
+# suite passing under both directives.
+ProtectProc=invisible
+ProcSubset=pid
+
+# Restrict the syscall ABI to native (x86_64 on x86_64 hosts, aarch64 on
+# arm64, etc.). Blocks the i386 compat layer's syscall numbers from being
+# reachable, which closes a class of historical sandbox-escape primitives
+# (e.g. CVE-2010-3301-style int 0x80 paths).
+SystemCallArchitectures=native
+
+# Daemon does not use SysV IPC objects (no shmget, semget, msgget). Setting
+# this means systemd cleans up any IPC objects accidentally allocated by
+# the daemon's user when the service stops — defensive zero-on-stop
+# guarantee, no functional impact.
+RemoveIPC=yes
+
+# Restrict the address-family allowlist to what the daemon actually uses.
+#   AF_UNIX: libsystemd → journald socket; sd_notify → NOTIFY_SOCKET.
+#   AF_NETLINK: libsystemd uses netlink internally for some operations
+#               (process credential lookup, sd_event integration).
+#   AF_INET, AF_INET6: the fork+exec curl child needs both for IPv4/IPv6
+#               outbound HTTPS to the configured alert provider.
+# This blocks AF_PACKET (raw packet capture), AF_BLUETOOTH, AF_VSOCK,
+# AF_RDS, AF_TIPC, AF_XDP, and other exotic families — none of which the
+# daemon or curl have any business touching.
+RestrictAddressFamilies=AF_UNIX AF_NETLINK AF_INET AF_INET6
+
+# Files created by the daemon (PID file in /run/pamsignal/, any future
+# state) get owner-only permissions by default. /etc/pamsignal/pamsignal.conf
+# perms are managed by the package postinst (root:pamsignal 0640) and the
+# RuntimeDirectory= mode is set by systemd; UMask only affects ad-hoc
+# file creation by the daemon itself.
+UMask=0077
+
+# DevicePolicy=closed restricts the cgroup device ACL to the standard
+# pseudo-device set (null, zero, full, random, urandom, tty). Without this,
+# systemd's PrivateDevices=yes default also includes char-rtc:r (read on
+# the realtime clock). The daemon does not read the RTC, so deny it.
+DevicePolicy=closed
 
 [Install]
 WantedBy=multi-user.target
