@@ -646,13 +646,20 @@ jobs:
 
       - name: Verify file layout and metadata
         run: |
-          # Files at expected paths
-          test -x /usr/sbin/pamsignal
+          # The binary path tracks %{_sbindir} which differs by distro:
+          # /usr/sbin/pamsignal on EL9 (sbin still separate), /usr/bin/pamsignal
+          # on Fedora 42+ (bin/sbin merged, %{_sbindir} == %{_bindir}). Read
+          # the path from the rpm's own file list rather than hardcoding
+          # /usr/sbin.
+          binpath=$(rpm -ql pamsignal | grep -E '^/usr/(s?bin)/pamsignal$' | head -1)
+          [ -n "$binpath" ]
+          echo "Binary installed at: $binpath"
+          test -x "$binpath"
           test -f /usr/lib/systemd/system/pamsignal.service
           test -f /etc/pamsignal/pamsignal.conf
-          # ExecStart resolved by meson configure_file at build time
-          grep -q '^ExecStart=/usr/sbin/pamsignal' \
-            /usr/lib/systemd/system/pamsignal.service
+          # ExecStart was filled by meson configure_file at build time and
+          # tracks the same %{_sbindir}, so it points at $binpath.
+          grep -q "^ExecStart=$binpath" /usr/lib/systemd/system/pamsignal.service
           # System user created by %pre
           getent passwd pamsignal
           # Config perms set by %post
@@ -675,8 +682,11 @@ jobs:
           mkdir -p /run/pamsignal
           chown pamsignal:pamsignal /run/pamsignal
           chmod 0750 /run/pamsignal
+          # Resolve the binary path from rpm rather than hardcoding — varies
+          # by distro (sbin on EL9, bin on Fedora 42+).
+          binpath=$(rpm -ql pamsignal | grep -E '^/usr/(s?bin)/pamsignal$' | head -1)
           # `runuser` is preferred over `sudo` in minimal containers.
-          timeout 3 runuser -u pamsignal -- /usr/sbin/pamsignal --foreground \
+          timeout 3 runuser -u pamsignal -- "$binpath" --foreground \
             2>&1 | head -5 || true
           echo "binary launches without crashing"
 
