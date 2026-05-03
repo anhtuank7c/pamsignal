@@ -25,13 +25,21 @@ void ps_config_defaults(ps_config_t *cfg) {
     cfg->alert_cooldown_sec = PS_DEFAULT_ALERT_COOLDOWN_SEC;
 }
 
+// Locale-independent whitespace classifier. Avoids the ctype.h __ctype_b_loc
+// table lookup (whose tainted-index access trips clang-analyzer-security.
+// ArrayBound) and guarantees the same parse regardless of LC_CTYPE.
+static int is_ws(unsigned char c) {
+    return c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\v' ||
+           c == '\f';
+}
+
 static char *trim(char *s) {
-    while (isspace((unsigned char)*s))
+    while (is_ws((unsigned char)*s))
         s++;
     if (*s == '\0')
         return s;
     char *end = s + strlen(s) - 1;
-    while (end > s && isspace((unsigned char)*end))
+    while (end > s && is_ws((unsigned char)*end))
         *end-- = '\0';
     return s;
 }

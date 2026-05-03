@@ -31,7 +31,17 @@ static void parse_args(int argc, char *argv[], int *foreground,
     }
 }
 
-// Check if the current user belongs to the systemd-journal group
+// Check if the current user belongs to the systemd-journal group.
+//
+// Uses a fixed-size stack buffer rather than malloc(getgroups(0, NULL))
+// for two reasons:
+//   1. Eliminates a tainted-syscall-into-malloc path that
+//      clang-analyzer-optin.taint.TaintedAlloc otherwise flags.
+//   2. NGROUPS_MAX on Linux is 65536, but real users have fewer than 32
+//      supplementary groups; 256 is a generous upper bound. If a user
+//      somehow exceeds the buffer, getgroups returns -1/EINVAL and the
+//      daemon fails closed with the same "add user to systemd-journal"
+//      error path as if they truly weren't a member.
 static int has_journal_access(void) {
     struct group *grp = getgrnam("systemd-journal");
     if (!grp)
@@ -39,32 +49,22 @@ static int has_journal_access(void) {
 
     gid_t target_gid = grp->gr_gid;
 
-    // Check primary group
+    // Primary group
     if (getegid() == target_gid)
         return 1;
 
-    // Check supplementary groups
-    int ngroups = getgroups(0, NULL);
-    if (ngroups <= 0)
+    // Supplementary groups
+    enum { PS_GROUPS_BUF_LEN = 256 };
+    gid_t groups[PS_GROUPS_BUF_LEN];
+    int ngroups = getgroups(PS_GROUPS_BUF_LEN, groups);
+    if (ngroups < 0)
         return 0;
-
-    gid_t *groups = malloc((size_t)ngroups * sizeof(gid_t));
-    if (!groups)
-        return 0;
-
-    if (getgroups(ngroups, groups) < 0) {
-        free(groups);
-        return 0;
-    }
 
     for (int i = 0; i < ngroups; i++) {
-        if (groups[i] == target_gid) {
-            free(groups);
+        if (groups[i] == target_gid)
             return 1;
-        }
     }
 
-    free(groups);
     return 0;
 }
 

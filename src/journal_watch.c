@@ -37,9 +37,16 @@ int ps_fail_table_init(int capacity) {
         return PS_ERR_INIT;
 
     if (fail_table) {
+        // copy_count is also the final fail_table_count. The lower clamp is
+        // defensive — fail_table_count is monotonically non-negative by
+        // construction, but the explicit floor lets clang-analyzer prove
+        // the post-state is in [0, capacity] and rules out a negative-index
+        // path on the next write to fail_table.
         int copy_count = fail_table_count;
         if (copy_count > capacity)
             copy_count = capacity;
+        if (copy_count < 0)
+            copy_count = 0;
         memcpy(t, fail_table, (size_t)copy_count * sizeof(ps_fail_entry_t));
         fail_table_count = copy_count;
     } else {

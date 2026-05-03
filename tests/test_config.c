@@ -171,6 +171,23 @@ static void test_config_load_whitespace(void **state) {
     cleanup_tmp();
 }
 
+// Exercises every whitespace character the locale-independent trim() treats
+// as space: \t (tab), \r (CR — common when files are saved on Windows and
+// shipped over to a Linux host), \v (vertical tab), \f (form feed). \n is
+// the line terminator and is consumed by fgets, so it never appears as
+// surrounding whitespace in trim's input.
+static void test_config_load_whitespace_all_kinds(void **state) {
+    (void)state;
+    write_tmp_config("\tfail_threshold\t=\t20\t\r\n"
+                     "\v\ffail_window_sec\v=\f300\v\f\r\n");
+    ps_config_t cfg;
+    int ret = ps_config_load(tmp_path, &cfg);
+    assert_int_equal(ret, PS_OK);
+    assert_int_equal(cfg.fail_threshold, 20);
+    assert_int_equal(cfg.fail_window_sec, 300);
+    cleanup_tmp();
+}
+
 // --- ps_config_load: boundary values ---
 
 static void test_config_load_boundary_min(void **state) {
@@ -456,6 +473,7 @@ int main(void) {
         cmocka_unit_test(test_config_load_valid),
         cmocka_unit_test(test_config_load_all_channels),
         cmocka_unit_test(test_config_load_whitespace),
+        cmocka_unit_test(test_config_load_whitespace_all_kinds),
         cmocka_unit_test(test_config_load_boundary_min),
         cmocka_unit_test(test_config_load_boundary_max),
         cmocka_unit_test(test_config_load_out_of_range_high),
