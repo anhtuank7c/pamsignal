@@ -1,5 +1,5 @@
 Name:           pamsignal
-Version:        0.3.0
+Version:        0.3.1
 Release:        1%{?dist}
 Summary:        Real-time PAM login monitor with multi-channel alerts
 
@@ -89,7 +89,7 @@ fi
 %files
 %license LICENSE
 %doc README.md CHANGELOG.md
-%{_sbindir}/pamsignal
+%{_bindir}/pamsignal
 %{_unitdir}/pamsignal.service
 # Trailing * matches the .gz suffix added by Fedora's brp-compress hook so
 # the file list is correct whether or not compression ran.
@@ -98,6 +98,21 @@ fi
 %config(noreplace) %attr(0640,root,pamsignal) %{_sysconfdir}/pamsignal/pamsignal.conf
 
 %changelog
+* Sun May 03 2026 Tuan Nguyen <anhtuank7c@hotmail.com> - 0.3.1-1
+- BREAKING (revert of v0.3.0 path move): daemon binary moves from
+  /usr/sbin/pamsignal back to /usr/bin/pamsignal to align with the
+  systemd-era convention that admin-oriented commands (journalctl,
+  systemctl, podman, containerd) all live in /usr/bin despite being
+  administrator tools. Fedora 42+ has formally retired the bin/sbin
+  split (sbindir == bindir == /usr/bin); Debian Trixie has the
+  merge on its roadmap. v0.3.0's FHS section 4.10 reading is
+  historically valid but on the wrong side of where the ecosystem
+  is moving. rpm handles the relocation atomically on upgrade and
+  the unit's ExecStart is updated in lockstep via meson
+  configure_file. Anyone who scripted against the /usr/sbin/pamsignal
+  path that v0.3.0 introduced for the ~30 minutes it was on the dnf
+  gh-pages repo needs to revert to /usr/bin/pamsignal.
+
 * Sun May 03 2026 Tuan Nguyen <anhtuank7c@hotmail.com> - 0.3.0-1
 - NEW: detect failed sudo/su password attempts and emit a brute-force
   alert when the per-actor threshold is crossed. Parser recognizes the

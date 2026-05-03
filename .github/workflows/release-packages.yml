@@ -409,11 +409,11 @@ jobs:
       - name: Verify file layout and metadata
         run: |
           # Files at expected paths
-          test -x /usr/sbin/pamsignal
+          test -x /usr/bin/pamsignal
           test -f /usr/lib/systemd/system/pamsignal.service
           test -f /etc/pamsignal/pamsignal.conf
           # ExecStart resolved by meson configure_file at build time
-          grep -q '^ExecStart=/usr/sbin/pamsignal' \
+          grep -q '^ExecStart=/usr/bin/pamsignal' \
             /usr/lib/systemd/system/pamsignal.service
           # Config perms set by postinst
           perms=$(stat -c '%U:%G %a' /etc/pamsignal/pamsignal.conf)
@@ -653,19 +653,17 @@ jobs:
 
       - name: Verify file layout and metadata
         run: |
-          # The binary path tracks %{_sbindir} which differs by distro:
-          # /usr/sbin/pamsignal on EL9 (sbin still separate), /usr/bin/pamsignal
-          # on Fedora 42+ (bin/sbin merged, %{_sbindir} == %{_bindir}). Read
-          # the path from the rpm's own file list rather than hardcoding
-          # /usr/sbin.
+          # Read the binary path from rpm's own file list rather than
+          # hardcoding it — robust against any future packaging-layout
+          # changes (e.g. EL10's planned bin/sbin merge).
           binpath=$(rpm -ql pamsignal | grep -E '^/usr/(s?bin)/pamsignal$' | head -1)
           [ -n "$binpath" ]
           echo "Binary installed at: $binpath"
           test -x "$binpath"
           test -f /usr/lib/systemd/system/pamsignal.service
           test -f /etc/pamsignal/pamsignal.conf
-          # ExecStart was filled by meson configure_file at build time and
-          # tracks the same %{_sbindir}, so it points at $binpath.
+          # ExecStart was filled by meson configure_file at build time
+          # and points at the same path the package installed.
           grep -q "^ExecStart=$binpath" /usr/lib/systemd/system/pamsignal.service
           # System user created by %pre
           getent passwd pamsignal

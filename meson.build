@@ -1,5 +1,5 @@
 project('pamsignal', 'c',
-  version: '0.3.0',
+  version: '0.3.1',
   default_options: [
     'c_std=gnu17',
     'warning_level=2',
@@ -93,17 +93,19 @@ executable('pamsignal',
   include_directories: inc,
   dependencies: libsystemd_dep,
   install: true,
-  # FHS §4.10: system administration daemons go in sbindir, not bindir.
-  # Packaged builds (prefix=/usr) install to /usr/sbin/; dev installs
-  # (prefix=/usr/local by default) install to /usr/local/sbin/.
-  install_dir: get_option('sbindir'),
+  # No install_dir override — meson defaults executable installs to
+  # bindir, which matches modern systemd-era convention. Other
+  # admin-oriented systemd-stack tools (journalctl, systemctl, podman,
+  # containerd) all live in /usr/bin even though they're administrator
+  # commands; FHS §4.10's bin/sbin distinction is V7 Unix baggage that
+  # Fedora 42+ has formally retired (sbin merged into bin).
 )
 
 # Systemd unit: resolve the install dir from systemd's pkg-config so the unit
 # lands in the vendor path (/usr/lib/systemd/system on Debian/Ubuntu/Fedora),
-# not the admin override path. ExecStart is templated with @sbindir@ so packaged
-# builds (prefix=/usr) get /usr/sbin/pamsignal and dev installs (prefix=/usr/local
-# by default) get /usr/local/sbin/pamsignal — no post-install sed required.
+# not the admin override path. ExecStart is templated with @bindir@ so packaged
+# builds (prefix=/usr) get /usr/bin/pamsignal and dev installs (prefix=/usr/local
+# by default) get /usr/local/bin/pamsignal — no post-install sed required.
 systemd_dep = dependency('systemd', required: false)
 if systemd_dep.found()
   systemd_unitdir = systemd_dep.get_variable(pkgconfig: 'systemdsystemunitdir')
@@ -112,7 +114,7 @@ else
 endif
 
 unit_conf = configuration_data()
-unit_conf.set('sbindir', get_option('prefix') / get_option('sbindir'))
+unit_conf.set('bindir', get_option('prefix') / get_option('bindir'))
 
 configure_file(
   input: 'pamsignal.service.in',

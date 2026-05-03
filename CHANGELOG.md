@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.1 — 2026-05-03
+
+Patch release that reverts the `/usr/bin` → `/usr/sbin` move from v0.3.0. The reasoning that landed v0.3.0 cited FHS §4.10's letter ("system administration daemons live in `sbin`"), but the systemd-era convention has moved past that distinction: `journalctl`, `systemctl`, `loginctl`, `udevadm`, `podman`, and `containerd` all ship in `/usr/bin` despite being administrator commands. Fedora 42+ has formally retired the bin/sbin split — `%{_sbindir} == %{_bindir} == /usr/bin` — and Debian Trixie has the merge on its roadmap. The v0.3.0 layout was on the wrong side of that trajectory and produced two CI-test bugs we had to fix during the v0.3.0 release run; reverting now is cheaper than keeping the migration as the ecosystem unwinds in the same direction.
+
+### Breaking
+- [x] **Daemon binary back to `bindir`**. Packaged installs land at `/usr/bin/pamsignal` again (was `/usr/sbin/pamsignal` for the ~30 minutes v0.3.0 was on the apt/dnf gh-pages repos). Dev installs land at `/usr/local/bin/pamsignal`. The systemd unit's `ExecStart` is updated by the same `configure_file` substitution that landed in v0.3.0, so an `apt upgrade` / `dnf upgrade` from v0.3.0 → v0.3.1 atomically removes `/usr/sbin/pamsignal`, installs `/usr/bin/pamsignal`, and rewrites `ExecStart` in lockstep — `systemctl daemon-reload` is auto-fired by the maintainer scripts. Anyone who scripted against the absolute `/usr/sbin/pamsignal` path (download count for v0.3.0 was 0 at the time of v0.3.1) needs to revert their scripts to `/usr/bin/pamsignal`.
+
 ## 0.3.0 — 2026-05-03
 
 Minor release. Three user-visible threads land together: a new local privilege-escalation brute-force detector, a packaging refactor that aligns the install layout with FHS and removes ~25 lines of post-install shell munging in `debian/rules` + `pamsignal.spec`, and the long-promised retirement of the `PAMSIGNAL_*` journal field set. Two breaking changes: the daemon binary moves from `/usr/bin/pamsignal` to `/usr/sbin/pamsignal`, and `journalctl` queries that filter by `PAMSIGNAL_*` need to switch to the ECS-aligned `EVENT_*` / `USER_*` / `SOURCE_*` field names. Both have one-line replacements documented in the relevant entries below.

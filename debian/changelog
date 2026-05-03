@@ -1,3 +1,21 @@
+pamsignal (0.3.1-1) unstable; urgency=medium
+
+  * BREAKING (revert of v0.3.0 path move): daemon binary moves
+    from /usr/sbin/pamsignal back to /usr/bin/pamsignal to align
+    with the systemd-era convention that admin-oriented commands
+    (journalctl, systemctl, podman, containerd) all ship in
+    /usr/bin despite being administrator tools. Fedora 42+
+    has formally retired the bin/sbin split; Debian Trixie has
+    the merge on its roadmap. v0.3.0's FHS-§4.10 reading is
+    historically valid but on the wrong side of where the
+    ecosystem is moving. dpkg handles the relocation atomically
+    on upgrade and the unit's ExecStart is updated in lockstep
+    via meson configure_file. Anyone who scripted against the
+    /usr/sbin/pamsignal path that v0.3.0 introduced for ~30
+    minutes needs to revert to /usr/bin/pamsignal.
+
+ -- Tuan Nguyen <anhtuank7c@hotmail.com>  Sun, 03 May 2026 18:30:00 +0000
+
 pamsignal (0.3.0-1) unstable; urgency=medium
 
   * NEW: detect failed sudo/su password attempts and emit a

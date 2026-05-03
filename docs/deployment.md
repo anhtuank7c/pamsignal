@@ -16,7 +16,7 @@ echo "deb [signed-by=/usr/share/keyrings/pamsignal.gpg] https://anhtuank7c.githu
 sudo apt update && sudo apt install pamsignal
 ```
 
-The package installs `/usr/sbin/pamsignal`, `/usr/lib/systemd/system/pamsignal.service`, `/etc/pamsignal/pamsignal.conf`, and `/usr/share/man/man8/pamsignal.8.gz`. The `pamsignal` user and `systemd-journal` group membership are created in `postinst`. Continue at [Configure](#configure).
+The package installs `/usr/bin/pamsignal`, `/usr/lib/systemd/system/pamsignal.service`, `/etc/pamsignal/pamsignal.conf`, and `/usr/share/man/man8/pamsignal.8.gz`. The `pamsignal` user and `systemd-journal` group membership are created in `postinst`. Continue at [Configure](#configure).
 
 ### Fedora / RHEL / AlmaLinux / Rocky (dnf)
 
@@ -32,7 +32,7 @@ sudo dnf config-manager --add-repo \
 sudo dnf install pamsignal
 ```
 
-Same layout as the deb (`/usr/sbin`, `/usr/lib/systemd/system`, `/etc/pamsignal`, `/usr/share/man/man8/pamsignal.8.gz`). The `pamsignal` user and group are created by the spec's `%pre` block. Continue at [Configure](#configure).
+Same layout as the deb (`/usr/bin`, `/usr/lib/systemd/system`, `/etc/pamsignal`, `/usr/share/man/man8/pamsignal.8.gz`). The `pamsignal` user and group are created by the spec's `%pre` block. Continue at [Configure](#configure).
 
 ### Source build (`meson install`)
 
@@ -47,12 +47,12 @@ sudo meson install -C build
 
 With the default `--prefix=/usr/local` you get:
 
-- `/usr/local/sbin/pamsignal` — the binary (FHS §4.10: system administration daemons live in `sbin`)
+- `/usr/local/bin/pamsignal` — the binary (modern systemd-era convention: admin-oriented daemons share `/usr/bin` with everything else, matching `journalctl`, `systemctl`, `podman`, `containerd`)
 - `/usr/local/lib/systemd/system/pamsignal.service` — the systemd unit (vendor unit search path)
 - `/usr/local/etc/pamsignal/pamsignal.conf` — the example config (from `pamsignal.conf.example`)
 - `/usr/local/share/man/man8/pamsignal.8` — the man page
 
-For a system-wide install that mirrors the packaged layout (`/usr/sbin`, `/usr/lib/systemd/system`, `/etc/pamsignal`), reconfigure with `meson setup build --prefix=/usr --sysconfdir=/etc`.
+For a system-wide install that mirrors the packaged layout (`/usr/bin`, `/usr/lib/systemd/system`, `/etc/pamsignal`), reconfigure with `meson setup build --prefix=/usr --sysconfdir=/etc`.
 
 A source build does **not** create the `pamsignal` system user or lock down the config-file permissions — do those steps yourself before starting the service:
 
@@ -168,7 +168,7 @@ If you ran `sudo meson install -C build` instead of installing a package, no pac
 ```bash
 sudo systemctl stop pamsignal
 sudo systemctl disable pamsignal
-sudo rm /usr/local/sbin/pamsignal
+sudo rm /usr/local/bin/pamsignal
 sudo rm /usr/local/lib/systemd/system/pamsignal.service
 sudo rm -f /usr/local/share/man/man8/pamsignal.8
 sudo rm -rf /usr/local/etc/pamsignal
@@ -183,7 +183,7 @@ sudo systemctl daemon-reload
 
 `/run/pamsignal/` does not need manual cleanup — `RuntimeDirectory=pamsignal` removes it automatically when the service stops.
 
-If you reconfigured the build with `--prefix=/usr --sysconfdir=/etc` to mirror the packaged layout, replace `/usr/local/sbin`, `/usr/local/lib/systemd/system`, `/usr/local/share/man/man8`, and `/usr/local/etc/pamsignal` with their `/usr/...` and `/etc/...` counterparts.
+If you reconfigured the build with `--prefix=/usr --sysconfdir=/etc` to mirror the packaged layout, replace `/usr/local/bin`, `/usr/local/lib/systemd/system`, `/usr/local/share/man/man8`, and `/usr/local/etc/pamsignal` with their `/usr/...` and `/etc/...` counterparts.
 
 ## Security hardening
 
