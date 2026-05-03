@@ -58,6 +58,26 @@ SHA512: 4e024376a541eb7fad9263834881fe7e8b443b3f9cea4a06f7c3954cbee17361e64800f1
 Description: debug symbols for pamsignal
 Build-Ids: d2f272e9ba239cdd4622ce97f00826b8aec54e8a
 
+Package: pamsignal-dbgsym
+Package-Type: ddeb
+Architecture: amd64
+Version: 0.2.4-1
+Auto-Built-Package: debug-symbols
+Priority: optional
+Section: debug
+Source: pamsignal
+Maintainer: Tuan Nguyen <anhtuank7c@hotmail.com>
+Installed-Size: 68
+Depends: pamsignal (= 0.2.4-1)
+Filename: pool/main/p/pamsignal/pamsignal-dbgsym_0.2.4-1_amd64.ddeb
+Size: 42616
+MD5sum: be2622ec1e232d8a447cadc762e71e37
+SHA1: 026d4339298ed2d3b8c053ed652d9a59220b2a87
+SHA256: 69eaeafac00acb77dc560b3a9f9bbf5283990fafac8101e3537207fdec2d6f60
+SHA512: 9c124e65f7007140732386df73d5ea66937b12209a33309600028f78247b7cd1ddd0c163cdfca9495f41582175f71d1c6f1c3c68e196bf406361d8945f273f85
+Description: debug symbols for pamsignal
+Build-Ids: 9db7c576bdaa13af8d21c7f4d8a3ef94fa362caf
+
 Package: pamsignal
 Architecture: amd64
 Version: 0.2.1-1
@@ -127,6 +147,33 @@ MD5sum: 9294f140507f629c15724265891ca605
 SHA1: f12c3a38af1002da5cdda6efc4729452e00ad696
 SHA256: 5d233f1cdf09b0c34e5c765286f17c276503f31d679e2ba4671dfe6c721b2599
 SHA512: 203d37d6a2434fb5688fb5e4fea1f83ab2e6e4784e902594e78d1fc547bbb8d32e80a895bcc21155ffc671c584aa2be5511b6ab79017d28aca9a5827f78cdd71
+Homepage: https://github.com/anhtuank7c/pamsignal
+Description: Real-time PAM login monitor with multi-channel alerts
+ PAMSignal monitors PAM authentication events via the systemd journal.
+ It detects login attempts, logouts, and brute-force patterns from sshd,
+ sudo, su, and login services, sending alerts to Telegram, Slack, Microsoft
+ Teams, WhatsApp, Discord, or custom webhooks.
+ .
+ The daemon runs as an unprivileged system user with read-only access to
+ the journal, isolates the alert dispatch path via fork+exec of curl, and
+ ships with systemd hardening directives (NoNewPrivileges, ProtectSystem,
+ SystemCallFilter, MemoryDenyWriteExecute, etc.).
+
+Package: pamsignal
+Architecture: amd64
+Version: 0.2.4-1
+Priority: optional
+Section: admin
+Maintainer: Tuan Nguyen <anhtuank7c@hotmail.com>
+Installed-Size: 74
+Pre-Depends: adduser
+Depends: libc6 (>= 2.38), libsystemd0, curl, systemd
+Filename: pool/main/p/pamsignal/pamsignal_0.2.4-1_amd64.deb
+Size: 23654
+MD5sum: 10e70d371112108be8efc1ffe0678b67
+SHA1: 174cdfc0cc97904c4d188b265eaf72d62c68eb91
+SHA256: ccba66033c2e6653a65cfce437bd0de8825bc85d26ada7c1df88dc22043ad2d2
+SHA512: f3d244828983315481fec003baff81ac17fa1b493197997f99e7296a210f9214d802dbf60dbe37f72f2c9842b1937d80a78acd9f7082d519ead1fd40cf4752b6
 Homepage: https://github.com/anhtuank7c/pamsignal
 Description: Real-time PAM login monitor with multi-channel alerts
  PAMSignal monitors PAM authentication events via the systemd journal.
