@@ -1,5 +1,5 @@
 Name:           pamsignal
-Version:        0.3.3
+Version:        0.3.4
 Release:        1%{?dist}
 Summary:        Real-time PAM login monitor with multi-channel alerts
 
@@ -98,6 +98,35 @@ fi
 %config(noreplace) %attr(0640,root,pamsignal) %{_sysconfdir}/pamsignal/pamsignal.conf
 
 %changelog
+* Sun May 03 2026 Tuan Nguyen <anhtuank7c@hotmail.com> - 0.3.4-1
+- Security: extend the _EXE anti-spoofing allowlist to accept
+  sshd-session. OpenSSH 9.8 (released 2024-07) split sshd into a
+  privilege-separated listener and a per-connection auth process
+  (sshd-session). On Fedora 41+, RHEL/Alma/Rocky once they pick up
+  the new OpenSSH, and on Ubuntu 26.04 / Debian Trixie, all sshd
+  PAM auth events come from sshd-session and were dropped by
+  pamsignal's allowlist — the daemon ran fine, journald accumulated
+  events fine, the daemon just didn't see them. Fix is a one-line
+  addition to the basename allowlist. Refactored into a testable
+  ps_is_trusted_exe helper with eight new CMocka cases covering
+  canonical paths, sshd-session paths, alternate system prefixes,
+  and spoofing-rejection paths.
+- Tooling: tests/scenario.sh full-stack local end-to-end scenario
+  test (build, install, real sshd brute-force, real sudo
+  brute-force, mock HTTPS webhook, SIGHUP reload, cleanup). Twelve
+  phases with pass/fail per phase and an EXIT trap that always
+  cleans up. Caught the sshd-session bug above on its first
+  non-CI run.
+- CI: forward-port a hardened Python webhook handler into the
+  test-deb mock. The default BaseHTTPRequestHandler does dirty TLS
+  shutdowns which OpenSSL 3.5+ flags as
+  error:0A000126:SSL routines::unexpected eof while reading. The
+  CI runner is currently on OpenSSL 3.0 (tolerant) but will
+  eventually promote to 3.5+ (strict); fix in place.
+- Repository hygiene: CONTRIBUTING.md, GitHub issue + PR templates,
+  rewritten as Linux-daemon reports — accumulated under
+  Unreleased since v0.3.3 and ship now alongside the security fix.
+
 * Sun May 03 2026 Tuan Nguyen <anhtuank7c@hotmail.com> - 0.3.3-1
 - systemd unit hardening: exposure score drops from 22 to 13
   (displayed 2.2 to 1.3, near the achievable floor for a daemon

@@ -1,3 +1,45 @@
+pamsignal (0.3.4-1) unstable; urgency=medium
+
+  * Security: extend the _EXE allowlist to accept sshd-session.
+    OpenSSH 9.8 (released 2024-07) split sshd into a privilege-
+    separated listener (sshd) and a per-connection auth process
+    (sshd-session). On Ubuntu 26.04, Fedora 41+, and Debian
+    Trixie, all PAM auth events on sshd are recorded with
+    _EXE=/usr/{sbin,lib}/openssh/sshd-session and were dropped
+    by pamsignal's anti-spoofing allowlist — the daemon ran fine,
+    journald accumulated events fine, the daemon just didn't
+    see them. Fix is a one-line addition to the basename
+    allowlist. Refactored into a testable ps_is_trusted_exe
+    helper with eight new CMocka cases covering canonical paths,
+    sshd-session paths, alternate system prefixes, and
+    spoofing-rejection paths.
+  * Tooling: tests/scenario.sh full-stack local end-to-end
+    scenario test (build, install, real sshd brute-force, real
+    sudo brute-force, mock HTTPS webhook ingestion, SIGHUP
+    reload, purge cleanup). Twelve phases with pass/fail per
+    phase and an EXIT trap that always cleans up. Adds two
+    pieces of coverage CI doesn't have: explicit Type=notify
+    activation verification, and the v0.3.0 sudo brute-force
+    scenario with testpamuser added to /etc/sudoers.d/. The
+    script caught the sshd-session bug above on its first
+    non-CI run.
+  * CI: forward-port a hardened Python webhook handler into
+    release-packages.yml's test-deb mock. The default
+    BaseHTTPRequestHandler does dirty TLS shutdowns (no
+    close_notify) which OpenSSL 3.5+ flags as
+    error:0A000126:SSL routines::unexpected eof while reading.
+    The runner is currently ubuntu-24.04 (OpenSSL 3.0,
+    tolerant) but will eventually move to 26.04 (3.5+, strict);
+    the fix also adds a READY-poll startup check so a
+    Python-side bind error fails loudly with captured stderr.
+  * Repository hygiene: CONTRIBUTING.md, GitHub issue templates
+    (bug + feature + config) rewritten as Linux-daemon reports
+    rather than generic open-source forms, pull-request
+    template — these accumulated under "Unreleased" since
+    v0.3.3 and ship now alongside the security fix.
+
+ -- Tuan Nguyen <anhtuank7c@hotmail.com>  Sun, 03 May 2026 23:30:00 +0000
+
 pamsignal (0.3.3-1) unstable; urgency=medium
 
   * systemd unit hardening: exposure score drops from 22 to 13
