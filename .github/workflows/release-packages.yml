@@ -428,13 +428,15 @@ jobs:
       - name: systemd-analyze security regression gate
         run: |
           # Fail the build if the unit's exposure score regresses past the
-          # baseline. Threshold is set 0.8 above the current ~2.2 score so
-          # routine adjustments (e.g. adding an Environment= line) don't
-          # break CI, but stripping a major hardening directive
+          # baseline. systemd-analyze's --threshold flag uses a 0–100
+          # internal scale (whereas the human-readable "Overall exposure
+          # level" line shows the score divided by 10, e.g. an internal 22
+          # is displayed as "2.2"). Current internal score is 22 ("OK"); the
+          # threshold of 30 leaves 8 points of headroom for routine
+          # adjustments but trips on stripping a major hardening directive
           # (MemoryDenyWriteExecute=, SystemCallFilter=, etc., each worth
-          # 0.5+) does. systemd-analyze --threshold exits non-zero when the
-          # overall exposure level exceeds the threshold.
-          sudo systemd-analyze security --threshold=3 pamsignal.service
+          # 5+ points internally — 0.5 in displayed units).
+          sudo systemd-analyze security --threshold=30 pamsignal.service
 
       - name: Generate trusted self-signed cert for localhost
         run: |

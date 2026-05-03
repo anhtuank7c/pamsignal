@@ -115,11 +115,14 @@ fi
   out-of-scope table separating parser bypasses and tracker
   logic from upstream-dependency bugs.
 - CI: add a systemd-analyze security regression gate to the
-  test-deb job. Threshold is 3, current baseline is 2.2;
-  routine adjustments pass through but stripping a major
-  hardening directive (MemoryDenyWriteExecute, SystemCallFilter,
-  CapabilityBoundingSet, ProtectSystem=strict, etc., each worth
-  at least 0.5 score points) trips the gate.
+  test-deb job. systemd-analyze --threshold uses a 0-100 internal
+  scale (the displayed "Overall exposure level" shows the same
+  value divided by 10). Current internal score is 22 (displayed
+  2.2, "OK"); the gate threshold is 30. Routine adjustments pass
+  through but stripping a major hardening directive
+  (MemoryDenyWriteExecute, SystemCallFilter, CapabilityBoundingSet,
+  ProtectSystem=strict, etc., each worth 5+ internal points)
+  trips the gate.
 
 * Sun May 03 2026 Tuan Nguyen <anhtuank7c@hotmail.com> - 0.3.1-1
 - BREAKING (revert of v0.3.0 path move): daemon binary moves from

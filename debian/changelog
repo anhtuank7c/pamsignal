@@ -16,11 +16,14 @@ pamsignal (0.3.2-1) unstable; urgency=medium
     version policy is latest minor only; explicit in-scope vs
     out-of-scope table.
   * CI: add a systemd-analyze security regression gate to the
-    test-deb job. Threshold is 3, current baseline is 2.2;
-    routine adjustments pass through, but stripping a major
-    hardening directive (MemoryDenyWriteExecute=,
-    SystemCallFilter=, CapabilityBoundingSet=, etc.) trips
-    the gate and fails the workflow.
+    test-deb job. systemd-analyze --threshold uses a 0-100
+    internal scale (the displayed "Overall exposure level"
+    shows the same value divided by 10). Current internal
+    score is 22 (displayed 2.2, "OK"); the gate threshold is
+    30. Routine adjustments pass through but stripping a
+    major hardening directive (MemoryDenyWriteExecute=,
+    SystemCallFilter=, CapabilityBoundingSet=, etc., each
+    worth 5+ internal points) trips the gate.
 
  -- Tuan Nguyen <anhtuank7c@hotmail.com>  Sun, 03 May 2026 19:30:00 +0000
 
