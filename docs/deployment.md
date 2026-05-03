@@ -34,8 +34,8 @@ sudo editor /etc/pamsignal/pamsignal.conf
 To enable alerts, add your channel credentials (e.g. Telegram, Slack):
 
 ```ini
-telegram_bot_token = 123456:ABC-DEF
-telegram_chat_id = -100123456
+telegram_bot_token = <bot_token>
+telegram_chat_id = <chat_id>
 ```
 
 Since the config may contain credentials, set restricted permissions:

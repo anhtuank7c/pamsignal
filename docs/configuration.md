@@ -19,25 +19,25 @@ max_tracked_ips = 256
 alert_cooldown_sec = 60
 
 # Telegram
-telegram_bot_token = 123456:ABC-DEF
-telegram_chat_id = -100123456
+telegram_bot_token = <bot_token>
+telegram_chat_id = <chat_id>
 
 # Slack
-slack_webhook_url = https://hooks.slack.com/services/...
+slack_webhook_url = <webhook_url>
 
 # Microsoft Teams
-teams_webhook_url = https://outlook.office.com/webhook/...
+teams_webhook_url = <webhook_url>
 
 # WhatsApp (Meta Cloud API)
-whatsapp_access_token = EAABs...
-whatsapp_phone_number_id = 123456789
-whatsapp_recipient = 84901234567
+whatsapp_access_token = <access_token>
+whatsapp_phone_number_id = <phone_number_id>
+whatsapp_recipient = <recipient_number>
 
 # Discord
-discord_webhook_url = https://discord.com/api/webhooks/...
+discord_webhook_url = <webhook_url>
 
 # Custom webhook
-webhook_url = https://your-app.com/api/alerts
+webhook_url = <webhook_url>
 ```
 
 ## Brute-force detection

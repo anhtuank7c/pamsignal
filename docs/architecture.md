@@ -1,6 +1,6 @@
 # Architecture
 
-PAMSignal is designed around one principle: **do one thing well with minimal moving parts.**
+PAMSignal is designed around one core principle: **do one thing well with minimal moving parts.**
 
 It subscribes to the systemd journal, filters for PAM-related messages from sshd, sudo, su, and login, parses each message to extract structured data (username, source IP, port, service, auth method), and writes structured events back to the journal with custom fields. It tracks failed login attempts per IP and detects brute-force patterns. Optionally, it sends best-effort alerts to messaging platforms without risking the core monitoring.
 
@@ -8,107 +8,93 @@ Single binary. Single config file. Single dependency (`libsystemd`). No database
 
 ## C4 Model
 
+Following the [C4 model](https://c4model.com/) conventions, we map out the architecture from a high-level system context down to internal components.
+
 ### Level 1: System Context
 
-How PAMSignal fits into a Linux server environment.
+The System Context diagram provides a high-level overview of how users interact with internal and external systems to get value. It shows PAMSignal within the larger Linux server environment.
 
 ```mermaid
-graph LR
-    admin["🧑‍💻 System Administrator"]
-    sshd["sshd / sudo / su"]
-    journald[("systemd-journald")]
-    pamsignal["PAMSignal"]
-    platforms["Telegram / Slack / Teams<br/>WhatsApp / Discord"]
+C4Context
+  title System Context diagram for PAMSignal
 
-    sshd -- "writes PAM auth events" --> journald
-    pamsignal -- "reads PAM events" --> journald
-    pamsignal -- "writes structured events<br/>via sd_journal_send" --> journald
-    pamsignal -. "fork+exec curl<br/>(best-effort)" .-> platforms
-    admin -- "journalctl -t pamsignal" --> journald
-    platforms -. "receives alerts" .-> admin
+  Person(admin, "System Administrator", "A sysadmin who monitors and secures the server")
+  
+  System(pamsignal, "PAMSignal", "Real-time PAM event monitor and alert dispatcher")
+  
+  System_Ext(sshd, "PAM Services", "sshd, sudo, su, login")
+  System_Ext(journald, "systemd-journald", "Centralized binary logging system")
+  System_Ext(platforms, "Messaging Platforms", "Telegram, Slack, Teams, WhatsApp, Discord, Webhooks")
+  System_Ext(fail2ban, "Fail2ban", "Intrusion prevention system (iptables / ufw)")
 
-    style pamsignal fill:#2d6a4f,stroke:#1b4332,color:#fff
-    style journald fill:#264653,stroke:#1d3557,color:#fff
-    style sshd fill:#6c757d,stroke:#495057,color:#fff
-    style platforms fill:#6c757d,stroke:#495057,color:#fff,stroke-dasharray: 5 5
-    style admin fill:#e9c46a,stroke:#f4a261,color:#000
+  Rel(sshd, journald, "Writes PAM auth events to")
+  Rel(pamsignal, journald, "Reads PAM events & writes structured alerts to")
+  Rel(admin, journald, "Queries structured events via journalctl")
+  Rel(pamsignal, platforms, "Dispatches alerts via curl", "HTTPS")
+  Rel(platforms, admin, "Delivers alert messages to")
+  Rel(fail2ban, journald, "Watches for pamsignal BRUTE_FORCE_DETECTED events")
 ```
 
 ### Level 2: Container
 
-PAMSignal is a single-process daemon. Alerts are sent by short-lived child processes that cannot affect the parent.
+The Container diagram zooms into the system boundary to show the separately runnable/deployable containers. PAMSignal is a single-process daemon. Alerts are sent by short-lived child processes (`curl`) that cannot affect the parent monitoring daemon.
 
 ```mermaid
-graph TB
-    admin["🧑‍💻 System Administrator"]
+C4Container
+  title Container diagram for PAMSignal
+  
+  Person(admin, "System Administrator", "A sysadmin who monitors the server")
+  
+  System_Boundary(server, "Linux Server") {
+      System_Ext(sshd, "PAM Services", "sshd, sudo, su, login")
+      System_Ext(journald, "systemd-journald", "Structured binary log")
+      System_Ext(systemd, "systemd", "Service manager")
+      System_Ext(fail2ban, "Fail2ban", "Intrusion prevention framework")
+      
+      Container(daemon, "PAMSignal Daemon", "C / libsystemd", "Core monitoring process running as an unprivileged service")
+      Container(curl, "curl Child Process", "cURL", "Short-lived fire-and-forget alert dispatcher")
+  }
+  
+  System_Ext(platforms, "External Platforms", "Telegram, Slack, Teams, WhatsApp, Discord, Webhook")
 
-    subgraph server ["Linux Server"]
-        pam_services["sshd / sudo / su<br/><i>PAM services</i>"]
-        journald[("systemd journal<br/><i>structured binary log</i>")]
-        pamsignal["PAMSignal Daemon<br/><i>C / libsystemd</i>"]
-        systemd["systemd<br/><i>service manager</i>"]
-        curl["curl child process<br/><i>short-lived, fire-and-forget</i>"]
-    end
-
-    subgraph external ["External (optional)"]
-        platforms["Telegram / Slack / Teams<br/>WhatsApp / Discord"]
-    end
-
-    pam_services -- "writes auth events" --> journald
-    pamsignal -- "reads PAM events &<br/>writes structured events" --> journald
-    systemd -- "starts, stops, sandboxes" --> pamsignal
-    admin -- "journalctl -t pamsignal" --> journald
-    pamsignal -. "fork()" .-> curl
-    curl -. "exec curl → HTTP POST" .-> platforms
-
-    style pamsignal fill:#2d6a4f,stroke:#1b4332,color:#fff
-    style journald fill:#264653,stroke:#1d3557,color:#fff
-    style systemd fill:#6c757d,stroke:#495057,color:#fff
-    style pam_services fill:#6c757d,stroke:#495057,color:#fff
-    style curl fill:#6c757d,stroke:#495057,color:#fff,stroke-dasharray: 5 5
-    style platforms fill:#6c757d,stroke:#495057,color:#fff,stroke-dasharray: 5 5
-    style admin fill:#e9c46a,stroke:#f4a261,color:#000
-    style server fill:#f8f9fa,stroke:#adb5bd,color:#000
-    style external fill:#f8f9fa,stroke:#adb5bd,color:#000
+  Rel(sshd, journald, "Writes auth events to")
+  Rel(daemon, journald, "Reads events & writes structured alerts to")
+  Rel(systemd, daemon, "Starts, stops, sandboxes")
+  Rel(admin, journald, "Queries logs via journalctl")
+  Rel(daemon, curl, "fork() & exec()", "Process creation")
+  Rel(curl, platforms, "POSTs JSON/text alerts to", "HTTPS")
+  Rel(fail2ban, journald, "Watches BRUTE_FORCE_DETECTED events")
 ```
 
 ### Level 3: Component
 
+The Component diagram zooms into the PAMSignal daemon container to show its internal C components, mapping to the actual source files in the project.
+
 ```mermaid
-graph TB
-    journald[("systemd journal")]
-    platforms["Telegram / Slack / Teams<br/>WhatsApp / Discord"]
+C4Component
+  title Component diagram for PAMSignal Daemon
+  
+  Container_Ext(journald, "systemd-journald", "System log service")
+  Container_Ext(curl, "curl Child Process", "cURL binary")
 
-    subgraph daemon ["PAMSignal Daemon"]
-        main["<b>main.c</b><br/>CLI parsing, root rejection<br/>journal group check, daemon lifecycle"]
-        config["<b>config.c</b><br/>INI parser, validation<br/>SIGHUP reload support"]
-        init["<b>init.c</b><br/>Double-fork daemonization<br/>signal handling, PID file"]
-        jw["<b>journal_watch.c</b><br/>Journal subscription, event loop<br/>brute-force tracking, alert dispatch"]
-        utils["<b>utils.c</b><br/>PAM message parsing<br/>IP validation, log sanitization"]
-        notify["<b>notify.c</b><br/>fork+exec curl<br/>fire-and-forget, best-effort"]
-    end
+  Container_Boundary(daemon, "PAMSignal Daemon") {
+      Component(main, "main.c", "C", "CLI parsing, root rejection, journal group check, daemon lifecycle")
+      Component(config, "config.c", "C", "INI parser, validation, SIGHUP reload support")
+      Component(init, "init.c", "C", "Double-fork daemonization, signal handling, PID file")
+      Component(jw, "journal_watch.c", "C", "Journal subscription, event loop, brute-force state tracking")
+      Component(utils, "utils.c", "C", "PAM message parsing, IP validation, log sanitization")
+      Component(notify, "notify.c", "C", "Alert formatting and fork+exec dispatch")
+  }
 
-    main -- "loads config" --> config
-    main -- "initializes" --> init
-    main -- "starts event loop" --> jw
-    jw -- "parses each entry" --> utils
-    jw -- "reloads on SIGHUP" --> config
-    jw -- "sd_journal_wait / next<br/>(reads PAM events)" --> journald
-    jw -- "sd_journal_send<br/>(writes structured events)" --> journald
-    jw -- "on event" --> notify
-    notify -. "fork+exec curl" .-> platforms
-    init -. "SIGTERM/SIGINT →<br/>running = false" .-> main
-    init -. "SIGHUP →<br/>reload_requested = true" .-> jw
-
-    style main fill:#2d6a4f,stroke:#1b4332,color:#fff
-    style config fill:#2d6a4f,stroke:#1b4332,color:#fff
-    style init fill:#2d6a4f,stroke:#1b4332,color:#fff
-    style jw fill:#2d6a4f,stroke:#1b4332,color:#fff
-    style utils fill:#2d6a4f,stroke:#1b4332,color:#fff
-    style notify fill:#2d6a4f,stroke:#1b4332,color:#fff
-    style journald fill:#264653,stroke:#1d3557,color:#fff
-    style platforms fill:#6c757d,stroke:#495057,color:#fff,stroke-dasharray: 5 5
-    style daemon fill:#f8f9fa,stroke:#adb5bd,color:#000
+  Rel(main, config, "Loads config using")
+  Rel(main, init, "Initializes daemon using")
+  Rel(main, jw, "Starts event loop in")
+  Rel(jw, utils, "Parses messages using")
+  Rel(jw, config, "Reloads on SIGHUP using")
+  
+  Rel(jw, journald, "Reads PAM events & writes structured alerts via sd_journal_send")
+  Rel(jw, notify, "Triggers alerts via")
+  Rel(notify, curl, "fork+exec() (fire-and-forget)")
 ```
 
 ## Data flow
@@ -119,7 +105,7 @@ SSH login attempt
         → pamsignal reads via sd_journal_wait/next
             → utils.c parses message, extracts fields
                 → journal_watch.c writes structured event via sd_journal_send
-                    → journald stores event with custom PAMSIGNAL_* fields
+                    → journald stores event with custom fields
                         → admin reads with: journalctl -t pamsignal
                 → notify.c fork() → child exec("curl", ...) → Telegram/Slack/etc.
                     → parent continues immediately (fire-and-forget)
