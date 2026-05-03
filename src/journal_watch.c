@@ -15,6 +15,54 @@
 #include "pam_event.h"
 #include "utils.h"
 
+// --- Trusted-source allowlist ----------------------------------------
+//
+// The journald-recorded _EXE field is the actual on-disk path of the
+// process that wrote the entry, set by the kernel via /proc/<pid>/exe at
+// write time. An unprivileged user can call logger(1) (which has
+// _EXE=/usr/bin/logger) to inject arbitrary text into the journal, but
+// they cannot forge a different _EXE — that requires being a different
+// process. So we accept events only when _EXE belongs to one of the
+// PAM-stack daemons whose auth-event format we know how to parse.
+//
+// The allowlist applies two filters:
+//   1. Path prefix: must be under a standard system directory (/usr/,
+//      /bin/, /sbin/, /lib/, /lib64/, /opt/) so an attacker cannot
+//      drop a binary named "sshd" into /tmp or $HOME and have it
+//      treated as trusted.
+//   2. Basename: must match one of the known PAM stack daemons.
+//
+// Extracted into a function so the test suite can drive it directly
+// without spinning up a journal subscription.
+
+static int ps_is_trusted_exe(const char *exe_path) {
+    if (!exe_path || exe_path[0] == '\0')
+        return 0;
+
+    if (strncmp(exe_path, "/usr/", 5) != 0 &&
+        strncmp(exe_path, "/bin/", 5) != 0 &&
+        strncmp(exe_path, "/sbin/", 6) != 0 &&
+        strncmp(exe_path, "/lib/", 5) != 0 &&
+        strncmp(exe_path, "/lib64/", 7) != 0 &&
+        strncmp(exe_path, "/opt/", 5) != 0) {
+        return 0;
+    }
+
+    const char *base = strrchr(exe_path, '/');
+    if (!base)
+        return 0;
+    base++;
+
+    // OpenSSH 9.8+ (Ubuntu 26.04, Fedora 41+, Debian Trixie) splits the
+    // server into a privilege-separated listener (`sshd`) and a
+    // per-connection auth process (`sshd-session`). PAM auth events on
+    // those distributions come from sshd-session, not sshd, so both
+    // basenames are trusted.
+    return strcmp(base, "sshd") == 0 || strcmp(base, "sshd-session") == 0 ||
+           strcmp(base, "sudo") == 0 || strcmp(base, "su") == 0 ||
+           strcmp(base, "login") == 0 || strcmp(base, "systemd-logind") == 0;
+}
+
 // --- Failed login tracking ---
 
 // Key kind for an entry. Sshd brute-force is keyed by source IP (and so is
@@ -339,9 +387,10 @@ static void ps_process_entry(sd_journal *j) {
     // Extract additional metadata into null-terminated buffers
     char fieldbuf[256];
 
-    // Prevent log spoofing by verifying the executable path.
-    // Unprivileged users can inject logs via logger(1), but systemd-journald
-    // records the actual executable path in _EXE. We only trust known paths.
+    // Prevent log spoofing by verifying the executable path. journald
+    // records the actual /proc/<pid>/exe at write time; logger(1) and
+    // other low-priv injection tools cannot forge it. ps_is_trusted_exe
+    // applies path-prefix + basename filters; see its definition above.
     if (sd_journal_get_data(j, "_EXE", &data, &length) == 0) {
         const char *val = ps_field_value(data, length);
         if (val) {
@@ -351,29 +400,7 @@ static void ps_process_entry(sd_journal *j) {
             memcpy(fieldbuf, val, vlen);
             fieldbuf[vlen] = '\0';
 
-            int is_trusted = 0;
-            // Require the executable to be in a system path to prevent
-            // execution from /tmp or /home by an unprivileged user spoofing the
-            // daemon name.
-            if (strncmp(fieldbuf, "/usr/", 5) == 0 ||
-                strncmp(fieldbuf, "/bin/", 5) == 0 ||
-                strncmp(fieldbuf, "/sbin/", 6) == 0 ||
-                strncmp(fieldbuf, "/lib/", 5) == 0 ||
-                strncmp(fieldbuf, "/lib64/", 7) == 0 ||
-                strncmp(fieldbuf, "/opt/", 5) == 0) {
-
-                const char *base = strrchr(fieldbuf, '/');
-                if (base) {
-                    base++;
-                    if (strcmp(base, "sshd") == 0 ||
-                        strcmp(base, "sudo") == 0 || strcmp(base, "su") == 0 ||
-                        strcmp(base, "login") == 0 ||
-                        strcmp(base, "systemd-logind") == 0) {
-                        is_trusted = 1;
-                    }
-                }
-            }
-            if (!is_trusted) {
+            if (!ps_is_trusted_exe(fieldbuf)) {
                 return;
             }
         }

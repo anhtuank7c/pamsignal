@@ -433,6 +433,86 @@ static void test_track_sudo_with_ip_keys_by_ip(void **state) {
     assert_string_equal(fail_table[0].key, "192.0.2.5");
 }
 
+// --- ps_is_trusted_exe: anti-spoofing _EXE allowlist ----------------
+
+static void test_trusted_exe_accepts_canonical_paths(void **state) {
+    (void)state;
+    // The five PAM-stack daemons whose auth-event format pamsignal parses,
+    // each at the path Debian/Ubuntu/Fedora package them at.
+    assert_int_equal(ps_is_trusted_exe("/usr/sbin/sshd"), 1);
+    assert_int_equal(ps_is_trusted_exe("/usr/bin/sudo"), 1);
+    assert_int_equal(ps_is_trusted_exe("/usr/bin/su"), 1);
+    assert_int_equal(ps_is_trusted_exe("/usr/bin/login"), 1);
+    assert_int_equal(ps_is_trusted_exe("/usr/lib/systemd/systemd-logind"), 1);
+}
+
+static void test_trusted_exe_accepts_sshd_session(void **state) {
+    (void)state;
+    // OpenSSH 9.8+ split: sshd-session is the per-connection auth process
+    // that emits "Failed password" / "Accepted password" entries on Ubuntu
+    // 26.04, Fedora 41+, Debian Trixie. Without this entry on the
+    // allowlist, pamsignal silently drops every sshd auth event on those
+    // distributions — the bug surfaced by tests/scenario.sh on 2026-05-03.
+    assert_int_equal(ps_is_trusted_exe("/usr/sbin/sshd-session"), 1);
+    assert_int_equal(ps_is_trusted_exe("/usr/lib/openssh/sshd-session"), 1);
+}
+
+static void test_trusted_exe_accepts_alternate_system_prefixes(void **state) {
+    (void)state;
+    // Older Debian / pre-/usr-merge installs and embedded distros put the
+    // same binaries at /sbin, /bin, /lib paths.
+    assert_int_equal(ps_is_trusted_exe("/sbin/sshd"), 1);
+    assert_int_equal(ps_is_trusted_exe("/bin/login"), 1);
+    assert_int_equal(ps_is_trusted_exe("/lib/systemd/systemd-logind"), 1);
+    assert_int_equal(ps_is_trusted_exe("/lib64/openssh/sshd-session"), 1);
+    assert_int_equal(ps_is_trusted_exe("/opt/openssh/bin/sshd"), 1);
+}
+
+static void test_trusted_exe_rejects_logger(void **state) {
+    (void)state;
+    // logger(1) is the canonical journal-injection tool. Its _EXE is
+    // /usr/bin/logger which passes the path-prefix filter but fails the
+    // basename allowlist.
+    assert_int_equal(ps_is_trusted_exe("/usr/bin/logger"), 0);
+}
+
+static void test_trusted_exe_rejects_non_system_paths(void **state) {
+    (void)state;
+    // An attacker who can drop a binary into /tmp or $HOME and run it
+    // cannot have its events trusted — the path prefix filter rejects.
+    assert_int_equal(ps_is_trusted_exe("/tmp/sshd"), 0);
+    assert_int_equal(ps_is_trusted_exe("/home/attacker/sshd"), 0);
+    assert_int_equal(ps_is_trusted_exe("/var/tmp/sshd-session"), 0);
+    assert_int_equal(ps_is_trusted_exe("/dev/shm/sudo"), 0);
+}
+
+static void test_trusted_exe_rejects_basename_imposters(void **state) {
+    (void)state;
+    // Path prefix passes, but the basename isn't an exact match for any
+    // allowlisted daemon.
+    assert_int_equal(ps_is_trusted_exe("/usr/bin/sshd-fake"), 0);
+    assert_int_equal(ps_is_trusted_exe("/usr/bin/fakesshd"), 0);
+    assert_int_equal(ps_is_trusted_exe("/usr/bin/sudoreplay"), 0);
+    assert_int_equal(ps_is_trusted_exe("/usr/bin/su-helper"), 0);
+    assert_int_equal(ps_is_trusted_exe("/usr/bin/login-helper"), 0);
+    assert_int_equal(ps_is_trusted_exe("/usr/lib/systemd/systemd-loginctl"), 0);
+}
+
+static void test_trusted_exe_rejects_null_and_empty(void **state) {
+    (void)state;
+    assert_int_equal(ps_is_trusted_exe(NULL), 0);
+    assert_int_equal(ps_is_trusted_exe(""), 0);
+}
+
+static void test_trusted_exe_rejects_paths_without_slash(void **state) {
+    (void)state;
+    // strrchr returning NULL was a real bug class — make sure the
+    // helper handles bare basenames defensively even though the call site
+    // never produces them (journald always writes absolute paths).
+    assert_int_equal(ps_is_trusted_exe("sshd"), 0);
+    assert_int_equal(ps_is_trusted_exe("sshd-session"), 0);
+}
+
 int main(void) {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test_teardown(test_init_zero_capacity_rejected, teardown),
@@ -465,6 +545,14 @@ int main(void) {
         cmocka_unit_test_teardown(test_track_skips_sudo_without_actor,
                                   teardown),
         cmocka_unit_test_teardown(test_track_sudo_with_ip_keys_by_ip, teardown),
+        cmocka_unit_test(test_trusted_exe_accepts_canonical_paths),
+        cmocka_unit_test(test_trusted_exe_accepts_sshd_session),
+        cmocka_unit_test(test_trusted_exe_accepts_alternate_system_prefixes),
+        cmocka_unit_test(test_trusted_exe_rejects_logger),
+        cmocka_unit_test(test_trusted_exe_rejects_non_system_paths),
+        cmocka_unit_test(test_trusted_exe_rejects_basename_imposters),
+        cmocka_unit_test(test_trusted_exe_rejects_null_and_empty),
+        cmocka_unit_test(test_trusted_exe_rejects_paths_without_slash),
     };
     return cmocka_run_group_tests(tests, NULL, NULL);
 }
