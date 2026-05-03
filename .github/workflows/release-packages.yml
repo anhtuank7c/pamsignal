@@ -425,6 +425,17 @@ jobs:
           zcat /usr/share/man/man8/pamsignal.8.gz | head -3 | \
             grep -q 'pamsignal '
 
+      - name: systemd-analyze security regression gate
+        run: |
+          # Fail the build if the unit's exposure score regresses past the
+          # baseline. Threshold is set 0.8 above the current ~2.2 score so
+          # routine adjustments (e.g. adding an Environment= line) don't
+          # break CI, but stripping a major hardening directive
+          # (MemoryDenyWriteExecute=, SystemCallFilter=, etc., each worth
+          # 0.5+) does. systemd-analyze --threshold exits non-zero when the
+          # overall exposure level exceeds the threshold.
+          sudo systemd-analyze security --threshold=3 pamsignal.service
+
       - name: Generate trusted self-signed cert for localhost
         run: |
           # The URL validator only accepts https://, so the mock webhook must

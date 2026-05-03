@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+### CI
+- [x] **`systemd-analyze security` regression gate.** The `test-deb` job now runs `systemd-analyze security --threshold=3 pamsignal.service` after install. Current baseline score is **2.2** ("OK" — second-best band); the threshold of 3 leaves headroom for routine adjustments but fails the workflow if a future PR strips a major hardening directive (`MemoryDenyWriteExecute=`, `SystemCallFilter=`, `CapabilityBoundingSet=`, `RestrictNamespaces=`, etc., each worth ≥0.5 score points). Catches the class of regression where an unrelated change accidentally weakens the daemon's sandbox.
+
 ### Operations
 - [x] **`Type=notify` + `WatchdogSec=30s`** in `pamsignal.service`. The daemon now signals readiness via `sd_notify(READY=1)` after `ps_journal_watch_init()` succeeds (and not before), so systemd holds the unit in `activating` until pamsignal can actually process events — `Wants=`/`After=` chains resolve correctly and `systemctl status` doesn't briefly lie about state during the startup window. The main loop also pings `sd_notify(WATCHDOG=1)` every iteration; if `sd_journal_wait` ever wedges (kernel bug, journal corruption) systemd auto-restarts pamsignal at the 30 s threshold instead of letting the daemon silently stop processing auth events. `NotifyAccess=main` confines notification socket access to the parent process so the fork+exec curl children can't spoof readiness/watchdog messages. No-op when `NOTIFY_SOCKET` is unset (manual launch, tests).
 
