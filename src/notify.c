@@ -373,6 +373,84 @@ static void format_event_json(const ps_config_t *cfg,
     }
 }
 
+static void format_local_brute_text(const ps_config_t *cfg,
+                                    ps_service_t service, const char *actor,
+                                    const char *target, int attempts,
+                                    int window, const char *host, uint64_t ts,
+                                    pid_t last_pid, char *buf, size_t len) {
+    char timebuf[32];
+    ps_format_timestamp(ts, timebuf, sizeof(timebuf));
+
+    char context[256] = "";
+    if (cfg->provider[0] || cfg->service_name[0]) {
+        if (cfg->provider[0] && cfg->service_name[0]) {
+            snprintf(context, sizeof(context), " provider=%s service_name=%s",
+                     cfg->provider, cfg->service_name);
+        } else if (cfg->provider[0]) {
+            snprintf(context, sizeof(context), " provider=%s", cfg->provider);
+        } else {
+            snprintf(context, sizeof(context), " service_name=%s",
+                     cfg->service_name);
+        }
+    }
+
+    snprintf(buf, len,
+             "[ALERT]  auth.brute_force_detected actor=%s target=%s "
+             "attempts=%d window=%ds service=%s host=%s pid=%d ts=%s%s",
+             actor, target, attempts, window, ps_service_str(service), host,
+             (int)last_pid, timebuf, context);
+}
+
+static void format_local_brute_json(const ps_config_t *cfg,
+                                    ps_service_t service, const char *actor,
+                                    const char *target, int attempts,
+                                    int window, const char *host, uint64_t ts,
+                                    pid_t last_pid, char *buf, size_t len) {
+    char timebuf[32];
+    char esc_actor[128], esc_target[128], esc_host[512];
+    ps_format_timestamp(ts, timebuf, sizeof(timebuf));
+    json_escape(actor, esc_actor, sizeof(esc_actor));
+    json_escape(target, esc_target, sizeof(esc_target));
+    json_escape(host, esc_host, sizeof(esc_host));
+
+    char labels_json[256] = "";
+    if (cfg->provider[0] || cfg->service_name[0]) {
+        char esc_prov[128] = "", esc_srv[128] = "";
+        json_escape(cfg->provider, esc_prov, sizeof(esc_prov));
+        json_escape(cfg->service_name, esc_srv, sizeof(esc_srv));
+        if (cfg->provider[0] && cfg->service_name[0]) {
+            snprintf(
+                labels_json, sizeof(labels_json),
+                ",\"labels\":{\"provider\":\"%s\",\"service_name\":\"%s\"}",
+                esc_prov, esc_srv);
+        } else if (cfg->provider[0]) {
+            snprintf(labels_json, sizeof(labels_json),
+                     ",\"labels\":{\"provider\":\"%s\"}", esc_prov);
+        } else {
+            snprintf(labels_json, sizeof(labels_json),
+                     ",\"labels\":{\"service_name\":\"%s\"}", esc_srv);
+        }
+    }
+
+    // ECS: user.name = actor, user.target.name = the elevation target. No
+    // source.* (no remote endpoint for a pure-local elevation attempt).
+    snprintf(buf, len,
+             "{\"@timestamp\":\"%s\","
+             "\"event\":{\"action\":\"brute_force_detected\","
+             "\"category\":[\"authentication\",\"intrusion_detection\"],"
+             "\"kind\":\"alert\",\"outcome\":\"unknown\","
+             "\"severity\":8,\"module\":\"pamsignal\","
+             "\"dataset\":\"pamsignal.events\"},"
+             "\"host\":{\"hostname\":\"%s\"},"
+             "\"user\":{\"name\":\"%s\",\"target\":{\"name\":\"%s\"}},"
+             "\"service\":{\"name\":\"%s\"},"
+             "\"process\":{\"pid\":%d},"
+             "\"pamsignal\":{\"event_type\":\"BRUTE_FORCE_DETECTED\","
+             "\"attempts\":%d,\"window_sec\":%d}%s}",
+             timebuf, esc_host, esc_actor, esc_target, ps_service_str(service),
+             (int)last_pid, attempts, window, labels_json);
+}
+
 static void format_brute_json(const ps_config_t *cfg, const char *ip,
                               int attempts, int window, const char *user,
                               const char *host, uint64_t ts, pid_t last_pid,
@@ -567,6 +645,36 @@ void ps_notify_brute_force(const ps_config_t *cfg, const char *source_ip,
         format_brute_json(cfg, source_ip, attempts, window_sec, last_username,
                           hostname, timestamp_usec, last_pid, json,
                           sizeof(json));
+        post_alert(cfg->webhook_url, NULL, json);
+    }
+}
+
+void ps_notify_local_brute_force(const ps_config_t *cfg, ps_service_t service,
+                                 const char *actor_username,
+                                 const char *target_username, int attempts,
+                                 int window_sec, const char *hostname,
+                                 uint64_t timestamp_usec, pid_t last_pid) {
+    // Caller (journal_watch.c) applies the per-actor cooldown using
+    // fail_entry state, mirroring the IP-based path above.
+    char text[1024];
+    format_local_brute_text(cfg, service, actor_username, target_username,
+                            attempts, window_sec, hostname, timestamp_usec,
+                            last_pid, text, sizeof(text));
+
+    send_telegram(cfg, text);
+    if (cfg->slack_webhook_url[0])
+        send_simple_webhook(cfg->slack_webhook_url, "text", text);
+    if (cfg->teams_webhook_url[0])
+        send_simple_webhook(cfg->teams_webhook_url, "text", text);
+    send_whatsapp(cfg, text);
+    if (cfg->discord_webhook_url[0])
+        send_simple_webhook(cfg->discord_webhook_url, "content", text);
+
+    if (cfg->webhook_url[0]) {
+        char json[2048];
+        format_local_brute_json(cfg, service, actor_username, target_username,
+                                attempts, window_sec, hostname, timestamp_usec,
+                                last_pid, json, sizeof(json));
         post_alert(cfg->webhook_url, NULL, json);
     }
 }

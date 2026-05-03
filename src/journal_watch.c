@@ -16,8 +16,27 @@
 
 // --- Failed login tracking ---
 
+// Key kind for an entry. Sshd brute-force is keyed by source IP (and so is
+// any sudo/su that inherits an rhost from a calling SSH session). Pure local
+// sudo/su brute-force has no rhost, so we key by the local actor (ruser).
+typedef enum {
+    PS_FAIL_KEY_IP,
+    PS_FAIL_KEY_LOCAL_USER,
+} ps_fail_key_type_t;
+
 typedef struct {
-    char ip[INET6_ADDRSTRLEN];
+    // Key holds either an IPv4/IPv6 literal (key_type == PS_FAIL_KEY_IP) or a
+    // local username (key_type == PS_FAIL_KEY_LOCAL_USER). 64 bytes fits both
+    // INET6_ADDRSTRLEN (46) and the project's 64-byte username buffer.
+    char key[64];
+    ps_fail_key_type_t key_type;
+    // For local-user entries, service distinguishes sudo from su in the alert
+    // payload. For IP entries it's typically PS_SERVICE_SSHD but we record
+    // whatever the latest event reported.
+    ps_service_t service;
+    // For local-user entries, the latest target user (the user the actor was
+    // trying to elevate to). Empty for IP entries.
+    char target_username[64];
     int count;
     uint64_t first_attempt_usec;
     uint64_t last_attempt_usec;
@@ -67,97 +86,175 @@ void ps_fail_table_reset(void) {
     }
 }
 
+// Derive the (key, key_type) tuple from an event. Returns 0 if the event has
+// no trackable identity (no source IP and not a sudo/su local-actor case).
+static int derive_fail_key(const ps_pam_event_t *event, const char **out_key,
+                           ps_fail_key_type_t *out_type) {
+    if (event->source_ip[0] != '\0') {
+        *out_key = event->source_ip;
+        *out_type = PS_FAIL_KEY_IP;
+        return 1;
+    }
+    if ((event->service == PS_SERVICE_SUDO ||
+         event->service == PS_SERVICE_SU) &&
+        event->username[0] != '\0') {
+        *out_key = event->username;
+        *out_type = PS_FAIL_KEY_LOCAL_USER;
+        return 1;
+    }
+    return 0;
+}
+
+// Initialise a fail_table entry from the event that just exceeded threshold.
+// Centralised so create-new-entry and evict-and-reuse paths stay in sync.
+static void fail_entry_init(ps_fail_entry_t *e, const char *key,
+                            ps_fail_key_type_t key_type,
+                            const ps_pam_event_t *event) {
+    snprintf(e->key, sizeof(e->key), "%s", key);
+    e->key_type = key_type;
+    e->service = event->service;
+    snprintf(e->target_username, sizeof(e->target_username), "%s",
+             event->target_username);
+    e->count = 1;
+    e->first_attempt_usec = event->timestamp_usec;
+    e->last_attempt_usec = event->timestamp_usec;
+    e->last_brute_alert_usec = 0;
+}
+
+static void emit_brute_force_alert(const ps_fail_entry_t *entry,
+                                   const ps_pam_event_t *event,
+                                   int notify_allowed) {
+    char attempts_str[16];
+    char window_str[16];
+    snprintf(attempts_str, sizeof(attempts_str), "%d", entry->count);
+    snprintf(window_str, sizeof(window_str), "%d", g_config.fail_window_sec);
+
+    if (entry->key_type == PS_FAIL_KEY_IP) {
+        sd_journal_send(
+            "MESSAGE=pamsignal: BRUTE_FORCE_DETECTED ip=%s attempts=%s "
+            "window=%ss user=%s",
+            entry->key, attempts_str, window_str, event->username,
+            "PRIORITY=%d", LOG_WARNING, "SYSLOG_IDENTIFIER=pamsignal",
+            // Legacy PAMSIGNAL_* fields kept for backward compat with any
+            // existing journalctl queries; retired in v0.3.0.
+            "PAMSIGNAL_EVENT=BRUTE_FORCE_DETECTED", "PAMSIGNAL_SOURCE_IP=%s",
+            entry->key, "PAMSIGNAL_ATTEMPTS=%s", attempts_str,
+            "PAMSIGNAL_WINDOW_SEC=%s", window_str, "PAMSIGNAL_USERNAME=%s",
+            event->username, "PAMSIGNAL_HOSTNAME=%s", event->hostname,
+            // ECS-aligned structured fields. event.kind=alert here because
+            // brute-force detection is a security alert per ECS.
+            "EVENT_ACTION=brute_force_detected",
+            "EVENT_CATEGORY=authentication,intrusion_detection",
+            "EVENT_KIND=alert", "EVENT_OUTCOME=unknown", "EVENT_SEVERITY=8",
+            "EVENT_MODULE=pamsignal", "USER_NAME=%s", event->username,
+            "SOURCE_IP=%s", entry->key, "HOST_HOSTNAME=%s", event->hostname,
+            NULL);
+
+        if (notify_allowed) {
+            ps_notify_brute_force(&g_config, entry->key, entry->count,
+                                  g_config.fail_window_sec, event->username,
+                                  event->hostname, event->timestamp_usec,
+                                  event->pid);
+        }
+    } else {
+        // Local sudo/su brute-force. No source.ip; ECS user.target.name
+        // captures the elevation target.
+        sd_journal_send(
+            "MESSAGE=pamsignal: BRUTE_FORCE_DETECTED actor=%s target=%s "
+            "service=%s attempts=%s window=%ss",
+            entry->key, entry->target_username, ps_service_str(entry->service),
+            attempts_str, window_str, "PRIORITY=%d", LOG_WARNING,
+            "SYSLOG_IDENTIFIER=pamsignal",
+            // Legacy PAMSIGNAL_* fields kept for backward compat.
+            "PAMSIGNAL_EVENT=BRUTE_FORCE_DETECTED", "PAMSIGNAL_USERNAME=%s",
+            entry->key, "PAMSIGNAL_TARGET_USER=%s", entry->target_username,
+            "PAMSIGNAL_SERVICE=%s", ps_service_str(entry->service),
+            "PAMSIGNAL_ATTEMPTS=%s", attempts_str, "PAMSIGNAL_WINDOW_SEC=%s",
+            window_str, "PAMSIGNAL_HOSTNAME=%s", event->hostname,
+            // ECS fields. user.name = actor (the one pressing keys);
+            // user.target.name = the user being elevated to. No source.* —
+            // there's no remote host for a pure-local sudo brute-force.
+            "EVENT_ACTION=brute_force_detected",
+            "EVENT_CATEGORY=authentication,intrusion_detection",
+            "EVENT_KIND=alert", "EVENT_OUTCOME=unknown", "EVENT_SEVERITY=8",
+            "EVENT_MODULE=pamsignal", "USER_NAME=%s", entry->key,
+            "USER_TARGET_NAME=%s", entry->target_username, "SERVICE_NAME=%s",
+            ps_service_str(entry->service), "HOST_HOSTNAME=%s", event->hostname,
+            NULL);
+
+        if (notify_allowed) {
+            ps_notify_local_brute_force(
+                &g_config, entry->service, entry->key, entry->target_username,
+                entry->count, g_config.fail_window_sec, event->hostname,
+                event->timestamp_usec, event->pid);
+        }
+    }
+}
+
 static void ps_track_failed_login(const ps_pam_event_t *event) {
-    if (event->source_ip[0] == '\0' || !fail_table)
+    const char *ev_key;
+    ps_fail_key_type_t ev_key_type;
+    if (!derive_fail_key(event, &ev_key, &ev_key_type) || !fail_table)
         return;
 
     uint64_t window_usec = (uint64_t)g_config.fail_window_sec * 1000000ULL;
 
-    // Search for existing entry
+    // Search for existing entry. (key_type, key) is the unique tuple — an IP
+    // and a local username with the same string never collide.
     for (int i = 0; i < fail_table_count; i++) {
-        if (strcmp(fail_table[i].ip, event->source_ip) == 0) {
-            // Reset if window expired
-            if (event->timestamp_usec - fail_table[i].first_attempt_usec >
-                window_usec) {
-                fail_table[i].count = 1;
-                fail_table[i].first_attempt_usec = event->timestamp_usec;
-            } else {
-                fail_table[i].count++;
-            }
-            fail_table[i].last_attempt_usec = event->timestamp_usec;
+        if (fail_table[i].key_type != ev_key_type ||
+            strcmp(fail_table[i].key, ev_key) != 0)
+            continue;
 
-            if (fail_table[i].count >= g_config.fail_threshold) {
-                // Per-IP cooldown: don't spam alerts for the same source.
-                // The journal log entry is written every time so post-mortem
-                // forensics still see every threshold breach; only the
-                // outbound notification is rate-limited.
-                //
-                // last_brute_alert_usec == 0 means "never alerted for this IP"
-                // — treat as cooldown-elapsed so the first breach always fires
-                // regardless of how recently after epoch the event arrived.
-                uint64_t cooldown_usec =
-                    (uint64_t)g_config.alert_cooldown_sec * 1000000ULL;
-                int notify_allowed =
-                    (g_config.alert_cooldown_sec <= 0) ||
-                    (fail_table[i].last_brute_alert_usec == 0) ||
-                    (event->timestamp_usec -
-                         fail_table[i].last_brute_alert_usec >=
-                     cooldown_usec);
+        // Refresh service + target_username on each attempt so the alert
+        // reflects the latest target if the actor is jumping between
+        // multiple targets within the window.
+        fail_table[i].service = event->service;
+        snprintf(fail_table[i].target_username,
+                 sizeof(fail_table[i].target_username), "%s",
+                 event->target_username);
 
-                char attempts_str[16];
-                char window_str[16];
-                snprintf(attempts_str, sizeof(attempts_str), "%d",
-                         fail_table[i].count);
-                snprintf(window_str, sizeof(window_str), "%d",
-                         g_config.fail_window_sec);
-
-                sd_journal_send(
-                    "MESSAGE=pamsignal: BRUTE_FORCE_DETECTED ip=%s attempts=%s "
-                    "window=%ss user=%s",
-                    fail_table[i].ip, attempts_str, window_str, event->username,
-                    "PRIORITY=%d", LOG_WARNING, "SYSLOG_IDENTIFIER=pamsignal",
-                    // Legacy PAMSIGNAL_* fields kept for backward compat with
-                    // any existing journalctl queries; retired in v0.3.0.
-                    "PAMSIGNAL_EVENT=BRUTE_FORCE_DETECTED",
-                    "PAMSIGNAL_SOURCE_IP=%s", fail_table[i].ip,
-                    "PAMSIGNAL_ATTEMPTS=%s", attempts_str,
-                    "PAMSIGNAL_WINDOW_SEC=%s", window_str,
-                    "PAMSIGNAL_USERNAME=%s", event->username,
-                    "PAMSIGNAL_HOSTNAME=%s", event->hostname,
-                    // ECS-aligned structured fields. event.kind=alert here
-                    // because brute-force detection is a security alert per
-                    // ECS, not just an event observation.
-                    "EVENT_ACTION=brute_force_detected",
-                    "EVENT_CATEGORY=authentication,intrusion_detection",
-                    "EVENT_KIND=alert", "EVENT_OUTCOME=unknown",
-                    "EVENT_SEVERITY=8", "EVENT_MODULE=pamsignal",
-                    "USER_NAME=%s", event->username, "SOURCE_IP=%s",
-                    fail_table[i].ip, "HOST_HOSTNAME=%s", event->hostname,
-                    NULL);
-
-                if (notify_allowed) {
-                    ps_notify_brute_force(
-                        &g_config, fail_table[i].ip, fail_table[i].count,
-                        g_config.fail_window_sec, event->username,
-                        event->hostname, event->timestamp_usec, event->pid);
-                    fail_table[i].last_brute_alert_usec = event->timestamp_usec;
-                }
-
-                fail_table[i].count = 0;
-                fail_table[i].first_attempt_usec = event->timestamp_usec;
-            }
-            return;
+        // Reset if window expired
+        if (event->timestamp_usec - fail_table[i].first_attempt_usec >
+            window_usec) {
+            fail_table[i].count = 1;
+            fail_table[i].first_attempt_usec = event->timestamp_usec;
+        } else {
+            fail_table[i].count++;
         }
+        fail_table[i].last_attempt_usec = event->timestamp_usec;
+
+        if (fail_table[i].count >= g_config.fail_threshold) {
+            // Per-key cooldown: don't spam alerts for the same source. The
+            // journal log entry is written every time so post-mortem
+            // forensics still see every threshold breach; only the outbound
+            // notification is rate-limited.
+            //
+            // last_brute_alert_usec == 0 means "never alerted for this key" —
+            // treat as cooldown-elapsed so the first breach always fires
+            // regardless of how recently after epoch the event arrived.
+            uint64_t cooldown_usec =
+                (uint64_t)g_config.alert_cooldown_sec * 1000000ULL;
+            int notify_allowed =
+                (g_config.alert_cooldown_sec <= 0) ||
+                (fail_table[i].last_brute_alert_usec == 0) ||
+                (event->timestamp_usec - fail_table[i].last_brute_alert_usec >=
+                 cooldown_usec);
+
+            emit_brute_force_alert(&fail_table[i], event, notify_allowed);
+            if (notify_allowed)
+                fail_table[i].last_brute_alert_usec = event->timestamp_usec;
+
+            fail_table[i].count = 0;
+            fail_table[i].first_attempt_usec = event->timestamp_usec;
+        }
+        return;
     }
 
     // New entry
     if (fail_table_count < fail_table_capacity) {
-        ps_fail_entry_t *e = &fail_table[fail_table_count++];
-        snprintf(e->ip, sizeof(e->ip), "%s", event->source_ip);
-        e->count = 1;
-        e->first_attempt_usec = event->timestamp_usec;
-        e->last_attempt_usec = event->timestamp_usec;
-        e->last_brute_alert_usec = 0;
+        fail_entry_init(&fail_table[fail_table_count++], ev_key, ev_key_type,
+                        event);
         return;
     }
 
@@ -168,12 +265,7 @@ static void ps_track_failed_login(const ps_pam_event_t *event) {
             fail_table[oldest].last_attempt_usec)
             oldest = i;
     }
-    ps_fail_entry_t *e = &fail_table[oldest];
-    snprintf(e->ip, sizeof(e->ip), "%s", event->source_ip);
-    e->count = 1;
-    e->first_attempt_usec = event->timestamp_usec;
-    e->last_attempt_usec = event->timestamp_usec;
-    e->last_brute_alert_usec = 0;
+    fail_entry_init(&fail_table[oldest], ev_key, ev_key_type, event);
 }
 
 // --- Event processing ---
@@ -375,7 +467,18 @@ static void ps_process_entry(sd_journal *j) {
     sd_journal_get_realtime_usec(j, &event.timestamp_usec);
 
     ps_log_event(&event);
-    ps_notify_event(&g_config, &event);
+
+    // For sudo/su LOGIN_FAILED, suppress the per-event chat alert: a single
+    // mistyped password would otherwise produce one Telegram/Slack ping per
+    // keypress, drowning out the actually-meaningful brute-force alert that
+    // ps_track_failed_login emits when the threshold is crossed. The journal
+    // entry from ps_log_event still records every individual failure, so the
+    // forensic trail is intact.
+    int suppress_event_alert =
+        event.type == PS_EVENT_LOGIN_FAILED &&
+        (event.service == PS_SERVICE_SUDO || event.service == PS_SERVICE_SU);
+    if (!suppress_event_alert)
+        ps_notify_event(&g_config, &event);
 
     if (event.type == PS_EVENT_LOGIN_FAILED)
         ps_track_failed_login(&event);

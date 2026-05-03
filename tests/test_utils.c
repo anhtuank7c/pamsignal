@@ -202,6 +202,97 @@ static void test_parse_failed_password_ipv6(void **state) {
     assert_string_equal(event.source_ip, "fe80::1");
 }
 
+// --- ps_parse_message: pam_unix auth failure (sudo / su) ---
+
+static void test_parse_sudo_auth_failure_local(void **state) {
+    (void)state;
+    ps_pam_event_t event;
+    // Pure local sudo: rhost is empty (the double-space between the equals
+    // sign and the next field is what pam_unix actually emits).
+    int ret = ps_parse_message(
+        "pam_unix(sudo:auth): authentication failure; logname=alice "
+        "uid=1000 euid=0 tty=/dev/pts/0 ruser=alice rhost=  user=root",
+        &event);
+    assert_int_equal(ret, PS_OK);
+    assert_int_equal(event.type, PS_EVENT_LOGIN_FAILED);
+    assert_int_equal(event.service, PS_SERVICE_SUDO);
+    assert_int_equal(event.auth_method, PS_AUTH_PASSWORD);
+    assert_string_equal(event.username, "alice");
+    assert_string_equal(event.target_username, "root");
+    assert_string_equal(event.source_ip, "");
+}
+
+static void test_parse_sudo_auth_failure_with_rhost_ip(void **state) {
+    (void)state;
+    ps_pam_event_t event;
+    // SSH→sudo chain: pam_unix carries the SSH-client IP into rhost.
+    int ret = ps_parse_message(
+        "pam_unix(sudo:auth): authentication failure; logname=alice "
+        "uid=1000 euid=0 tty=/dev/pts/0 ruser=alice rhost=192.0.2.5 user=root",
+        &event);
+    assert_int_equal(ret, PS_OK);
+    assert_int_equal(event.type, PS_EVENT_LOGIN_FAILED);
+    assert_int_equal(event.service, PS_SERVICE_SUDO);
+    assert_string_equal(event.username, "alice");
+    assert_string_equal(event.target_username, "root");
+    assert_string_equal(event.source_ip, "192.0.2.5");
+}
+
+static void test_parse_sudo_auth_failure_rhost_hostname_dropped(void **state) {
+    (void)state;
+    ps_pam_event_t event;
+    // rhost can be a hostname instead of an IP — we don't resolve, so
+    // source_ip must stay empty rather than carry an unparsed string into
+    // downstream IP-based fields.
+    int ret = ps_parse_message(
+        "pam_unix(sudo:auth): authentication failure; logname=alice "
+        "ruser=alice rhost=client.example.com user=root",
+        &event);
+    assert_int_equal(ret, PS_OK);
+    assert_string_equal(event.source_ip, "");
+}
+
+static void test_parse_su_auth_failure(void **state) {
+    (void)state;
+    ps_pam_event_t event;
+    int ret = ps_parse_message(
+        "pam_unix(su:auth): authentication failure; logname=alice "
+        "uid=1000 euid=0 tty=pts/0 ruser=alice rhost=  user=postgres",
+        &event);
+    assert_int_equal(ret, PS_OK);
+    assert_int_equal(event.type, PS_EVENT_LOGIN_FAILED);
+    assert_int_equal(event.service, PS_SERVICE_SU);
+    assert_string_equal(event.username, "alice");
+    assert_string_equal(event.target_username, "postgres");
+}
+
+static void test_parse_auth_failure_target_is_last_user(void **state) {
+    (void)state;
+    ps_pam_event_t event;
+    // The string contains an embedded "user=" inside an unusual logname
+    // value before the canonical target. Our parser must pick the LAST
+    // " user=" token, not the first.
+    int ret = ps_parse_message(
+        "pam_unix(sudo:auth): authentication failure; logname=miguser "
+        "ruser=miguser rhost=  user=root",
+        &event);
+    assert_int_equal(ret, PS_OK);
+    assert_string_equal(event.username, "miguser");
+    assert_string_equal(event.target_username, "root");
+}
+
+static void test_parse_auth_failure_username_with_hyphen(void **state) {
+    (void)state;
+    ps_pam_event_t event;
+    int ret = ps_parse_message(
+        "pam_unix(sudo:auth): authentication failure; logname=svc-deploy "
+        "ruser=svc-deploy rhost=  user=www-data",
+        &event);
+    assert_int_equal(ret, PS_OK);
+    assert_string_equal(event.username, "svc-deploy");
+    assert_string_equal(event.target_username, "www-data");
+}
+
 // --- ps_parse_message: edge cases ---
 
 static void test_parse_unrecognized_message(void **state) {
@@ -451,6 +542,12 @@ int main(void) {
         cmocka_unit_test(test_parse_failed_password),
         cmocka_unit_test(test_parse_failed_password_invalid_user),
         cmocka_unit_test(test_parse_failed_password_ipv6),
+        cmocka_unit_test(test_parse_sudo_auth_failure_local),
+        cmocka_unit_test(test_parse_sudo_auth_failure_with_rhost_ip),
+        cmocka_unit_test(test_parse_sudo_auth_failure_rhost_hostname_dropped),
+        cmocka_unit_test(test_parse_su_auth_failure),
+        cmocka_unit_test(test_parse_auth_failure_target_is_last_user),
+        cmocka_unit_test(test_parse_auth_failure_username_with_hyphen),
 
         // ps_parse_message: edge cases
         cmocka_unit_test(test_parse_unrecognized_message),

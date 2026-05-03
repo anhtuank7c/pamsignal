@@ -180,6 +180,62 @@ int ps_parse_message(const char *message, ps_pam_event_t *event) {
         return PS_OK;
     }
 
+    // pam_unix auth failure (sudo / su / login). Format:
+    //   pam_unix(<svc>:auth): authentication failure; logname=A uid=N euid=N
+    //   tty=T ruser=R rhost=H user=T
+    //
+    // ruser is the actor (the user pressing keys); user (the LAST one — the
+    // string also contains logname= early on, and we want the target, which
+    // is always the final user= field) is the target. rhost is the remote
+    // host when present, populated by pam_unix on SSH→sudo chains where the
+    // sudo invocation inherits a remote rhost from the calling sshd session.
+    p = strstr(message, ":auth): authentication failure;");
+    if (p) {
+        event->type = PS_EVENT_LOGIN_FAILED;
+        event->auth_method = PS_AUTH_PASSWORD;
+        event->service = parse_service_from_pam(message);
+
+        // ruser=<actor>
+        const char *ruser = strstr(p, " ruser=");
+        if (ruser) {
+            ruser += sizeof(" ruser=") - 1;
+            extract_username(ruser, event->username, sizeof(event->username));
+            sanitize_string(event->username);
+        }
+
+        // user=<target>: scan for the LAST occurrence so we don't pick up an
+        // earlier logname= or anything else; pam_unix always emits the target
+        // as the final `user=` token.
+        const char *target = NULL;
+        const char *scan = p;
+        const char *needle;
+        while ((needle = strstr(scan, " user=")) != NULL) {
+            target = needle;
+            scan = needle + 1;
+        }
+        if (target) {
+            target += sizeof(" user=") - 1;
+            extract_username(target, event->target_username,
+                             sizeof(event->target_username));
+            sanitize_string(event->target_username);
+        }
+
+        // rhost=<remote>: only adopt as source_ip if it parses as a valid
+        // IP literal. pam_unix sometimes emits a hostname here; we don't
+        // attempt DNS resolution.
+        const char *rhost = strstr(p, " rhost=");
+        if (rhost) {
+            rhost += sizeof(" rhost=") - 1;
+            char tmp[INET6_ADDRSTRLEN];
+            extract_username(rhost, tmp, sizeof(tmp));
+            if (tmp[0] != '\0' && is_valid_ip(tmp)) {
+                snprintf(event->source_ip, sizeof(event->source_ip), "%s", tmp);
+            }
+        }
+
+        return PS_OK;
+    }
+
     return PS_ERR_JOURNAL; // unrecognized message
 }
 

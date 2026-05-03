@@ -38,7 +38,10 @@ Severity bracket is fixed-width (8 chars) so columns align in monospace renderin
 [NOTICE] auth.login_success user=admin src=192.168.1.100:52341 host=web-01 service=sshd auth=password pid=12345 ts=2026-03-29T14:23:01+0000
 [WARN]   auth.login_failure user=root src=203.0.113.50:39182 host=web-01 service=sshd auth=password pid=12347 ts=2026-03-29T14:23:01+0000
 [ALERT]  auth.brute_force_detected src=203.0.113.50 attempts=12 window=300s user=root host=web-01 pid=12347 ts=2026-03-29T14:23:01+0000
+[ALERT]  auth.brute_force_detected actor=alice target=root attempts=5 window=300s service=sudo host=web-01 pid=12348 ts=2026-03-29T14:23:01+0000
 ```
+
+The last form is emitted when a local user (`alice`) repeatedly fails `sudo`/`su` authentication on the host. There is no `src=` because the attempt has no remote endpoint; ECS `user.name` carries the actor and `user.target.name` the elevation target. Per-event `auth.login_failure` alerts are **not** emitted for sudo/su — only the brute-force aggregate fires, so a mistyped password does not page the operator. The journal entry from `pamsignal` is still written for every individual failure.
 
 *(Note: Custom context tags like `provider=aws service_name=web-api` will be appended automatically if configured in `pamsignal.conf`)*
 
@@ -148,7 +151,7 @@ Sent as a `POST` request with `Content-Type: application/json`. Conforms to ECS 
 }
 ```
 
-**Brute-force detection** (`event.kind=alert`, severity 8):
+**Brute-force detection — remote (sshd, or sudo/su with `rhost=` set)**: keyed by source IP, `event.kind=alert`, severity 8:
 
 ```json
 {
@@ -174,6 +177,32 @@ Sent as a `POST` request with `Content-Type: application/json`. Conforms to ECS 
 }
 ```
 
+**Brute-force detection — local (sudo/su without remote endpoint)**: keyed by actor (`ruser=`), no `source.*`. `user.name` is the actor; `user.target.name` is the elevation target:
+
+```json
+{
+  "@timestamp": "2026-03-29T14:23:01+0000",
+  "event": {
+    "action": "brute_force_detected",
+    "category": ["authentication", "intrusion_detection"],
+    "kind": "alert",
+    "outcome": "unknown",
+    "severity": 8,
+    "module": "pamsignal",
+    "dataset": "pamsignal.events"
+  },
+  "host": {"hostname": "web-01"},
+  "user": {"name": "alice", "target": {"name": "root"}},
+  "service": {"name": "sudo"},
+  "process": {"pid": 12348},
+  "pamsignal": {
+    "event_type": "BRUTE_FORCE_DETECTED",
+    "attempts": 5,
+    "window_sec": 300
+  }
+}
+```
+
 **HTTP details:**
 
 | Property | Value |
@@ -190,7 +219,8 @@ Sent as a `POST` request with `Content-Type: application/json`. Conforms to ECS 
 | `session_closed` | `SESSION_CLOSE` | A PAM session closes | 3 (info) |
 | `login_success` | `LOGIN_SUCCESS` | Successful SSH auth (password or public key) | 4 (notice) |
 | `login_failure` | `LOGIN_FAILED` | Failed SSH auth | 5 (warning) |
-| `brute_force_detected` | `BRUTE_FORCE_DETECTED` | Failed attempts from one IP exceeded the threshold within the window | 8 (alert) |
+| `login_failure` (sudo/su) | `LOGIN_FAILED` | Failed sudo/su attempt — **journal-only** (no per-event chat alert; tracked toward the brute-force threshold) | 5 (warning) |
+| `brute_force_detected` | `BRUTE_FORCE_DETECTED` | Failed attempts from one IP **or** from one local actor (sudo/su) exceeded the threshold within the window | 8 (alert) |
 
 ### Field reference (ECS webhook JSON)
 

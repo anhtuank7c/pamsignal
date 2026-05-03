@@ -52,6 +52,16 @@ static void test_notify_brute_no_channels(void **state) {
                           1700000000000000ULL, 12345);
 }
 
+// And for the local (sudo/su) brute-force variant.
+static void test_notify_local_brute_no_channels(void **state) {
+    (void)state;
+    ps_config_t cfg;
+    ps_config_defaults(&cfg);
+
+    ps_notify_local_brute_force(&cfg, PS_SERVICE_SUDO, "alice", "root", 5, 60,
+                                "host", 1700000000000000ULL, 12345);
+}
+
 // Cooldown: with a long cooldown, only the first invocation should attempt
 // dispatch. The second should be suppressed by is_cooled_down(). Without
 // channels configured, both calls remain no-ops; the test asserts the
@@ -74,6 +84,7 @@ int main(void) {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test(test_notify_event_no_channels),
         cmocka_unit_test(test_notify_brute_no_channels),
+        cmocka_unit_test(test_notify_local_brute_no_channels),
         cmocka_unit_test(test_notify_event_cooldown_repeat),
     };
     return cmocka_run_group_tests(tests, NULL, NULL);

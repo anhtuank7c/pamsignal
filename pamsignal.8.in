@@ -201,6 +201,24 @@ via
 .IP \(bu 2
 Per-source-IP brute-force tracking with a configurable cooldown bounds the
 alert volume during a sustained attack.
+.IP \(bu 2
+Local privilege-escalation brute-force tracking. Failed
+.BR sudo (8)
+and
+.BR su (1)
+authentications are keyed by the local actor (\fIruser\fR from the
+.B pam_unix
+auth-failure message); the chat alert reports
+.IR actor ,
+.IR target ,
+.IR attempts ,
+and
+.I service
+when the threshold is crossed. Per-event chat alerts are suppressed for
+sudo/su login failures (the journal entry is still written so
+.B journalctl
+history is complete) — only the threshold-breach alert fires, so a
+single mistyped password does not page the operator.
 .SH SEE ALSO
 .BR pamsignal.conf (5),
 .BR systemctl (1),
