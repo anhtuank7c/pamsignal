@@ -8,6 +8,47 @@ For private vulnerability reporting, see [`SECURITY.md`](../SECURITY.md). The tw
 
 PAMSignal observes PAM authentication events on a single host via the systemd journal and, when configured patterns occur (failed logins, brute-force thresholds), dispatches alerts over HTTPS to operator-chosen channels. The daemon's job is to be a **trustworthy detection signal** for the operator. Every defense in this document exists to preserve that property — that the alert the operator receives accurately reflects what happened on the host.
 
+## Observation scope
+
+PAMSignal observes events that flow through the host's PAM stack and into systemd's journal. That is a *specific* signal source. It captures the everyday remote-access channels operators care about — ssh, sftp, scp, rsync over ssh, sudo, su, login, xrdp + PAM, vsftpd / proftpd configured with PAM. It does **not** observe every channel through which a connection can reach the host. Knowing the boundary explicitly is part of the threat model.
+
+### Channels PAMSignal observes
+
+| Channel | Underlying daemon | What gets logged |
+|---|---|---|
+| Interactive SSH | `sshd` / `sshd-session` | LOGIN_SUCCESS, LOGIN_FAILED, SESSION_OPEN, SESSION_CLOSE |
+| SFTP | `sshd` (subsystem) | Same auth + session entries as SSH |
+| SCP | `sshd` | Same |
+| Rsync over SSH | `sshd` | Same |
+| sudo / su | `pam_unix(sudo:auth)` / `pam_unix(su:auth)` | LOGIN_FAILED (with brute-force tracker keyed by `ruser`), SESSION_OPEN/CLOSE on success |
+| TTY / console login | `login` | SESSION_OPEN/CLOSE |
+| xrdp with PAM | xrdp + `pam_unix` | SESSION_OPEN/CLOSE if configured to use PAM |
+| vsftpd / proftpd with PAM | self + `pam_unix` | If the FTP daemon is configured to authenticate via PAM |
+| systemd-logind sessions | `systemd-logind` | SESSION_OPEN/CLOSE on every session creation |
+
+### Channels PAMSignal does NOT observe
+
+These authenticate via channels journald never sees PAM auth events for. They're a real blind spot in any PAM-based detection layer, and they're explicit non-goals (out-of-scope item NS3 covers compromised journald; this list extends that reasoning to *non*-journald signal sources):
+
+| Channel | Auth mechanism | Operator's audit trail lives in |
+|---|---|---|
+| WireGuard / OpenVPN / IPsec VPN | cryptographic peer auth | Network-layer logs (kernel netlink events, `wg show` polling, OpenVPN's own log) |
+| Tailscale SSH | Tailscale identity → mTLS | Tailscale admin console / `tailscale set --log` |
+| AWS SSM Session Manager | IAM → SSM agent | CloudTrail |
+| GCP Cloud IAP / OS Login | Google IAM | Cloud Audit Logs |
+| Azure Bastion | Azure RBAC | Azure Activity Log |
+| Teleport / Boundary / StrongDM | their own identity layer | The product's own audit log |
+| `kubectl exec` into a container | Kubernetes RBAC | k8s API server audit log |
+| IPMI / BMC / iDRAC / iLO | BMC firmware | Out-of-band management plane (separate, vendor-specific) |
+| Serial console | physical access | None at OS level — physical security |
+| NFS / SMB mounts | NFS/Kerberos / SMB | nfsd / smbd logs |
+| `rclone` with HTTP/S3/GCS backend | API tokens | Cloud-provider access logs |
+| Custom HTTP / REST / gRPC APIs | application-level | The application's own audit log |
+
+### Operator implication
+
+If PAMSignal is the *only* alerting layer on a host, an attacker who reaches the host via any of the bypass channels above produces **zero** PAMSignal events. The pragmatic answer is **layered detection** — pamsignal for the PAM-stack channels (where everyday brute-force traffic shows up), plus a separate monitor for each other access path the operator's environment exposes, all feeding into the same SIEM through pamsignal's ECS JSON webhook payload (or equivalent). The threat model's assets and adversaries below are scoped to the PAM-stack channels; an operator deploying pamsignal as a security signal should layer it accordingly.
+
 ## Assets
 
 In priority order:
