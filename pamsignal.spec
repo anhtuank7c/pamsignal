@@ -1,5 +1,5 @@
 Name:           pamsignal
-Version:        0.3.2
+Version:        0.3.3
 Release:        1%{?dist}
 Summary:        Real-time PAM login monitor with multi-channel alerts
 
@@ -98,6 +98,35 @@ fi
 %config(noreplace) %attr(0640,root,pamsignal) %{_sysconfdir}/pamsignal/pamsignal.conf
 
 %changelog
+* Sun May 03 2026 Tuan Nguyen <anhtuank7c@hotmail.com> - 0.3.3-1
+- systemd unit hardening: exposure score drops from 22 to 13
+  (displayed 2.2 to 1.3, near the achievable floor for a daemon
+  with the network-egress + journal-access constraints). Nine
+  new directives, each justified against actual daemon behavior:
+  UMask=0077, ProtectClock=yes, ProtectHostname=yes,
+  ProtectProc=invisible, ProcSubset=pid,
+  SystemCallArchitectures=native, RemoveIPC=yes,
+  RestrictAddressFamilies=AF_UNIX AF_NETLINK AF_INET AF_INET6
+  (allowlists exactly the four families libsystemd and the curl
+  child use; drops AF_PACKET, AF_BLUETOOTH, AF_VSOCK, AF_TIPC,
+  AF_RDS, AF_XDP), and DevicePolicy=closed (overrides the
+  implicit char-rtc:r grant from PrivateDevices=yes). The CI
+  threshold for the systemd-analyze regression gate tightens
+  from 30 to 20 to lock in the new baseline.
+- docs/threat-model.md: canonical threat model. Five adversary
+  classes with explicit capabilities. Nine in-scope attacks,
+  each cross-referenced to the source-line of its mitigation.
+  Ten explicit out-of-scope non-goals with the reasoning for
+  each. Trust-boundary table mapping each untrusted-data
+  crossing to its validator. SECURITY.md scope section now
+  references the threat model instead of duplicating the
+  in/out lists.
+- CI: AddressSanitizer + UndefinedBehaviorSanitizer run on
+  every push to main and every PR via a new ci.yml workflow.
+  Catches use-after-free, OOB heap/stack, double-free, leaks,
+  signed-integer overflow, narrowing conversions, etc. Initial
+  run found zero issues on the existing test surface.
+
 * Sun May 03 2026 Tuan Nguyen <anhtuank7c@hotmail.com> - 0.3.2-1
 - Adopt Type=notify with sd_notify(READY=1) signaled after the
   journal-watch init succeeds; systemd holds the unit in the

@@ -1,3 +1,38 @@
+pamsignal (0.3.3-1) unstable; urgency=medium
+
+  * systemd unit hardening: exposure score drops from 22 to 13
+    (displayed 2.2 to 1.3, near the achievable floor for a daemon
+    with the network-egress + journal-access constraints). Nine
+    new directives, each justified against actual daemon behavior:
+    UMask=0077, ProtectClock=yes, ProtectHostname=yes,
+    ProtectProc=invisible, ProcSubset=pid,
+    SystemCallArchitectures=native, RemoveIPC=yes,
+    RestrictAddressFamilies=AF_UNIX AF_NETLINK AF_INET AF_INET6
+    (allowlists exactly the four families libsystemd and the curl
+    child use; drops AF_PACKET, AF_BLUETOOTH, AF_VSOCK, AF_TIPC,
+    AF_RDS, AF_XDP), and DevicePolicy=closed (overrides the
+    implicit char-rtc:r grant from PrivateDevices=yes). The
+    in-tree CI threshold tightens from 30 to 20 to lock in the
+    new baseline.
+  * docs/threat-model.md: canonical threat model. Five adversary
+    classes (external remote, local unprivileged, in-pamsignal-
+    group, compromised daemon, network attacker on alert path)
+    with explicit capabilities. Nine in-scope attacks, each
+    cross-referenced to the source-line of its mitigation. Ten
+    explicit out-of-scope non-goals (root-on-host, compromised
+    journald, compromised libsystemd, compromised alert provider,
+    durable delivery, multi-host correlation, etc.) with the
+    reasoning for each. Trust-boundary table mapping each
+    untrusted-data crossing to its validator.
+  * CI: AddressSanitizer + UndefinedBehaviorSanitizer run on
+    every push to main and every PR via a new ci.yml workflow.
+    Catches use-after-free, OOB heap/stack, double-free, leaks,
+    signed-integer overflow, OOB pointer arithmetic, misaligned
+    pointer access, narrowing conversions, etc. Initial run
+    found zero issues on the existing test surface.
+
+ -- Tuan Nguyen <anhtuank7c@hotmail.com>  Sun, 03 May 2026 21:30:00 +0000
+
 pamsignal (0.3.2-1) unstable; urgency=medium
 
   * Adopt Type=notify with sd_notify(READY=1) signaled after
