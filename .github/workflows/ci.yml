@@ -1,0 +1,70 @@
+name: CI
+
+# Runs on every push to main and every pull request targeting main. Distinct
+# from release-packages.yml (which only fires on a release: published event)
+# and ppa-upload.yml (same): release-packages.yml exercises packaging and the
+# install-time integration; this workflow exercises the daemon's source-level
+# correctness on every change.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# Cancel in-progress runs when a newer commit lands on the same ref —
+# CI capacity is not infinite and the older run's signal is stale.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  sanitizers:
+    name: build + test (ASAN + UBSAN)
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            meson ninja-build pkg-config gcc \
+            libsystemd-dev libcmocka-dev
+
+      - name: Configure with sanitizers
+        run: |
+          # -Db_sanitize=address,undefined turns on AddressSanitizer +
+          #   UndefinedBehaviorSanitizer. ASAN catches use-after-free, OOB
+          #   heap/stack reads/writes, double-free, leaks. UBSAN catches
+          #   signed integer overflow, OOB pointer arithmetic, misaligned
+          #   pointers, null derefs, implicit narrowing conversions, etc.
+          # -Db_lundef=false relaxes the linker's undefined-symbol check;
+          #   the sanitizer runtimes resolve at load time, not link time.
+          # --buildtype=debugoptimized keeps debug symbols (so failure
+          #   stack traces are useful) but enables -O2, which makes UBSAN
+          #   exercise more code paths than -O0 and matches what optimizers
+          #   actually do to release builds.
+          meson setup build \
+            -Db_sanitize=address,undefined \
+            -Db_lundef=false \
+            --buildtype=debugoptimized
+
+      - name: Build
+        run: meson compile -C build
+
+      - name: Run tests under sanitizers
+        env:
+          # halt_on_error: stop at the first finding rather than racing
+          #   into more undefined behavior, which produces clearer reports.
+          # abort_on_error: produce a SIGABRT so the meson-test log
+          #   captures the full stack instead of a soft non-zero exit.
+          # print_stacktrace: include symbolized backtraces in the report.
+          # detect_leaks: enable LSan (ASAN's leak detector at exit).
+          ASAN_OPTIONS: halt_on_error=1:abort_on_error=1:print_stacktrace=1:detect_leaks=1
+          UBSAN_OPTIONS: halt_on_error=1:abort_on_error=1:print_stacktrace=1
+        run: meson test -C build --print-errorlogs
