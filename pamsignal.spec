@@ -101,28 +101,28 @@ fi
 * Sun May 03 2026 Tuan Nguyen <anhtuank7c@hotmail.com> - 0.3.0-1
 - NEW: detect failed sudo/su password attempts and emit a brute-force
   alert when the per-actor threshold is crossed. Parser recognizes the
-  `pam_unix(<svc>:auth): authentication failure;` form; tracker keys by
-  source IP when `rhost=` is set (SSH→sudo chains) or by `ruser=`
-  otherwise. Per-event chat alerts suppressed for sudo/su login
-  failures so a single mistyped password does not spam channels.
-- BREAKING: daemon binary moves from `%{_bindir}/pamsignal` to
-  `%{_sbindir}/pamsignal` (FHS §4.10). rpm handles the relocation
-  atomically on upgrade; the unit's `ExecStart` is updated in lockstep
-  via meson `configure_file`. Update any scripts referencing the
-  absolute `/usr/bin/pamsignal` path.
-- BREAKING: legacy `PAMSIGNAL_*` journal fields removed. Update saved
-  `journalctl PAMSIGNAL_EVENT=LOGIN_FAILED` queries to
-  `EVENT_ACTION=login_failure` etc. Mapping in CHANGELOG.md.
-- Packaging: %install drops the post-install `mv` (out of
-  /etc/systemd/system) and `sed` (`%{_bindir}` → `%{_sbindir}`)
-  workarounds — meson now lays the unit down in `%{_unitdir}` directly
-  with the right ExecStart path. %pre creates the `pamsignal` group
-  explicitly before `useradd` so `Provides: group(pamsignal)` holds
-  even on hosts with `USERGROUPS_ENAB` unset.
-- Add `pamsignal(8)` man page; %files glob `%{_mandir}/man8/pamsignal.8*`
-  tolerates either compressed or uncompressed.
+  pam_unix authentication-failure message format; tracker keys by source
+  IP when rhost is set (SSH-to-sudo chains) or by ruser otherwise.
+  Per-event chat alerts suppressed for sudo/su login failures so a
+  single mistyped password does not spam channels.
+- BREAKING: daemon binary moves from /usr/bin/pamsignal to
+  /usr/sbin/pamsignal (FHS section 4.10). rpm handles the relocation
+  atomically on upgrade; the unit's ExecStart is updated in lockstep
+  via meson configure_file. Update any scripts referencing the
+  absolute /usr/bin/pamsignal path.
+- BREAKING: legacy PAMSIGNAL_ underscore journal fields removed. Update
+  saved journalctl queries that filter by PAMSIGNAL_EVENT to use
+  EVENT_ACTION instead. Full field mapping in CHANGELOG.md.
+- Packaging: install section drops the post-install mv (out of
+  /etc/systemd/system) and sed (/usr/bin to /usr/sbin) workarounds; the
+  meson configure_file emits the unit in the vendor unit dir directly
+  with the right ExecStart path. The pre script creates the pamsignal
+  group explicitly before useradd so the group provides resolves even
+  on hosts with USERGROUPS_ENAB unset.
+- Add pamsignal(8) man page; the files list glob tolerates either the
+  compressed or uncompressed form.
 - Security: close two clang-analyzer taint-source findings (config-file
-  isspace and getgroups malloc) — both defensive narrowings, no
+  isspace and getgroups malloc); both defensive narrowings with no
   exploitable vulnerabilities closed.
 - Docs: docs/deployment.md Install and Uninstall sections split by
   install path (apt / dnf / source build).

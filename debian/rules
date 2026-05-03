@@ -11,6 +11,13 @@ override_dh_auto_configure:
 override_dh_auto_build:
 	meson compile -C obj-debian
 
+override_dh_auto_install:
+	# We override dh_auto_configure to use the literal build dir name
+	# `obj-debian`; the matching dh_auto_install override is required so
+	# debhelper installs from that dir rather than its default `obj-<arch>`
+	# (which never gets created and would produce an empty package).
+	DESTDIR=$(CURDIR)/debian/pamsignal meson install -C obj-debian --no-rebuild
+
 override_dh_auto_test:
 	meson test -C obj-debian
 
