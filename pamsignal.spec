@@ -51,31 +51,21 @@ SystemCallFilter, MemoryDenyWriteExecute, etc.).
 %install
 %meson_install
 
-# meson.build hardcodes the service file install dir to /etc/systemd/system/
-# (admin override path). Move to %{_unitdir} (vendor unit path).
-mkdir -p %{buildroot}%{_unitdir}
-if [ -f %{buildroot}/etc/systemd/system/pamsignal.service ]; then
-    mv %{buildroot}/etc/systemd/system/pamsignal.service \
-       %{buildroot}%{_unitdir}/pamsignal.service
-    rmdir --ignore-fail-on-non-empty %{buildroot}/etc/systemd/system/ 2>/dev/null || true
-    rmdir --ignore-fail-on-non-empty %{buildroot}/etc/systemd/ 2>/dev/null || true
-fi
-
-# pamsignal.service ships with ExecStart=/usr/local/bin/pamsignal (the meson
-# default prefix); patch to %{_bindir}/pamsignal for the package install.
-sed -i 's|/usr/local/bin/pamsignal|%{_bindir}/pamsignal|g' \
-    %{buildroot}%{_unitdir}/pamsignal.service
-
 %pre
-# Create the pamsignal system user before file install. shadow-utils provides
-# useradd; the (pre) requirement above ensures it's present.
+# Create the pamsignal group and system user before file install. shadow-utils
+# provides groupadd/useradd; the Requires(pre) above ensures they're present.
+# Group is created explicitly so `Provides: group(pamsignal)` is honored even
+# on systems where USERGROUPS_ENAB is unset and useradd would otherwise skip
+# auto-creating the matching group.
+getent group pamsignal >/dev/null 2>&1 || groupadd -r pamsignal
 getent passwd pamsignal >/dev/null 2>&1 || \
-    useradd -r -s /sbin/nologin -M -d /nonexistent \
+    useradd -r -g pamsignal -s /sbin/nologin -M -d /nonexistent \
             -c "PAMSignal daemon" pamsignal
 
 # Grant read access to the journal.
 getent group systemd-journal >/dev/null 2>&1 && \
     usermod -aG systemd-journal pamsignal || true
+exit 0
 
 %post
 %systemd_post pamsignal.service
@@ -99,8 +89,11 @@ fi
 %files
 %license LICENSE
 %doc README.md CHANGELOG.md
-%{_bindir}/pamsignal
+%{_sbindir}/pamsignal
 %{_unitdir}/pamsignal.service
+# Trailing * matches the .gz suffix added by Fedora's brp-compress hook so
+# the file list is correct whether or not compression ran.
+%{_mandir}/man8/pamsignal.8*
 %dir %attr(0750,root,pamsignal) %{_sysconfdir}/pamsignal
 %config(noreplace) %attr(0640,root,pamsignal) %{_sysconfdir}/pamsignal/pamsignal.conf
 

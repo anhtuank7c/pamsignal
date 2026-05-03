@@ -1,0 +1,216 @@
+.\" pamsignal.8 - manual page for the pamsignal daemon
+.\" Maintained as pamsignal.8.in; .TH version is filled by meson at build.
+.TH PAMSIGNAL 8 "2026-05-03" "pamsignal @VERSION@" "System Manager's Manual"
+.SH NAME
+pamsignal \- real-time PAM authentication monitor with multi-channel alerts
+.SH SYNOPSIS
+.B pamsignal
+.RB [ \-f \ |\  \-\-foreground ]
+.RB [ \-c \ |\  \-\-config
+.IR PATH ]
+.SH DESCRIPTION
+.B pamsignal
+is a lightweight C daemon that monitors PAM authentication events through
+the systemd journal. It detects login attempts, logouts, and brute-force
+patterns produced by
+.BR sshd (8),
+.BR sudo (8),
+.BR su (1),
+.BR login (1),
+and
+.BR systemd-logind (8),
+optionally dispatching alerts to Telegram, Slack, Microsoft Teams, WhatsApp,
+Discord, or an arbitrary HTTPS webhook.
+.PP
+The daemon is designed to run under
+.BR systemd (1)
+as the unprivileged user
+.BR pamsignal ,
+which must be a member of the
+.B systemd-journal
+group to obtain read-only access to the journal. Outbound HTTP requests are
+made via
+.BR curl (1)
+launched in a fork+exec child so a network failure cannot crash the parent
+process.
+.PP
+At runtime the daemon refuses to start as
+.BR root ,
+caps its descendant process count to bound any alert-driven fork-burst, and
+sets
+.BR PR_SET_NO_NEW_PRIVS
+to refuse setuid escalation in any child it spawns. The shipped systemd
+unit additionally applies
+.BR ProtectSystem=strict ,
+.BR MemoryDenyWriteExecute=yes ,
+.BR NoNewPrivileges=yes ,
+.BR CapabilityBoundingSet= ,
+and a
+.BR SystemCallFilter=
+allowlist; see
+.BR systemd.exec (5)
+for the meaning of each directive.
+.SH OPTIONS
+.TP
+.BR \-f ", " \-\-foreground
+Stay in the foreground (do not daemonize). Required when running under a
+process supervisor such as
+.BR systemd (1)
+with
+.BR Type=simple .
+This is the mode used by the shipped
+.B pamsignal.service
+unit. In foreground mode no PID file is created.
+.TP
+\fB\-c\fR \fIPATH\fR, \fB\-\-config\fR \fIPATH\fR
+Read configuration from
+.I PATH
+instead of the compiled-in default. The path is resolved through
+.BR realpath (3)
+before
+.BR chdir (\(dq/\(dq)
+is called; an unresolvable path causes
+.B pamsignal
+to refuse to start (defending against symlink swaps and permission
+misconfigurations).
+.SH SIGNALS
+.TP
+.B SIGHUP
+Reload the configuration file. Parsing happens into a temporary
+.B ps_config_t
+first; on success the new configuration is swapped in atomically. On parse
+failure the previous configuration is preserved. The in-memory brute-force
+tracking table is preserved across reloads, so existing per-source-IP
+attempt counts and alert cooldowns survive the reload.
+.TP
+.B SIGTERM
+Terminate gracefully. The journal watch loop returns, the PID file (if
+any) is removed, and the daemon exits with status 0.
+.TP
+.B SIGINT
+Same handling as
+.BR SIGTERM .
+Useful when running interactively in
+.BR \-\-foreground
+mode.
+.SH FILES
+.TP
+.B /etc/pamsignal/pamsignal.conf
+The configuration file. The compiled-in default path is set at meson
+configure time from
+.B sysconfdir
+and may differ for non-system installs. The file holds alert-channel
+credentials (Telegram bot tokens, webhook URLs) and brute-force tuning
+parameters; it is shipped with mode
+.B 0640
+and group
+.BR pamsignal .
+See
+.BR pamsignal.conf (5)
+\(em or, until that page exists,
+.B pamsignal.conf.example
+in the source tree \(em for the full key reference.
+.TP
+.B /run/pamsignal/pamsignal.pid
+PID file written when the daemon is launched without
+.BR \-\-foreground .
+Created via
+.BR openat (2)
+under an
+.BR O_DIRECTORY \  | \  O_NOFOLLOW
+directory file descriptor; a stale PID file is removed only after
+.BR kill (pid,\ 0)
+returns
+.BR ESRCH .
+The directory is supplied by the systemd unit's
+.B RuntimeDirectory=pamsignal
+directive.
+.TP
+.B /usr/lib/systemd/system/pamsignal.service
+The shipped systemd service unit (vendor unit path). Admin overrides
+belong in
+.B /etc/systemd/system/pamsignal.service.d/*.conf
+drop-ins, not on top of the vendored unit.
+.SH OUTPUT
+All operational logging is emitted via
+.BR sd_journal_send (3)
+with structured fields aligned to the Elastic Common Schema (ECS).
+Useful queries:
+.PP
+.RS 4
+.EX
+journalctl \-t pamsignal \-f
+journalctl \-u pamsignal \-\-since today
+journalctl _SYSTEMD_UNIT=pamsignal.service EVENT_ACTION=brute_force_detected
+.EE
+.RE
+.PP
+The
+.B PAMSIGNAL_*
+field set is retained as a backward-compatibility shim through the 0.2.x
+series alongside the ECS-aligned
+.BR EVENT_* / USER_* / SOURCE_* / HOST_* / SERVICE_* / PROCESS_*
+fields, and is scheduled to retire in 0.3.0.
+.SH EXIT STATUS
+.TP
+.B 0
+Successful clean shutdown (typically via SIGTERM/SIGINT).
+.TP
+.B 1
+Refused to start: invoked as root, current user is not in the
+.B systemd-journal
+group, the configuration file path could not be resolved, or the
+configuration file failed to load.
+.TP
+.B non\-zero (other)
+An internal subsystem failed to initialize: signal handlers, daemonize,
+PID-file acquisition, or journal watch. The detailed reason is logged via
+.BR sd_journal_print (3)
+to the journal under syslog identifier
+.BR pamsignal .
+.SH SECURITY
+.B pamsignal
+is a security-monitoring daemon and is itself written defensively. Notable
+hardening choices:
+.IP \(bu 2
+Runs as a dedicated unprivileged user with read-only journal access; never
+opens a listening socket; the only outbound network capability is the
+.BR curl (1)
+fork+exec path used for alert dispatch.
+.IP \(bu 2
+Alert credentials are passed to the curl child through a memfd-backed
+.B \-\-config
+file rather than via argv, so they do not appear in
+.B /proc/<pid>/cmdline
+or in process accounting.
+.IP \(bu 2
+Webhook URLs are constrained to
+.B https://
+via curl's
+.B \-\-proto =https
+flag.
+.IP \(bu 2
+Journal entries are filtered through an
+.B _EXE
+allowlist (\fBsshd\fR, \fBsudo\fR, \fBsu\fR, \fBlogin\fR,
+\fBsystemd-logind\fR under a system prefix); entries with a missing
+.B _EXE
+field are dropped, so an unprivileged user cannot inject fake PAM events
+via
+.BR logger (1).
+.IP \(bu 2
+Per-source-IP brute-force tracking with a configurable cooldown bounds the
+alert volume during a sustained attack.
+.SH SEE ALSO
+.BR pamsignal.conf (5),
+.BR systemctl (1),
+.BR systemd.exec (5),
+.BR systemd.unit (5),
+.BR journalctl (1),
+.BR sd_journal_send (3),
+.BR sshd_config (5),
+.BR pam (8)
+.SH BUGS
+Report bugs at <https://github.com/anhtuank7c/pamsignal/issues>.
+.SH AUTHOR
+Tuan Nguyen <anhtuank7c@hotmail.com>

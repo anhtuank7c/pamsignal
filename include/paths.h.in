@@ -1,0 +1,6 @@
+#ifndef PS_PATHS_H
+#define PS_PATHS_H
+
+#define PS_DEFAULT_CONFIG_PATH "@sysconfdir@/pamsignal/pamsignal.conf"
+
+#endif /* PS_PATHS_H */

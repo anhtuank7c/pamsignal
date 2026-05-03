@@ -11,10 +11,12 @@ meson compile -C build
 sudo meson install -C build
 ```
 
-This installs:
-- `/usr/local/bin/pamsignal` — the binary
-- `/etc/systemd/system/pamsignal.service` — the systemd service
-- `/etc/pamsignal/pamsignal.conf` — the example config (from `pamsignal.conf.example`)
+This installs (with the default `--prefix=/usr/local`):
+- `/usr/local/sbin/pamsignal` — the binary (FHS §4.10: system administration daemons live in `sbin`)
+- `/usr/local/lib/systemd/system/pamsignal.service` — the systemd unit (vendor unit search path)
+- `/usr/local/etc/pamsignal/pamsignal.conf` — the example config (from `pamsignal.conf.example`)
+
+For a system-wide install that mirrors the packaged layout (`/usr/sbin`, `/usr/lib/systemd/system`, `/etc/pamsignal`), reconfigure with `meson setup build --prefix=/usr --sysconfdir=/etc`.
 
 ## Create the service user
 
@@ -88,9 +90,9 @@ sudo systemctl stop pamsignal
 ```bash
 sudo systemctl stop pamsignal
 sudo systemctl disable pamsignal
-sudo rm /usr/local/bin/pamsignal
-sudo rm /etc/systemd/system/pamsignal.service
-sudo rm -rf /etc/pamsignal
+sudo rm /usr/local/sbin/pamsignal
+sudo rm /usr/local/lib/systemd/system/pamsignal.service
+sudo rm -rf /usr/local/etc/pamsignal
 sudo userdel pamsignal
 sudo systemctl daemon-reload
 ```

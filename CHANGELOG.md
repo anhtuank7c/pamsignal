@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+### Packaging
+- [x] **meson installs the systemd unit to the vendor path natively**: `pamsignal.service.in` is now a template; `configure_file` substitutes `@sbindir@` at configure time and installs to the dir reported by `pkg-config --variable=systemdsystemunitdir systemd` (with a `<prefix>/lib/systemd/system` fallback). Both `debian/rules` and `pamsignal.spec` drop the post-install `mv` (out of `/etc/systemd/system`) and `sed` (`/usr/local/bin` → `/usr/bin`) workarounds — the artifact is correct straight out of `meson install`.
+- [x] **RPM `%pre` creates the group explicitly before the user**: `groupadd -r pamsignal` runs before `useradd -r -g pamsignal …` so `Provides: group(pamsignal)` is honored even on hosts where `USERGROUPS_ENAB` is unset and `useradd` would otherwise skip auto-creating the matching group.
+- [x] **`PS_DEFAULT_CONFIG_PATH` is now derived from `sysconfdir` at configure time**: a new `include/paths.h.in` template is generated into the build dir via `configure_file`, substituting `@sysconfdir@` from `get_option('prefix') / get_option('sysconfdir')`. Packaged builds (`--sysconfdir=/etc`) still embed `/etc/pamsignal/pamsignal.conf`; a dev `meson install` with the default `--prefix=/usr/local` now correctly embeds `/usr/local/etc/pamsignal/pamsignal.conf` so the daemon finds its conf without an explicit `--config` flag.
+- [x] **Daemon binary moved from `bindir` to `sbindir`** (FHS §4.10: system administration daemons belong in `sbin`, not `bin`). Packaged builds now install to `/usr/sbin/pamsignal` (was `/usr/bin/pamsignal`); dev installs land at `/usr/local/sbin/pamsignal` (was `/usr/local/bin/pamsignal`). The systemd unit's `ExecStart` is updated automatically by the `configure_file` substitution. The `pamsignal` command name is unchanged — `/usr/sbin` is in root's `PATH` on every supported distro, and ordinary users invoke the daemon only via `systemctl`. RPM `%files` switches to `%{_sbindir}/pamsignal`. Upgrade behavior: on the deb/rpm transition, the package manager removes the old `/usr/bin/pamsignal` file and installs the new one at `/usr/sbin/pamsignal`; `systemctl daemon-reload` is auto-fired and the unit's new ExecStart points at the new path. Anyone scripting against the absolute `/usr/bin/pamsignal` path needs to update to `/usr/sbin/pamsignal`.
+
+### Documentation
+- [x] **`pamsignal(8)` man page added.** New `pamsignal.8.in` template covers SYNOPSIS, OPTIONS (`-f`/`--foreground`, `-c`/`--config PATH`), SIGNALS (`SIGHUP`/`SIGTERM`/`SIGINT` semantics), FILES (`/etc/pamsignal/pamsignal.conf`, `/run/pamsignal/pamsignal.pid`, vendor unit path), structured-journal output (ECS field reference + sample `journalctl` queries), EXIT STATUS, SECURITY (system user, memfd-backed curl `--config`, `--proto =https`, `_EXE` allowlist, per-IP cooldown), SEE ALSO, BUGS, AUTHOR. The `.TH` version is filled by `configure_file` from `meson.project_version()` so it tracks the release. Installed to `<prefix>/share/man/man8/`; debhelper auto-compresses on deb, brp-compress on rpm. The RPM `%files` glob `%{_mandir}/man8/pamsignal.8*` accepts either compressed or uncompressed.
+
 ## 0.2.4 — 2026-05-03
 
 Feature release adding server context configurations.

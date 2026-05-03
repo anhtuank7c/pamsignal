@@ -5,7 +5,7 @@ After=systemd-journald.service
 
 [Service]
 Type=simple
-ExecStart=/usr/local/bin/pamsignal --foreground
+ExecStart=@sbindir@/pamsignal --foreground
 User=pamsignal
 Group=pamsignal
 SupplementaryGroups=systemd-journal

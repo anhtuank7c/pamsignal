@@ -3,7 +3,7 @@
 
 #include <stdint.h>
 
-#define PS_DEFAULT_CONFIG_PATH "/etc/pamsignal/pamsignal.conf"
+#include "paths.h"
 
 // Defaults for brute-force detection
 #define PS_DEFAULT_FAIL_THRESHOLD     5

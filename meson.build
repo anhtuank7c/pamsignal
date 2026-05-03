@@ -61,7 +61,23 @@ add_project_link_arguments(
 
 libsystemd_dep = dependency('libsystemd')
 
-inc = include_directories('include')
+# Generate paths.h with PS_DEFAULT_CONFIG_PATH derived from sysconfdir so the
+# compiled-in default tracks the configured prefix. Packaged builds (sysconfdir
+# = /etc) get /etc/pamsignal/pamsignal.conf; a dev `meson install` with the
+# default prefix (/usr/local) gets /usr/local/etc/pamsignal/pamsignal.conf
+# matching where install_data actually drops the file.
+paths_conf = configuration_data()
+paths_conf.set('sysconfdir', get_option('prefix') / get_option('sysconfdir'))
+
+configure_file(
+  input: 'include/paths.h.in',
+  output: 'paths.h',
+  configuration: paths_conf,
+)
+
+# include_directories('include', '.') exposes both the source `include/` dir
+# and the build root (where configure_file emits paths.h) to consumers.
+inc = include_directories('include', '.')
 
 srcs = [
   'src/config.c',
@@ -76,16 +92,54 @@ executable('pamsignal',
   srcs,
   include_directories: inc,
   dependencies: libsystemd_dep,
-  install: true
+  install: true,
+  # FHS §4.10: system administration daemons go in sbindir, not bindir.
+  # Packaged builds (prefix=/usr) install to /usr/sbin/; dev installs
+  # (prefix=/usr/local by default) install to /usr/local/sbin/.
+  install_dir: get_option('sbindir'),
 )
 
-install_data('pamsignal.service',
-  install_dir: '/etc/systemd/system'
+# Systemd unit: resolve the install dir from systemd's pkg-config so the unit
+# lands in the vendor path (/usr/lib/systemd/system on Debian/Ubuntu/Fedora),
+# not the admin override path. ExecStart is templated with @sbindir@ so packaged
+# builds (prefix=/usr) get /usr/sbin/pamsignal and dev installs (prefix=/usr/local
+# by default) get /usr/local/sbin/pamsignal — no post-install sed required.
+systemd_dep = dependency('systemd', required: false)
+if systemd_dep.found()
+  systemd_unitdir = systemd_dep.get_variable(pkgconfig: 'systemdsystemunitdir')
+else
+  systemd_unitdir = get_option('prefix') / 'lib/systemd/system'
+endif
+
+unit_conf = configuration_data()
+unit_conf.set('sbindir', get_option('prefix') / get_option('sbindir'))
+
+configure_file(
+  input: 'pamsignal.service.in',
+  output: 'pamsignal.service',
+  configuration: unit_conf,
+  install: true,
+  install_dir: systemd_unitdir,
 )
 
 install_data('pamsignal.conf.example',
   install_dir: get_option('sysconfdir') / 'pamsignal',
   rename: 'pamsignal.conf'
+)
+
+# Section-8 man page: substitute the project version into the .TH line so
+# `man pamsignal` shows the same version as `pamsignal --version` would. The
+# debhelper compress hook (deb) and brp-compress (rpm) gzip the installed
+# file at packaging time; meson lays it down uncompressed.
+man_conf = configuration_data()
+man_conf.set('VERSION', meson.project_version())
+
+configure_file(
+  input: 'pamsignal.8.in',
+  output: 'pamsignal.8',
+  configuration: man_conf,
+  install: true,
+  install_dir: get_option('mandir') / 'man8',
 )
 
 # --- Tests ---

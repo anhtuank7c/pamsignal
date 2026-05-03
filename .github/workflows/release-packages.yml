@@ -406,6 +406,25 @@ jobs:
           which pamsignal
           systemctl is-active pamsignal
 
+      - name: Verify file layout and metadata
+        run: |
+          # Files at expected paths
+          test -x /usr/sbin/pamsignal
+          test -f /usr/lib/systemd/system/pamsignal.service
+          test -f /etc/pamsignal/pamsignal.conf
+          # ExecStart resolved by meson configure_file at build time
+          grep -q '^ExecStart=/usr/sbin/pamsignal' \
+            /usr/lib/systemd/system/pamsignal.service
+          # Config perms set by postinst
+          perms=$(stat -c '%U:%G %a' /etc/pamsignal/pamsignal.conf)
+          echo "Config perms: $perms"
+          [ "$perms" = "root:pamsignal 640" ]
+          # Man page installed and compressed by dh_compress
+          test -f /usr/share/man/man8/pamsignal.8.gz
+          # Sanity-check the .TH version matches the installed binary
+          zcat /usr/share/man/man8/pamsignal.8.gz | head -3 | \
+            grep -q 'pamsignal '
+
       - name: Generate trusted self-signed cert for localhost
         run: |
           # The URL validator only accepts https://, so the mock webhook must
@@ -575,6 +594,7 @@ jobs:
           ! command -v pamsignal
           [ ! -f /usr/lib/systemd/system/pamsignal.service ]
           [ ! -d /etc/pamsignal ]
+          [ ! -f /usr/share/man/man8/pamsignal.8.gz ]
           # The pamsignal user is intentionally retained (it may own journal
           # entries written while the daemon was alive).
           getent passwd pamsignal >/dev/null && \
@@ -627,11 +647,11 @@ jobs:
       - name: Verify file layout and metadata
         run: |
           # Files at expected paths
-          test -x /usr/bin/pamsignal
+          test -x /usr/sbin/pamsignal
           test -f /usr/lib/systemd/system/pamsignal.service
           test -f /etc/pamsignal/pamsignal.conf
-          # ExecStart was patched at build time
-          grep -q '^ExecStart=/usr/bin/pamsignal' \
+          # ExecStart resolved by meson configure_file at build time
+          grep -q '^ExecStart=/usr/sbin/pamsignal' \
             /usr/lib/systemd/system/pamsignal.service
           # System user created by %pre
           getent passwd pamsignal
@@ -639,8 +659,12 @@ jobs:
           perms=$(stat -c '%U:%G %a' /etc/pamsignal/pamsignal.conf)
           echo "Config perms: $perms"
           [ "$perms" = "root:pamsignal 640" ]
+          # Man page installed; brp-compress on Fedora/EL gzips it. Glob form
+          # tolerates either compressed or uncompressed.
+          ls /usr/share/man/man8/pamsignal.8* >/dev/null
           # rpm metadata sanity
           rpm -q pamsignal
+          rpm -ql pamsignal | grep -q '/usr/share/man/man8/pamsignal\.8'
           rpm -V pamsignal || true  # mtime / md5 drift on conf is OK
 
       - name: Smoke-launch the binary (no systemd in container)
@@ -652,7 +676,7 @@ jobs:
           chown pamsignal:pamsignal /run/pamsignal
           chmod 0750 /run/pamsignal
           # `runuser` is preferred over `sudo` in minimal containers.
-          timeout 3 runuser -u pamsignal -- /usr/bin/pamsignal --foreground \
+          timeout 3 runuser -u pamsignal -- /usr/sbin/pamsignal --foreground \
             2>&1 | head -5 || true
           echo "binary launches without crashing"
 
@@ -660,6 +684,9 @@ jobs:
         run: |
           dnf remove -y pamsignal
           ! command -v pamsignal
+          # Man page must be gone too. Use shell pattern test so an empty
+          # match doesn't expand to the literal glob.
+          ! ls /usr/share/man/man8/pamsignal.8* >/dev/null 2>&1
           # The pamsignal user is intentionally retained.
           getent passwd pamsignal >/dev/null && \
             echo "pamsignal user retained as expected"
