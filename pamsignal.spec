@@ -1,5 +1,5 @@
 Name:           pamsignal
-Version:        0.2.3
+Version:        0.2.4
 Release:        1%{?dist}
 Summary:        Real-time PAM login monitor with multi-channel alerts
 
@@ -105,6 +105,19 @@ fi
 %config(noreplace) %attr(0640,root,pamsignal) %{_sysconfdir}/pamsignal/pamsignal.conf
 
 %changelog
+* Sun May 03 2026 Tuan Nguyen <anhtuank7c@hotmail.com> - 0.2.4-1
+- Add optional server context tags (`provider`, `service_name`) to alert
+  payloads. When configured in `pamsignal.conf` they are appended to
+  chat-text alerts and injected under the ECS `labels.*` dictionary in
+  JSON webhook payloads.
+- docs: TypeScript Express webhook receiver example and Bruno test
+  collection; expand custom-webhook integration docs.
+- ci(test-deb): drive the functional test with real sshd auth events
+  instead of `logger -t sshd` (the v0.2.3 `_EXE` allowlist drops the
+  latter).
+- ci: pin `environment: release` on every release job so secrets resolve
+  consistently.
+
 * Sat May 02 2026 Tuan Nguyen <anhtuank7c@hotmail.com> - 0.2.3-1
 - Security: enforce a `_EXE` allowlist on every journal entry so
   unprivileged users can no longer inject fake PAM events via logger(1)

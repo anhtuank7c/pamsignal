@@ -1,3 +1,19 @@
+pamsignal (0.2.4-1) unstable; urgency=medium
+
+  * Add optional server context tags (provider, service_name) to alert
+    payloads. When configured in pamsignal.conf they are appended to
+    chat-text alerts and injected under the ECS labels.* dictionary in
+    JSON webhook payloads.
+  * docs: TypeScript Express webhook receiver example and Bruno test
+    collection; expand custom-webhook integration docs.
+  * ci(test-deb): drive the functional test with real sshd auth events
+    instead of `logger -t sshd` (the v0.2.3 _EXE allowlist drops the
+    latter).
+  * ci: pin `environment: release` on every release job so secrets
+    (GPG_*) resolve consistently.
+
+ -- Tuan Nguyen <anhtuank7c@hotmail.com>  Sun, 03 May 2026 07:00:00 +0000
+
 pamsignal (0.2.3-1) unstable; urgency=medium
 
   * Security: enforce a _EXE allowlist on every journal entry so
