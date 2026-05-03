@@ -87,6 +87,46 @@ sudo systemctl stop pamsignal
 
 ## Uninstall
 
+The right command depends on how you installed pamsignal. If you used the published `.deb` or `.rpm` (the path in the project README), the package manager unwinds everything for you. The manual recipe is only for installs done from source via `meson install`.
+
+### Packaged install (Debian / Ubuntu, via `apt`)
+
+`dpkg` distinguishes two stages of removal:
+
+```bash
+# Soft remove: stops the service, removes the binary / unit / man page,
+# but KEEPS your /etc/pamsignal/pamsignal.conf so a later reinstall
+# preserves your alert credentials and tuning.
+sudo apt remove pamsignal
+
+# Hard remove: stops the service AND wipes /etc/pamsignal/. Use this
+# when you really want pamsignal off the host.
+sudo apt purge pamsignal
+```
+
+The maintainer scripts shipped with the package (`debian/pamsignal.{prerm,postrm}`) handle `systemctl stop`, `systemctl disable`, and `daemon-reload`. The `pamsignal` system user is **intentionally preserved** across both `remove` and `purge` — if any file on the system was created with that UID (a runtime artifact, an unexpected leftover) and the user were deleted, the file would orphan to a numeric UID the kernel could later reuse for a different user. Drop the user manually only after you have confirmed nothing on the system is owned by it:
+
+```bash
+sudo find / -user pamsignal 2>/dev/null
+sudo userdel pamsignal     # only if the find above returned nothing
+```
+
+### Packaged install (Fedora / RHEL / AlmaLinux / Rocky, via `dnf`)
+
+rpm has a single removal verb:
+
+```bash
+sudo dnf remove pamsignal
+```
+
+There is no equivalent of `apt purge` — `dnf remove` already deletes everything the package put on disk. One subtlety: if you edited `/etc/pamsignal/pamsignal.conf` since install, `rpm` saves your modified copy as `/etc/pamsignal/pamsignal.conf.rpmsave` rather than deleting it (the `%config(noreplace)` directive in `pamsignal.spec`). Remove the `.rpmsave` file by hand if you no longer need your old configuration.
+
+The spec's `%preun` / `%postun` blocks handle systemd lifecycle. The `pamsignal` user is preserved on uninstall for the same reason explained above.
+
+### Source build (`meson install`)
+
+If you ran `sudo meson install -C build` instead of installing a package, no package-manager database tracks what was placed where — you have to undo it explicitly:
+
 ```bash
 sudo systemctl stop pamsignal
 sudo systemctl disable pamsignal
@@ -95,15 +135,17 @@ sudo rm /usr/local/lib/systemd/system/pamsignal.service
 sudo rm -f /usr/local/share/man/man8/pamsignal.8
 sudo rm -rf /usr/local/etc/pamsignal
 # systemd's ConfigurationDirectory=pamsignal directive auto-creates
-# /etc/pamsignal/ on first start regardless of --prefix; for a dev
-# install with --prefix=/usr/local this directory is empty and unused
-# but is left behind unless removed explicitly.
+# /etc/pamsignal/ on first unit start regardless of --prefix; for a
+# dev install with --prefix=/usr/local this directory is empty and
+# unused but is left behind unless removed explicitly.
 sudo rm -rf /etc/pamsignal
 sudo userdel pamsignal
 sudo systemctl daemon-reload
 ```
 
-`/run/pamsignal/` does not need manual cleanup — systemd's `RuntimeDirectory=pamsignal` directive removes it automatically when the service stops.
+`/run/pamsignal/` does not need manual cleanup — `RuntimeDirectory=pamsignal` removes it automatically when the service stops.
+
+If you reconfigured the build with `--prefix=/usr --sysconfdir=/etc` to mirror the packaged layout, replace `/usr/local/sbin`, `/usr/local/lib/systemd/system`, `/usr/local/share/man/man8`, and `/usr/local/etc/pamsignal` with their `/usr/...` and `/etc/...` counterparts.
 
 ## Security hardening
 
