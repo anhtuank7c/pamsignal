@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## 0.3.2 — 2026-05-03
+
+Best-practices polish release. Three small, independent changes that bring the project closer to "modern systemd-native daemon" baseline: a documented vulnerability-disclosure channel, `Type=notify` + `WatchdogSec=` integration, and a CI gate that prevents the unit's hardening score from regressing in future PRs. No source-code behavior change beyond the systemd integration; the existing CMocka suite passes unchanged and `systemd-analyze security` still scores 2.2.
 
 ### CI
 - [x] **`systemd-analyze security` regression gate.** The `test-deb` job now runs `systemd-analyze security --threshold=3 pamsignal.service` after install. Current baseline score is **2.2** ("OK" — second-best band); the threshold of 3 leaves headroom for routine adjustments but fails the workflow if a future PR strips a major hardening directive (`MemoryDenyWriteExecute=`, `SystemCallFilter=`, `CapabilityBoundingSet=`, `RestrictNamespaces=`, etc., each worth ≥0.5 score points). Catches the class of regression where an unrelated change accidentally weakens the daemon's sandbox.

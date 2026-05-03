@@ -1,3 +1,29 @@
+pamsignal (0.3.2-1) unstable; urgency=medium
+
+  * Adopt Type=notify with sd_notify(READY=1) signaled after
+    journal-watch init succeeds. systemd holds the unit in
+    "activating" until pamsignal can actually process events;
+    Wants= / After= chains see correct state. WatchdogSec=30s
+    plus sd_notify(WATCHDOG=1) on every main-loop iteration
+    auto-restarts a wedged sd_journal_wait instead of letting
+    the daemon silently stop processing auth events.
+    NotifyAccess=main confines the notification socket to the
+    parent process so fork+exec curl children cannot spoof
+    readiness or watchdog messages.
+  * Add SECURITY.md at the repo root: GitHub Security Advisories
+    is the preferred private-disclosure channel with email
+    fallback; 90-day coordinated-disclosure timeline; supported
+    version policy is latest minor only; explicit in-scope vs
+    out-of-scope table.
+  * CI: add a systemd-analyze security regression gate to the
+    test-deb job. Threshold is 3, current baseline is 2.2;
+    routine adjustments pass through, but stripping a major
+    hardening directive (MemoryDenyWriteExecute=,
+    SystemCallFilter=, CapabilityBoundingSet=, etc.) trips
+    the gate and fails the workflow.
+
+ -- Tuan Nguyen <anhtuank7c@hotmail.com>  Sun, 03 May 2026 19:30:00 +0000
+
 pamsignal (0.3.1-1) unstable; urgency=medium
 
   * BREAKING (revert of v0.3.0 path move): daemon binary moves

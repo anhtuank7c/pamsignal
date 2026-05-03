@@ -1,5 +1,5 @@
 Name:           pamsignal
-Version:        0.3.1
+Version:        0.3.2
 Release:        1%{?dist}
 Summary:        Real-time PAM login monitor with multi-channel alerts
 
@@ -98,6 +98,29 @@ fi
 %config(noreplace) %attr(0640,root,pamsignal) %{_sysconfdir}/pamsignal/pamsignal.conf
 
 %changelog
+* Sun May 03 2026 Tuan Nguyen <anhtuank7c@hotmail.com> - 0.3.2-1
+- Adopt Type=notify with sd_notify(READY=1) signaled after the
+  journal-watch init succeeds; systemd holds the unit in the
+  activating state until pamsignal can actually process events.
+  WatchdogSec=30s plus sd_notify(WATCHDOG=1) on every main-loop
+  iteration auto-restarts a wedged sd_journal_wait instead of
+  letting the daemon silently stop processing auth events.
+  NotifyAccess=main confines the notification socket to the
+  parent process so the fork+exec curl children cannot spoof
+  readiness or watchdog messages.
+- Add SECURITY.md at the repo root: GitHub Security Advisories
+  is the preferred private-disclosure channel with email
+  fallback; 90-day coordinated-disclosure timeline; supported
+  version policy is latest minor only; explicit in-scope vs
+  out-of-scope table separating parser bypasses and tracker
+  logic from upstream-dependency bugs.
+- CI: add a systemd-analyze security regression gate to the
+  test-deb job. Threshold is 3, current baseline is 2.2;
+  routine adjustments pass through but stripping a major
+  hardening directive (MemoryDenyWriteExecute, SystemCallFilter,
+  CapabilityBoundingSet, ProtectSystem=strict, etc., each worth
+  at least 0.5 score points) trips the gate.
+
 * Sun May 03 2026 Tuan Nguyen <anhtuank7c@hotmail.com> - 0.3.1-1
 - BREAKING (revert of v0.3.0 path move): daemon binary moves from
   /usr/sbin/pamsignal back to /usr/bin/pamsignal to align with the
