@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.2.4 — 2026-05-03
+
+Feature release adding server context configurations.
+
+### Features
+- [x] **Server Context Tags**: Added `provider` and `service_name` configuration fields to `pamsignal.conf`. When configured, these tags are automatically included in alert payloads to help administrators identify the environment generating the alert.
+- [x] **Text Alerts**: Context tags are appended to the end of text-based alerts (e.g. Telegram, Slack, WhatsApp).
+- [x] **JSON Webhooks**: Context tags are injected natively into the root of the ECS JSON payload under the `labels` dictionary.
+
 ## 0.2.3 — 2026-05-02
 
 Security and bugfix release.

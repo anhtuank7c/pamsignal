@@ -33,12 +33,14 @@ This means the webhook output drops directly into Elastic SIEM and Wazuh without
 Severity bracket is fixed-width (8 chars) so columns align in monospace renderings. Field order is severity → action → identity → location → metadata → `pid` → `ts`. The `pid=` field is the live process for `session_opened` and `login_success` events (you can `kill <pid>` to disconnect the user) and the failing-auth child for failures (already reaped — useful as forensic context only).
 
 ```
-[INFO]   auth.session_opened user=root host=web-01 service=sudo pid=12345 ts=2026-03-29T14:23:01+0000
-[INFO]   auth.session_closed user=root host=web-01 service=sshd pid=12346 ts=2026-03-29T14:25:10+0000
+[INFO]   auth.session_opened user=root host=web-01 service=sudo pid=12345 ts=2026-03-29T14:23:01+0000 provider=aws service_name=web-api
+[INFO]   auth.session_closed user=root host=web-01 service=sshd pid=12346 ts=2026-03-29T14:25:10+0000 provider=aws service_name=web-api
 [NOTICE] auth.login_success user=admin src=192.168.1.100:52341 host=web-01 service=sshd auth=password pid=12345 ts=2026-03-29T14:23:01+0000
 [WARN]   auth.login_failure user=root src=203.0.113.50:39182 host=web-01 service=sshd auth=password pid=12347 ts=2026-03-29T14:23:01+0000
 [ALERT]  auth.brute_force_detected src=203.0.113.50 attempts=12 window=300s user=root host=web-01 pid=12347 ts=2026-03-29T14:23:01+0000
 ```
+
+*(Note: Custom context tags like `provider=aws service_name=web-api` will be appended automatically if configured in `pamsignal.conf`)*
 
 ### Telegram
 
@@ -114,9 +116,15 @@ Sent as a `POST` request with `Content-Type: application/json`. Conforms to ECS 
   "pamsignal": {
     "event_type": "LOGIN_FAILED",
     "auth_method": "password"
+  },
+  "labels": {
+    "provider": "aws",
+    "service_name": "database"
   }
 }
 ```
+
+*(Note: The `labels` object is only included if you have defined `provider` or `service_name` in your `pamsignal.conf`)*
 
 **Session event** (no `source.*` because it's not a network event):
 

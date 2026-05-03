@@ -28,6 +28,10 @@ typedef struct {
     int fail_window_sec; // 1..86400
     int max_tracked_ips; // 1..100000
 
+    // Context tags
+    char provider[64];
+    char service_name[64];
+
     // Alert rate limiting
     int alert_cooldown_sec; // 0..86400 (0 = no cooldown)
 } ps_config_t;

@@ -12,6 +12,11 @@
 # fail_window_sec = 300
 # max_tracked_ips = 256
 
+# --- Context tags (optional) ---
+# Add metadata to your alerts to easily identify the server environment
+# provider = aws
+# service_name = web-api
+
 # Alert rate limiting
 # alert_cooldown_sec = 60
 

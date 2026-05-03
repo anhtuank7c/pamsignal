@@ -81,6 +81,8 @@ static const cfg_entry_t config_keys[] = {
     CFG_STR(whatsapp_recipient),
     CFG_STR(discord_webhook_url),
     CFG_STR(webhook_url),
+    CFG_STR(provider),
+    CFG_STR(service_name),
     CFG_INT(fail_threshold, 1, 10000),
     CFG_INT(fail_window_sec, 1, 86400),
     CFG_INT(max_tracked_ips, 1, 100000),
@@ -379,7 +381,8 @@ int ps_config_load(const char *path, ps_config_t *cfg) {
                      "pamsignal: config loaded: telegram=%s slack=%s teams=%s "
                      "whatsapp=%s discord=%s webhook=%s "
                      "fail_threshold=%d fail_window_sec=%d "
-                     "max_tracked_ips=%d alert_cooldown_sec=%d",
+                     "max_tracked_ips=%d alert_cooldown_sec=%d "
+                     "provider=%s service_name=%s",
                      cfg->telegram_bot_token[0] ? "on" : "off",
                      cfg->slack_webhook_url[0] ? "on" : "off",
                      cfg->teams_webhook_url[0] ? "on" : "off",
@@ -387,6 +390,8 @@ int ps_config_load(const char *path, ps_config_t *cfg) {
                      cfg->discord_webhook_url[0] ? "on" : "off",
                      cfg->webhook_url[0] ? "on" : "off", cfg->fail_threshold,
                      cfg->fail_window_sec, cfg->max_tracked_ips,
-                     cfg->alert_cooldown_sec);
+                     cfg->alert_cooldown_sec,
+                     cfg->provider[0] ? cfg->provider : "none",
+                     cfg->service_name[0] ? cfg->service_name : "none");
     return PS_OK;
 }
