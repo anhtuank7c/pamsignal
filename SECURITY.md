@@ -44,22 +44,13 @@ The recommended install path is the signed apt or dnf repository documented in [
 
 ## Scope
 
-**In scope** (please report):
+The full in-scope / out-of-scope breakdown — including adversary capabilities the daemon assumes, the trust boundaries inside the codebase, and the design choices that produce the current security posture — lives in [`docs/threat-model.md`](./docs/threat-model.md). Read that before reporting; in particular, the "Out of scope" section there is comprehensive about the non-goals (compromised journald / libsystemd / curl, root-already-on-host, alert-provider compromise, multi-host correlation, durable alert delivery, admin misconfiguration).
 
-- Memory-safety bugs in `src/` (buffer overflows, use-after-free, double-free, integer overflow, format-string flaws).
-- Logic bugs in `src/utils.c` `ps_parse_message` that allow a low-priv local user to spoof a PAM event under another user's identity (e.g. by crafting a `logger` invocation that bypasses the `_EXE` allowlist).
-- Brute-force tracker bypasses — any sequence of failed-auth events that does not increment the per-key counter, does not trigger the threshold alert, or causes the cooldown to be skipped.
-- Alert-payload injection — any input that escapes JSON quoting in the webhook body, leaks credentials into argv (`/proc/<pid>/cmdline`), or rewrites the URL passed to `curl`.
-- Privilege-escalation paths — anything that lets the `pamsignal` system user obtain capabilities beyond its journal-read membership.
-- Bypasses of the systemd unit hardening (e.g. `MemoryDenyWriteExecute=`, `SystemCallFilter=`, `CapabilityBoundingSet=`).
+The summary, sufficient for most reports:
 
-**Out of scope** (these belong elsewhere):
+**In scope.** Memory-safety bugs in `src/`; logic bugs in `ps_parse_message` that bypass the `_EXE` allowlist; brute-force tracker bypasses; alert-payload injection (JSON-escape escapes, credential leakage into argv, URL hijack of the `curl` child); privilege-escalation paths from the `pamsignal` user; bypasses of the systemd unit hardening directives.
 
-- Vulnerabilities in `curl(1)`, `libsystemd`, `systemd-journald`, or any other dependency. Report those upstream.
-- Vulnerabilities in alert delivery channels (Telegram Bot API, Slack webhooks, Microsoft Teams connectors, WhatsApp Cloud API, Discord webhooks, your own custom webhook receiver). These are operated by their respective providers; pamsignal only emits HTTPS POSTs.
-- Issues that require an attacker who is already root on the monitored host. pamsignal does not defend against an adversary who can already issue arbitrary system calls.
-- Configuration mistakes by the operator (e.g. world-readable `pamsignal.conf` containing alert credentials). Improving defaults to make these mistakes harder is welcome as a regular feature request, not a security report.
-- Denial of service via a flood of legitimate auth events. The brute-force tracker's per-key cooldown bounds alert volume; tuning it for an unusual workload is a configuration concern.
+**Out of scope.** Vulnerabilities in `curl`, `libsystemd`, journald, or any alert-channel provider; threat models requiring root on the monitored host; admin misconfiguration; alert-channel rate limits / DoS via legitimate event floods.
 
 ## Hardening Already Shipped
 

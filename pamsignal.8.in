@@ -230,11 +230,24 @@ single mistyped password does not page the operator.
 .BR systemctl (1),
 .BR systemd.exec (5),
 .BR systemd.unit (5),
+.BR systemd-analyze (1),
 .BR journalctl (1),
 .BR sd_journal_send (3),
 .BR sshd_config (5),
 .BR pam (8)
+.PP
+The repository ships
+.B docs/threat-model.md
+documenting what
+.B pamsignal
+defends against, what it deliberately does not, and the design rationale
+behind the split. Read it before reporting suspected vulnerabilities;
+.B SECURITY.md
+in the same repository documents the private-disclosure channel.
 .SH BUGS
-Report bugs at <https://github.com/anhtuank7c/pamsignal/issues>.
+Report non-security bugs at <https://github.com/anhtuank7c/pamsignal/issues>.
+For security issues, use the private channel documented in
+.B SECURITY.md
+(GitHub Security Advisories preferred).
 .SH AUTHOR
 Tuan Nguyen <anhtuank7c@hotmail.com>

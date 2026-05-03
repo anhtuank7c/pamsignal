@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+### Documentation
+- [x] **`docs/threat-model.md`** documents what pamsignal defends against, what it deliberately does not, and the design rationale behind the split. Sections cover: assets in priority order (alert integrity, alert credentials, the `pamsignal` user's privilege envelope, journal entries pamsignal writes), adversary classes with explicit capabilities (external remote, local unprivileged, in-`pamsignal`-group, compromised daemon, network attacker on alert path), nine in-scope attacks each cross-referenced to the source-line of its mitigation (`_EXE` allowlist, brute-force tracker semantics, memfd credential isolation, `clearenv()` + absolute-path `execv`, TLS-only `--proto =https`, `sanitize_string` + `json_escape`, the systemd hardening directives, compiler hardening + libFuzzer, per-IP cooldown), ten explicit out-of-scope non-goals (root-on-host, in-pamsignal-group, compromised journald/libsystemd/curl, compromised alert provider, durable delivery, multi-host correlation, authenticated alert delivery, admin misconfiguration, input-flood DoS), the trust-boundary table, and the deliberate design limitations. `SECURITY.md`'s scope section now references the threat model rather than duplicating the breakdown; the `pamsignal(8)` man page's `SEE ALSO` points readers there before reporting suspected vulnerabilities; the README's documentation index links it. Designed as the canonical reference for "should this contribution land?" — a feature that strengthens an in-scope mitigation is welcome; a feature that pulls work into the daemon from an out-of-scope area gets pointed at this document.
+
 ## 0.3.2 — 2026-05-03
 
 Best-practices polish release. Three small, independent changes that bring the project closer to "modern systemd-native daemon" baseline: a documented vulnerability-disclosure channel, `Type=notify` + `WatchdogSec=` integration, and a CI gate that prevents the unit's hardening score from regressing in future PRs. No source-code behavior change beyond the systemd integration; the existing CMocka suite passes unchanged and `systemd-analyze security` still scores 2.2.
