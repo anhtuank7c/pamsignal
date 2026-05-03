@@ -28,11 +28,66 @@ permissions:
   contents: write
 
 jobs:
+  # --- Sanity gate: tag, meson.build, debian/changelog, pamsignal.spec
+  # must all agree on the version. Without this, dpkg-buildpackage /
+  # rpmbuild silently produce packages stamped with whatever the metadata
+  # says — which is how v0.2.4 shipped with 0.2.3 .debs.
+  verify-versions:
+    name: Verify version consistency
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.inputs.ref || github.ref }}
+          fetch-depth: 0
+
+      - name: Install parsers
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            dpkg-dev rpm
+
+      - name: Compare versions
+        run: |
+          # Tag version: strip leading "refs/tags/" + "v". For
+          # workflow_dispatch with ref=v0.2.4 this is "0.2.4". For a
+          # branch (workflow_dispatch with ref=main) we skip the gate —
+          # branch builds aren't shipped, they're for testing.
+          ref="${{ github.event.inputs.ref || github.ref_name }}"
+          case "$ref" in
+            v*) tag_version="${ref#v}" ;;
+            *)  echo "::notice::Non-tag ref '$ref' — skipping version gate."
+                exit 0 ;;
+          esac
+
+          meson_version=$(awk -F"'" '/^[[:space:]]*version:/ {print $2; exit}' meson.build)
+          deb_version=$(dpkg-parsechangelog -l debian/changelog -S Version)
+          deb_upstream="${deb_version%-*}"   # strip Debian revision
+          spec_version=$(rpmspec -q --queryformat='%{version}\n' pamsignal.spec | head -n1)
+
+          echo "tag:               $tag_version"
+          echo "meson.build:       $meson_version"
+          echo "debian/changelog:  $deb_version (upstream=$deb_upstream)"
+          echo "pamsignal.spec:    $spec_version"
+
+          fail=0
+          for src in meson_version deb_upstream spec_version; do
+            val="${!src}"
+            if [ "$val" != "$tag_version" ]; then
+              echo "::error::$src is '$val' but tag is '$tag_version'"
+              fail=1
+            fi
+          done
+          [ "$fail" -eq 0 ] || exit 1
+          echo "All version sources agree on $tag_version"
+
   # --- Debian / Ubuntu ---
   build-deb:
     name: Build .deb (Ubuntu)
     runs-on: ubuntu-24.04
     environment: release
+    needs: verify-versions
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -150,6 +205,7 @@ jobs:
     name: Build .rpm (${{ matrix.target.name }})
     runs-on: ubuntu-24.04
     environment: release
+    needs: verify-versions
     strategy:
       fail-fast: false
       matrix:
