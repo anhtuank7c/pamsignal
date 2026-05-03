@@ -232,7 +232,8 @@ static void post_alert(const char *url, const char *auth_header, char *body) {
 // → location → metadata → pid → ts. PID is placed immediately before ts so
 // `kill <pid>` is an easy copy-paste from any alert message.
 
-static void format_event_text(const ps_config_t *cfg, const ps_pam_event_t *event, char *buf,
+static void format_event_text(const ps_config_t *cfg,
+                              const ps_pam_event_t *event, char *buf,
                               size_t len) {
     char timebuf[32];
     ps_format_timestamp(event->timestamp_usec, timebuf, sizeof(timebuf));
@@ -243,19 +244,22 @@ static void format_event_text(const ps_config_t *cfg, const ps_pam_event_t *even
     char context[256] = "";
     if (cfg->provider[0] || cfg->service_name[0]) {
         if (cfg->provider[0] && cfg->service_name[0]) {
-            snprintf(context, sizeof(context), " provider=%s service_name=%s", cfg->provider, cfg->service_name);
+            snprintf(context, sizeof(context), " provider=%s service_name=%s",
+                     cfg->provider, cfg->service_name);
         } else if (cfg->provider[0]) {
             snprintf(context, sizeof(context), " provider=%s", cfg->provider);
         } else {
-            snprintf(context, sizeof(context), " service_name=%s", cfg->service_name);
+            snprintf(context, sizeof(context), " service_name=%s",
+                     cfg->service_name);
         }
     }
 
     if (event->type == PS_EVENT_SESSION_OPEN ||
         event->type == PS_EVENT_SESSION_CLOSE) {
-        snprintf(buf, len, "%s auth.%s user=%s host=%s service=%s pid=%d ts=%s%s",
-                 severity, action, event->username, event->hostname,
-                 ps_service_str(event->service), (int)event->pid, timebuf, context);
+        snprintf(
+            buf, len, "%s auth.%s user=%s host=%s service=%s pid=%d ts=%s%s",
+            severity, action, event->username, event->hostname,
+            ps_service_str(event->service), (int)event->pid, timebuf, context);
     } else {
         snprintf(buf, len,
                  "%s auth.%s user=%s src=%s:%d host=%s service=%s "
@@ -267,20 +271,23 @@ static void format_event_text(const ps_config_t *cfg, const ps_pam_event_t *even
     }
 }
 
-static void format_brute_text(const ps_config_t *cfg, const char *ip, int attempts, int window,
-                              const char *user, const char *host, uint64_t ts,
-                              pid_t last_pid, char *buf, size_t len) {
+static void format_brute_text(const ps_config_t *cfg, const char *ip,
+                              int attempts, int window, const char *user,
+                              const char *host, uint64_t ts, pid_t last_pid,
+                              char *buf, size_t len) {
     char timebuf[32];
     ps_format_timestamp(ts, timebuf, sizeof(timebuf));
 
     char context[256] = "";
     if (cfg->provider[0] || cfg->service_name[0]) {
         if (cfg->provider[0] && cfg->service_name[0]) {
-            snprintf(context, sizeof(context), " provider=%s service_name=%s", cfg->provider, cfg->service_name);
+            snprintf(context, sizeof(context), " provider=%s service_name=%s",
+                     cfg->provider, cfg->service_name);
         } else if (cfg->provider[0]) {
             snprintf(context, sizeof(context), " provider=%s", cfg->provider);
         } else {
-            snprintf(context, sizeof(context), " service_name=%s", cfg->service_name);
+            snprintf(context, sizeof(context), " service_name=%s",
+                     cfg->service_name);
         }
     }
 
@@ -290,7 +297,8 @@ static void format_brute_text(const ps_config_t *cfg, const char *ip, int attemp
              ip, attempts, window, user, host, (int)last_pid, timebuf, context);
 }
 
-static void format_event_json(const ps_config_t *cfg, const ps_pam_event_t *event, char *buf,
+static void format_event_json(const ps_config_t *cfg,
+                              const ps_pam_event_t *event, char *buf,
                               size_t len) {
     char timebuf[32];
     char esc_user[128], esc_host[512];
@@ -304,11 +312,16 @@ static void format_event_json(const ps_config_t *cfg, const ps_pam_event_t *even
         json_escape(cfg->provider, esc_prov, sizeof(esc_prov));
         json_escape(cfg->service_name, esc_srv, sizeof(esc_srv));
         if (cfg->provider[0] && cfg->service_name[0]) {
-            snprintf(labels_json, sizeof(labels_json), ",\"labels\":{\"provider\":\"%s\",\"service_name\":\"%s\"}", esc_prov, esc_srv);
+            snprintf(
+                labels_json, sizeof(labels_json),
+                ",\"labels\":{\"provider\":\"%s\",\"service_name\":\"%s\"}",
+                esc_prov, esc_srv);
         } else if (cfg->provider[0]) {
-            snprintf(labels_json, sizeof(labels_json), ",\"labels\":{\"provider\":\"%s\"}", esc_prov);
+            snprintf(labels_json, sizeof(labels_json),
+                     ",\"labels\":{\"provider\":\"%s\"}", esc_prov);
         } else {
-            snprintf(labels_json, sizeof(labels_json), ",\"labels\":{\"service_name\":\"%s\"}", esc_srv);
+            snprintf(labels_json, sizeof(labels_json),
+                     ",\"labels\":{\"service_name\":\"%s\"}", esc_srv);
         }
     }
 
@@ -360,9 +373,10 @@ static void format_event_json(const ps_config_t *cfg, const ps_pam_event_t *even
     }
 }
 
-static void format_brute_json(const ps_config_t *cfg, const char *ip, int attempts, int window,
-                              const char *user, const char *host, uint64_t ts,
-                              pid_t last_pid, char *buf, size_t len) {
+static void format_brute_json(const ps_config_t *cfg, const char *ip,
+                              int attempts, int window, const char *user,
+                              const char *host, uint64_t ts, pid_t last_pid,
+                              char *buf, size_t len) {
     char timebuf[32];
     char esc_user[128], esc_host[512];
     ps_format_timestamp(ts, timebuf, sizeof(timebuf));
@@ -375,11 +389,16 @@ static void format_brute_json(const ps_config_t *cfg, const char *ip, int attemp
         json_escape(cfg->provider, esc_prov, sizeof(esc_prov));
         json_escape(cfg->service_name, esc_srv, sizeof(esc_srv));
         if (cfg->provider[0] && cfg->service_name[0]) {
-            snprintf(labels_json, sizeof(labels_json), ",\"labels\":{\"provider\":\"%s\",\"service_name\":\"%s\"}", esc_prov, esc_srv);
+            snprintf(
+                labels_json, sizeof(labels_json),
+                ",\"labels\":{\"provider\":\"%s\",\"service_name\":\"%s\"}",
+                esc_prov, esc_srv);
         } else if (cfg->provider[0]) {
-            snprintf(labels_json, sizeof(labels_json), ",\"labels\":{\"provider\":\"%s\"}", esc_prov);
+            snprintf(labels_json, sizeof(labels_json),
+                     ",\"labels\":{\"provider\":\"%s\"}", esc_prov);
         } else {
-            snprintf(labels_json, sizeof(labels_json), ",\"labels\":{\"service_name\":\"%s\"}", esc_srv);
+            snprintf(labels_json, sizeof(labels_json),
+                     ",\"labels\":{\"service_name\":\"%s\"}", esc_srv);
         }
     }
 
@@ -396,7 +415,8 @@ static void format_brute_json(const ps_config_t *cfg, const char *ip, int attemp
              "\"process\":{\"pid\":%d},"
              "\"pamsignal\":{\"event_type\":\"BRUTE_FORCE_DETECTED\","
              "\"attempts\":%d,\"window_sec\":%d}%s}",
-             timebuf, esc_host, esc_user, ip, (int)last_pid, attempts, window, labels_json);
+             timebuf, esc_host, esc_user, ip, (int)last_pid, attempts, window,
+             labels_json);
 }
 
 // --- Per-channel senders ---
@@ -530,8 +550,8 @@ void ps_notify_brute_force(const ps_config_t *cfg, const char *source_ip,
     // fail_entry state, so we don't gate brute-force alerts here. Suppressing
     // them globally would let a chatty login flood mute brute-force signals.
     char text[1024];
-    format_brute_text(cfg, source_ip, attempts, window_sec, last_username, hostname,
-                      timestamp_usec, last_pid, text, sizeof(text));
+    format_brute_text(cfg, source_ip, attempts, window_sec, last_username,
+                      hostname, timestamp_usec, last_pid, text, sizeof(text));
 
     send_telegram(cfg, text);
     if (cfg->slack_webhook_url[0])
