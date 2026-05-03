@@ -90,6 +90,8 @@ Sent as plain text via [Discord webhook](https://support.discord.com/hc/en-us/ar
 
 Sent as a `POST` request with `Content-Type: application/json`. Conforms to ECS so it can be ingested into Elastic Stack, Wazuh, or any pipeline that speaks ECS without field remapping.
 
+> 💡 **Want to build your own receiver?** Check out the ready-to-deploy **[Node.js Express Webhook Example](../examples/nodejs-webhook/README.md)**! It demonstrates how to authenticate, parse the ECS JSON payload, and route PAMSignal events.
+
 **Login event:**
 
 ```json

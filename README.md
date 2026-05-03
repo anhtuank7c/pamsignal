@@ -83,7 +83,14 @@ telegram_chat_id = <your_chat_id>
 ```
 *See [Alert Setup Guides](./docs/alerts.md) for Slack, Teams, WhatsApp, and Discord.*
 
-### 3. Reload & Monitor
+### 3. Custom Webhook Integrations (Optional)
+
+Need to send alerts to a provider we don't support natively? Or want to build your own auto-banning logic? 
+PAMSignal sends structured ECS JSON to any custom webhook. 
+
+👉 **[Check out the Node.js Custom Webhook Example](./examples/nodejs-webhook/README.md)** to see how easy it is to build your own receiver!
+
+### 4. Reload & Monitor
 
 Apply your configuration and watch the live events:
 
@@ -92,7 +99,7 @@ sudo systemctl reload pamsignal
 journalctl -t pamsignal -f
 ```
 
-## 🛡️ Hardening with Fail2ban
+## 🛡️ Hardening with Fail2ban (Optional Advanced Protection)
 
 PAMSignal calculates brute-force thresholds for you. You can take this a step further by automatically blocking attackers' IPs using Fail2ban. Since PAMSignal does the heavy lifting, the Fail2ban setup is incredibly simple.
 
