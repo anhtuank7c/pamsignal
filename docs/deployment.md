@@ -92,10 +92,18 @@ sudo systemctl stop pamsignal
 sudo systemctl disable pamsignal
 sudo rm /usr/local/sbin/pamsignal
 sudo rm /usr/local/lib/systemd/system/pamsignal.service
+sudo rm -f /usr/local/share/man/man8/pamsignal.8
 sudo rm -rf /usr/local/etc/pamsignal
+# systemd's ConfigurationDirectory=pamsignal directive auto-creates
+# /etc/pamsignal/ on first start regardless of --prefix; for a dev
+# install with --prefix=/usr/local this directory is empty and unused
+# but is left behind unless removed explicitly.
+sudo rm -rf /etc/pamsignal
 sudo userdel pamsignal
 sudo systemctl daemon-reload
 ```
+
+`/run/pamsignal/` does not need manual cleanup — systemd's `RuntimeDirectory=pamsignal` directive removes it automatically when the service stops.
 
 ## Security hardening
 
