@@ -1,0 +1,125 @@
+name: Bug report
+description: A real bug — something pamsignal does that contradicts its documented behavior
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to file a bug report. Please fill in the
+        sections below — issues missing key reproduction info usually sit
+        unactionable until somebody else hits the same thing.
+
+        **Before filing**:
+        - For security vulnerabilities, **do not file a public issue**. Use
+          the disclosure channel in [`SECURITY.md`](https://github.com/anhtuank7c/pamsignal/blob/main/SECURITY.md).
+        - For "is this even a bug?" questions, check
+          [`docs/threat-model.md`](https://github.com/anhtuank7c/pamsignal/blob/main/docs/threat-model.md)
+          first — some behaviors that look like bugs are documented
+          non-goals (e.g. fire-and-forget alert delivery).
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: One-paragraph description of the bug.
+      placeholder: |
+        SIGHUP after a config reload causes the brute-force counter for
+        an active attacker IP to reset, letting the attacker stay below
+        the threshold by triggering reloads.
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: |
+        Output of `apt show pamsignal | grep ^Version` (Debian/Ubuntu) or
+        `dnf info pamsignal | grep ^Version` (Fedora/RHEL/AlmaLinux/Rocky),
+        or the `git describe` if you built from source.
+      placeholder: 0.3.3
+    validations:
+      required: true
+
+  - type: input
+    id: distro
+    attributes:
+      label: Distribution
+      description: |
+        Run `cat /etc/os-release | grep PRETTY_NAME` and paste the value.
+      placeholder: Ubuntu 24.04.1 LTS
+    validations:
+      required: true
+
+  - type: dropdown
+    id: install_method
+    attributes:
+      label: Install method
+      options:
+        - apt (signed gh-pages repo)
+        - dnf (signed gh-pages repo)
+        - source build (`meson install`)
+        - other (please describe in Additional context)
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: |
+        The minimal sequence to trigger the bug. If it depends on a
+        specific journal-event shape, include the `journalctl --output=export`
+        excerpt — that's the format pamsignal actually consumes.
+      placeholder: |
+        1. Configure pamsignal with `fail_threshold = 5` and
+           `alert_cooldown_sec = 60`.
+        2. Trigger 4 failed sshd auth events from 192.0.2.1 over 30 seconds.
+        3. Send the daemon SIGHUP.
+        4. Trigger 4 more failed sshd auth events from 192.0.2.1.
+        5. Observe: no brute-force alert (expected: alert at attempt 5
+           regardless of the SIGHUP).
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+
+  - type: textarea
+    id: journal
+    attributes:
+      label: Journal output
+      description: |
+        Paste `journalctl -u pamsignal --since "1 hour ago" --no-pager`
+        for the relevant time window. If the output contains alert
+        credentials (Telegram tokens, webhook URLs), redact those.
+      render: text
+
+  - type: textarea
+    id: config
+    attributes:
+      label: Configuration (with credentials redacted)
+      description: |
+        The relevant subset of `/etc/pamsignal/pamsignal.conf`. Replace
+        any tokens / webhook URLs with `<redacted>`.
+      render: ini
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: |
+        Anything else relevant — was this working in a previous version?
+        Did you recently change anything else on the host? Which alert
+        channel were you using?

@@ -1,0 +1,85 @@
+name: Feature request
+description: Propose a new capability, configuration option, or improvement
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the suggestion. Please read
+        [`docs/threat-model.md`](https://github.com/anhtuank7c/pamsignal/blob/main/docs/threat-model.md)
+        before filing — features that pull pamsignal toward
+        durable-queue / multi-host-correlation / authenticated-delivery /
+        alert-channel-specific logic are explicit non-goals (NS6 / NS7 /
+        NS8 in the threat model). The shorter your proposed feature stays
+        from those non-goals, the more likely it lands.
+
+        For requests outside the threat model, the recommendation is:
+        send pamsignal's JSON output to a custom webhook *you* control,
+        and put the feature you want into your webhook receiver. We
+        keep `examples/nodejs-webhook/` in this repo as a starting
+        template for that approach.
+
+  - type: textarea
+    id: use_case
+    attributes:
+      label: Use case
+      description: |
+        What are you trying to do? Describe the actual operational
+        problem, not a proposed solution. ("I need to know when my
+        prod hosts get a brute-force burst, but I run 30 hosts and
+        Telegram drowns" is more useful than "add multi-host
+        aggregation".)
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+      description: |
+        What change to pamsignal would solve your use case? Be
+        specific — name the config keys, the journal fields, the
+        unit-file directives that would change.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: |
+        What else did you try? "Custom webhook receiver", "fail2ban
+        in parallel", "configure pamsignal differently" all count.
+        If you tried and it didn't work, say why.
+    validations:
+      required: true
+
+  - type: textarea
+    id: threat_model_alignment
+    attributes:
+      label: Threat model alignment
+      description: |
+        Pick the closest match from `docs/threat-model.md`:
+
+        - **Strengthens an in-scope mitigation** (attacks 1–9). Specify
+          which one.
+        - **Tightens an existing defense** (compiler hardening, sandbox
+          directive, parser validator).
+        - **New surface that's not yet covered** but logically belongs
+          to one of the in-scope adversary classes.
+        - **Out-of-scope but I think it should be in scope.** Make the
+          case — what changes about the threat model itself.
+      placeholder: |
+        Strengthens attack #2 (brute-force tracker bypass): currently
+        the tracker only keys by source IP, so a distributed scanner
+        across 50 IPs hitting one user 4 times each goes undetected
+        despite obviously being one attack...
+
+  - type: textarea
+    id: prior_art
+    attributes:
+      label: Prior art / references
+      description: |
+        Existing projects, RFCs, ECS schema sections, kernel features,
+        or systemd directives that informed your proposal. Optional but
+        speeds up review.

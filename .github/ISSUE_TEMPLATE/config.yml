@@ -1,0 +1,20 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/anhtuank7c/pamsignal/security/advisories/new
+    about: |
+      Report security vulnerabilities privately via GitHub Security Advisories.
+      Do NOT file a public issue. See SECURITY.md for the full disclosure
+      policy and the in-scope / out-of-scope breakdown in docs/threat-model.md.
+  - name: Question or usage discussion
+    url: https://github.com/anhtuank7c/pamsignal/issues?q=is%3Aissue+label%3Aquestion
+    about: |
+      Check existing issues with the "question" label first — many usage
+      questions are already answered. If yours isn't, open a feature-request
+      issue and add the "question" label.
+  - name: Documentation
+    url: https://github.com/anhtuank7c/pamsignal#-documentation
+    about: |
+      Read README.md, docs/configuration.md, docs/deployment.md,
+      docs/alerts.md, and docs/threat-model.md before filing — they
+      cover most "how do I..." cases.
