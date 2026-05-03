@@ -149,6 +149,7 @@ jobs:
   build-rpm:
     name: Build .rpm (${{ matrix.target.name }})
     runs-on: ubuntu-24.04
+    environment: release
     strategy:
       fail-fast: false
       matrix:
@@ -592,6 +593,7 @@ jobs:
   publish-repo:
     name: Publish signed apt+dnf repo to gh-pages
     runs-on: ubuntu-24.04
+    environment: release
     needs: [build-deb, build-rpm, test-deb, test-rpm]
     if: github.event_name == 'release' || inputs.attach_to_release == 'true'
     permissions:
