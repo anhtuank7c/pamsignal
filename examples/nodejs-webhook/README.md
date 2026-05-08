@@ -73,33 +73,48 @@ If you front the receiver with Nginx/Caddy/Traefik anyway (TLS termination, rate
 
 ### Mutual TLS (advanced)
 
-If you already run an internal PKI, configure the receiver to require client certs and let pamsignal authenticate with one. Replace this example's plain Express server with `https.createServer` and verify the peer cert:
+If you already run an internal PKI, this example can run as an mTLS-enforcing HTTPS receiver that pairs with pamsignal's `webhook_client_cert` / `webhook_client_key` config. The server picks HTTPS over plain HTTP automatically when the TLS env vars are set.
 
-```ts
-import https from 'node:https';
-import fs from 'node:fs';
+#### Local end-to-end demo
 
-const server = https.createServer({
-  key: fs.readFileSync('/etc/ssl/private/server.key'),
-  cert: fs.readFileSync('/etc/ssl/certs/server.crt'),
-  ca: fs.readFileSync('/etc/ssl/certs/internal-ca.crt'),
-  requestCert: true,
-  rejectUnauthorized: true,
-}, app);
-server.listen(8443);
+```bash
+# 1. Generate a CA + server cert + client cert under ./certs/
+./scripts/gen-test-certs.sh
+
+# 2. Configure this example to listen on HTTPS and require a client cert.
+cat >> .env <<'EOF'
+TLS_KEY_PATH=./certs/server.key
+TLS_CERT_PATH=./certs/server.crt
+TLS_CLIENT_CA_PATH=./certs/ca.crt
+TLS_REQUIRE_CLIENT_CERT=true
+EOF
+
+# 3. Start the receiver.
+npm run dev   # or: npm run build && npm start
 ```
 
-On the pamsignal side:
+You should see `🔐 PAMSignal Webhook Receiver listening on https://localhost:3000/webhook/pamsignal (mTLS — client cert required)`.
+
+#### Configure pamsignal
+
+In `/etc/pamsignal/pamsignal.conf`:
 
 ```ini
-webhook_url = https://your-receiver.internal:8443/webhook/pamsignal
-webhook_client_cert = /etc/pamsignal/webhook-client.crt
-webhook_client_key  = /etc/pamsignal/webhook-client.key
-# Only if your receiver's CA isn't in the system trust store
-webhook_ca_bundle   = /etc/pamsignal/internal-ca.crt
+webhook_url = https://localhost:3000/webhook/pamsignal
+webhook_auth_header = Authorization: Bearer your_super_secret_token_here
+webhook_client_cert = /absolute/path/to/certs/client.crt
+webhook_client_key  = /absolute/path/to/certs/client.key
+# Required because the demo CA isn't in the system trust store.
+webhook_ca_bundle   = /absolute/path/to/certs/ca.crt
 ```
 
-mTLS combines additively with `webhook_auth_header` if the receiver wants both (mTLS for service identity, Bearer for per-request authorization).
+Reload pamsignal (`sudo systemctl reload pamsignal`) and trigger an event — the receiver should log it. A request from any client without a valid cert (e.g. `curl https://localhost:3000/webhook/pamsignal`) will be rejected at the TLS handshake before reaching Express.
+
+#### Production layout
+
+For production deployments, replace `./certs/*` with paths managed by your cert pipeline (cert-manager, certbot, `systemd-creds`, internal CA + ACME, etc.). The four env vars and the `webhook_*` config keys are unchanged. `gen-test-certs.sh` is for local/CI testing — do not ship its output to production.
+
+mTLS combines additively with `webhook_auth_header` if the receiver wants both (mTLS for transport-layer service identity, Bearer for per-request authorization). The Express middleware in this example checks the Bearer token regardless of the transport, so an mTLS-only deployment can simply leave `WEBHOOK_SECRET` unset (or set both for defense in depth).
 
 ## 🛠️ Deploying as a Systemd Daemon
 
