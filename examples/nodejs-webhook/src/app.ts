@@ -16,11 +16,10 @@ app.use(express.json());
 
 /**
  * Authentication Middleware
- * 
+ *
  * Enforces the use of a Bearer token in the Authorization header.
- * Note: To connect this directly to PAMSignal, you will need a reverse proxy 
- * (like Nginx) to inject the `Authorization: Bearer <token>` header, as 
- * PAMSignal does not natively send custom headers for webhooks yet.
+ * Configure pamsignal.conf with:
+ *   webhook_auth_header = Authorization: Bearer <token>
  */
 const authenticate = (req: Request, res: Response, next: NextFunction): void => {
   const WEBHOOK_SECRET = process.env.WEBHOOK_SECRET;

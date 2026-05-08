@@ -616,7 +616,10 @@ void ps_notify_event(const ps_config_t *cfg, const ps_pam_event_t *event) {
     if (cfg->webhook_url[0]) {
         char json[2048];
         format_event_json(cfg, event, json, sizeof(json));
-        post_alert(cfg->webhook_url, NULL, json);
+        post_alert(cfg->webhook_url,
+                   cfg->webhook_auth_header[0] ? cfg->webhook_auth_header
+                                               : NULL,
+                   json);
     }
 }
 
@@ -645,7 +648,10 @@ void ps_notify_brute_force(const ps_config_t *cfg, const char *source_ip,
         format_brute_json(cfg, source_ip, attempts, window_sec, last_username,
                           hostname, timestamp_usec, last_pid, json,
                           sizeof(json));
-        post_alert(cfg->webhook_url, NULL, json);
+        post_alert(cfg->webhook_url,
+                   cfg->webhook_auth_header[0] ? cfg->webhook_auth_header
+                                               : NULL,
+                   json);
     }
 }
 
@@ -675,6 +681,9 @@ void ps_notify_local_brute_force(const ps_config_t *cfg, ps_service_t service,
         format_local_brute_json(cfg, service, actor_username, target_username,
                                 attempts, window_sec, hostname, timestamp_usec,
                                 last_pid, json, sizeof(json));
-        post_alert(cfg->webhook_url, NULL, json);
+        post_alert(cfg->webhook_url,
+                   cfg->webhook_auth_header[0] ? cfg->webhook_auth_header
+                                               : NULL,
+                   json);
     }
 }

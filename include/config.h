@@ -22,6 +22,7 @@ typedef struct {
     char whatsapp_recipient[32];
     char discord_webhook_url[512];
     char webhook_url[512];
+    char webhook_auth_header[512];
 
     // Brute-force detection
     int fail_threshold;  // 1..10000

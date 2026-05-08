@@ -89,6 +89,7 @@ static const cfg_entry_t config_keys[] = {
     CFG_STR(whatsapp_recipient),
     CFG_STR(discord_webhook_url),
     CFG_STR(webhook_url),
+    CFG_STR(webhook_auth_header),
     CFG_STR(provider),
     CFG_STR(service_name),
     CFG_INT(fail_threshold, 1, 10000),
@@ -156,6 +157,31 @@ static int is_telegram_bot_token(const char *t) {
         return 0;
     for (const char *p = suffix; *p; p++) {
         if (!isalnum((unsigned char)*p) && *p != '_' && *p != '-')
+            return 0;
+    }
+    return 1;
+}
+
+// Validates a single HTTP header in `Name: value` form before it is written
+// into the curl -K config file. Header injection (CR/LF) would let an
+// attacker who controls the config inject extra request headers; `"` and `\`
+// would break out of the quoted value in curl's config parser.
+static int is_http_header(const char *h) {
+    if (!h || !*h)
+        return 0;
+    const char *colon = strchr(h, ':');
+    if (!colon || colon == h)
+        return 0;
+    for (const char *p = h; p < colon; p++) {
+        unsigned char c = (unsigned char)*p;
+        if (!isalnum(c) && !strchr("!#$%&'*+-.^_`|~", c))
+            return 0;
+    }
+    for (const char *p = colon + 1; *p; p++) {
+        unsigned char c = (unsigned char)*p;
+        if (c < 0x20 || c == 0x7F)
+            return 0;
+        if (c == '"' || c == '\\')
             return 0;
     }
     return 1;
@@ -238,6 +264,22 @@ static int validate_alert_targets(const ps_config_t *cfg) {
                              "pamsignal: config: %s must be an https:// URL "
                              "with no whitespace or shell metacharacters",
                              urls[i].name);
+            errors++;
+        }
+    }
+
+    if (cfg->webhook_auth_header[0]) {
+        if (!cfg->webhook_url[0]) {
+            sd_journal_print(LOG_ERR,
+                             "pamsignal: config: webhook_auth_header is set "
+                             "but webhook_url is not configured");
+            errors++;
+        }
+        if (!is_http_header(cfg->webhook_auth_header)) {
+            sd_journal_print(LOG_ERR,
+                             "pamsignal: config: webhook_auth_header must be "
+                             "in 'Name: value' form with no control chars, "
+                             "quotes, or backslashes");
             errors++;
         }
     }
@@ -387,7 +429,7 @@ int ps_config_load(const char *path, ps_config_t *cfg) {
 
     sd_journal_print(LOG_INFO,
                      "pamsignal: config loaded: telegram=%s slack=%s teams=%s "
-                     "whatsapp=%s discord=%s webhook=%s "
+                     "whatsapp=%s discord=%s webhook=%s webhook_auth=%s "
                      "fail_threshold=%d fail_window_sec=%d "
                      "max_tracked_ips=%d alert_cooldown_sec=%d "
                      "provider=%s service_name=%s",
@@ -396,9 +438,10 @@ int ps_config_load(const char *path, ps_config_t *cfg) {
                      cfg->teams_webhook_url[0] ? "on" : "off",
                      cfg->whatsapp_access_token[0] ? "on" : "off",
                      cfg->discord_webhook_url[0] ? "on" : "off",
-                     cfg->webhook_url[0] ? "on" : "off", cfg->fail_threshold,
-                     cfg->fail_window_sec, cfg->max_tracked_ips,
-                     cfg->alert_cooldown_sec,
+                     cfg->webhook_url[0] ? "on" : "off",
+                     cfg->webhook_auth_header[0] ? "on" : "off",
+                     cfg->fail_threshold, cfg->fail_window_sec,
+                     cfg->max_tracked_ips, cfg->alert_cooldown_sec,
                      cfg->provider[0] ? cfg->provider : "none",
                      cfg->service_name[0] ? cfg->service_name : "none");
     return PS_OK;
