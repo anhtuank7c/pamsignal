@@ -48,3 +48,12 @@
 # "Name: value" form so any header works (Bearer, API keys, HMAC).
 # Secret stays out of /proc/<pid>/cmdline (passed via memfd to curl).
 # webhook_auth_header = Authorization: Bearer <token>
+#
+# Optional mTLS client authentication for the custom webhook. Path values,
+# not inline PEM — manage via your cert pipeline (cert-manager, certbot,
+# systemd-creds). Cert and key must be set together; CA bundle is optional
+# (only needed if the receiver's CA isn't in the system trust store).
+# Daemon refuses to start if the key file is group/world-readable.
+# webhook_client_cert = /etc/pamsignal/webhook-client.crt
+# webhook_client_key  = /etc/pamsignal/webhook-client.key
+# webhook_ca_bundle   = /etc/pamsignal/webhook-ca.pem

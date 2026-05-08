@@ -232,6 +232,29 @@ Common patterns:
 
 The header value is passed to curl via a memfd-backed `-K` config file, so the secret never appears in `argv`, `/proc/<pid>/cmdline`, or any process listing. Only one header is supported; values containing `\r`, `\n`, `"`, or `\` are rejected at config load.
 
+**Mutual TLS (optional, advanced):**
+
+For environments that already run a PKI (internal CA, cert-manager, SPIFFE, service-mesh issuance), pamsignal can authenticate to the receiver with a client certificate. Stronger than shared-secret auth: the private key never travels over the wire, and credential rotation is delegated to the cert-management pipeline.
+
+```ini
+webhook_url = https://siem.internal.example.com/ingest
+webhook_client_cert = /etc/pamsignal/webhook-client.crt
+webhook_client_key  = /etc/pamsignal/webhook-client.key
+# Optional: only if the receiver's CA isn't in the system trust store
+webhook_ca_bundle   = /etc/pamsignal/webhook-ca.pem
+```
+
+mTLS combines additively with `webhook_auth_header` — operators with receivers like Wazuh API or corporate SIEM gateways often require both (mTLS for transport-layer service identity, Bearer for app-layer rate-limit / multi-tenancy).
+
+**Operational requirements:**
+
+- `webhook_client_cert` and `webhook_client_key` must be set together; setting one without the other is a config-load error.
+- `webhook_client_key` must not be group- or world-readable. Recommended layout: `0640 root:pamsignal` (or `0600 pamsignal:pamsignal` if the daemon runs unprivileged), mirroring the protection on `pamsignal.conf` itself.
+- All three paths are opened with `O_NOFOLLOW` (symlinks rejected) and must be regular files owned by `root` or the daemon user.
+- Path values containing `\r`, `\n`, `"`, or `\` are rejected at config load.
+- Encrypted (passphrase-protected) keys are not supported. Use filesystem permissions, `systemd-creds`, or your cert manager's secret-injection model instead.
+- The cert/key paths flow through the same memfd-backed curl config as the auth header, so they don't appear in `argv` either — keeps the alert child's process listing minimal.
+
 ### Event types
 
 | `event.action` (ECS) | `pamsignal.event_type` (legacy) | When | Severity |

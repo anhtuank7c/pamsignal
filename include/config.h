@@ -23,6 +23,9 @@ typedef struct {
     char discord_webhook_url[512];
     char webhook_url[512];
     char webhook_auth_header[512];
+    char webhook_client_cert[512];
+    char webhook_client_key[512];
+    char webhook_ca_bundle[512];
 
     // Brute-force detection
     int fail_threshold;  // 1..10000

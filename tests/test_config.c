@@ -391,6 +391,252 @@ static void test_validate_webhook_with_backslash(void **state) {
     cleanup_tmp();
 }
 
+// --- webhook mTLS parse + validation ---
+//
+// Each test writes a small placeholder file as the "cert" or "key" — the
+// validator only checks file metadata (existence, regular-file, perms,
+// ownership), it doesn't parse PEM. So bytes "dummy" suffice.
+
+static char tls_cert_path[256];
+static char tls_key_path[256];
+static char tls_ca_path[256];
+
+static int write_tls_file(char *path_buf, size_t buf_len, mode_t mode) {
+    snprintf(path_buf, buf_len, "/tmp/pamsignal_test_tls_XXXXXX");
+    int fd = mkstemp(path_buf);
+    if (fd < 0)
+        return -1;
+    if (write(fd, "dummy\n", 6) != 6) {
+        close(fd);
+        unlink(path_buf);
+        return -1;
+    }
+    close(fd);
+    if (chmod(path_buf, mode) < 0) {
+        unlink(path_buf);
+        return -1;
+    }
+    return 0;
+}
+
+static void cleanup_tls_files(void) {
+    if (tls_cert_path[0])
+        unlink(tls_cert_path);
+    if (tls_key_path[0])
+        unlink(tls_key_path);
+    if (tls_ca_path[0])
+        unlink(tls_ca_path);
+    tls_cert_path[0] = '\0';
+    tls_key_path[0] = '\0';
+    tls_ca_path[0] = '\0';
+}
+
+static void test_mtls_cert_and_key_load(void **state) {
+    (void)state;
+    assert_int_equal(write_tls_file(tls_cert_path, sizeof(tls_cert_path), 0644),
+                     0);
+    assert_int_equal(write_tls_file(tls_key_path, sizeof(tls_key_path), 0600),
+                     0);
+    char content[1024];
+    snprintf(content, sizeof(content),
+             "webhook_url = https://example.com/hook\n"
+             "webhook_client_cert = %s\n"
+             "webhook_client_key = %s\n",
+             tls_cert_path, tls_key_path);
+    write_tmp_config(content);
+    ps_config_t cfg;
+    int ret = ps_config_load(tmp_path, &cfg);
+    assert_int_equal(ret, PS_OK);
+    assert_string_equal(cfg.webhook_client_cert, tls_cert_path);
+    assert_string_equal(cfg.webhook_client_key, tls_key_path);
+    cleanup_tmp();
+    cleanup_tls_files();
+}
+
+static void test_mtls_with_ca_bundle(void **state) {
+    (void)state;
+    assert_int_equal(write_tls_file(tls_cert_path, sizeof(tls_cert_path), 0644),
+                     0);
+    assert_int_equal(write_tls_file(tls_key_path, sizeof(tls_key_path), 0600),
+                     0);
+    assert_int_equal(write_tls_file(tls_ca_path, sizeof(tls_ca_path), 0644), 0);
+    char content[1536];
+    snprintf(content, sizeof(content),
+             "webhook_url = https://example.com/hook\n"
+             "webhook_client_cert = %s\n"
+             "webhook_client_key = %s\n"
+             "webhook_ca_bundle = %s\n",
+             tls_cert_path, tls_key_path, tls_ca_path);
+    write_tmp_config(content);
+    ps_config_t cfg;
+    int ret = ps_config_load(tmp_path, &cfg);
+    assert_int_equal(ret, PS_OK);
+    assert_string_equal(cfg.webhook_ca_bundle, tls_ca_path);
+    cleanup_tmp();
+    cleanup_tls_files();
+}
+
+static void test_mtls_cert_without_key_rejected(void **state) {
+    (void)state;
+    assert_int_equal(write_tls_file(tls_cert_path, sizeof(tls_cert_path), 0644),
+                     0);
+    char content[1024];
+    snprintf(content, sizeof(content),
+             "webhook_url = https://example.com/hook\n"
+             "webhook_client_cert = %s\n",
+             tls_cert_path);
+    write_tmp_config(content);
+    ps_config_t cfg;
+    assert_int_equal(ps_config_load(tmp_path, &cfg), PS_ERR_CONFIG);
+    cleanup_tmp();
+    cleanup_tls_files();
+}
+
+static void test_mtls_key_without_cert_rejected(void **state) {
+    (void)state;
+    assert_int_equal(write_tls_file(tls_key_path, sizeof(tls_key_path), 0600),
+                     0);
+    char content[1024];
+    snprintf(content, sizeof(content),
+             "webhook_url = https://example.com/hook\n"
+             "webhook_client_key = %s\n",
+             tls_key_path);
+    write_tmp_config(content);
+    ps_config_t cfg;
+    assert_int_equal(ps_config_load(tmp_path, &cfg), PS_ERR_CONFIG);
+    cleanup_tmp();
+    cleanup_tls_files();
+}
+
+static void test_mtls_world_readable_key_rejected(void **state) {
+    (void)state;
+    assert_int_equal(write_tls_file(tls_cert_path, sizeof(tls_cert_path), 0644),
+                     0);
+    assert_int_equal(write_tls_file(tls_key_path, sizeof(tls_key_path), 0644),
+                     0);
+    char content[1024];
+    snprintf(content, sizeof(content),
+             "webhook_url = https://example.com/hook\n"
+             "webhook_client_cert = %s\n"
+             "webhook_client_key = %s\n",
+             tls_cert_path, tls_key_path);
+    write_tmp_config(content);
+    ps_config_t cfg;
+    assert_int_equal(ps_config_load(tmp_path, &cfg), PS_ERR_CONFIG);
+    cleanup_tmp();
+    cleanup_tls_files();
+}
+
+static void test_mtls_group_readable_key_rejected(void **state) {
+    (void)state;
+    assert_int_equal(write_tls_file(tls_cert_path, sizeof(tls_cert_path), 0644),
+                     0);
+    assert_int_equal(write_tls_file(tls_key_path, sizeof(tls_key_path), 0640),
+                     0);
+    char content[1024];
+    snprintf(content, sizeof(content),
+             "webhook_url = https://example.com/hook\n"
+             "webhook_client_cert = %s\n"
+             "webhook_client_key = %s\n",
+             tls_cert_path, tls_key_path);
+    write_tmp_config(content);
+    ps_config_t cfg;
+    assert_int_equal(ps_config_load(tmp_path, &cfg), PS_ERR_CONFIG);
+    cleanup_tmp();
+    cleanup_tls_files();
+}
+
+static void test_mtls_symlink_rejected(void **state) {
+    (void)state;
+    assert_int_equal(write_tls_file(tls_cert_path, sizeof(tls_cert_path), 0644),
+                     0);
+    assert_int_equal(write_tls_file(tls_key_path, sizeof(tls_key_path), 0600),
+                     0);
+    char link_path[256];
+    snprintf(link_path, sizeof(link_path), "/tmp/pamsignal_test_keylink_%d",
+             getpid());
+    unlink(link_path);
+    if (symlink(tls_key_path, link_path) != 0) {
+        cleanup_tls_files();
+        skip();
+    }
+    char content[1024];
+    snprintf(content, sizeof(content),
+             "webhook_url = https://example.com/hook\n"
+             "webhook_client_cert = %s\n"
+             "webhook_client_key = %s\n",
+             tls_cert_path, link_path);
+    write_tmp_config(content);
+    ps_config_t cfg;
+    assert_int_equal(ps_config_load(tmp_path, &cfg), PS_ERR_CONFIG);
+    unlink(link_path);
+    cleanup_tmp();
+    cleanup_tls_files();
+}
+
+static void test_mtls_nonexistent_path_rejected(void **state) {
+    (void)state;
+    write_tmp_config(
+        "webhook_url = https://example.com/hook\n"
+        "webhook_client_cert = /nonexistent/pamsignal-cert-does-not-exist\n"
+        "webhook_client_key = /nonexistent/pamsignal-key-does-not-exist\n");
+    ps_config_t cfg;
+    assert_int_equal(ps_config_load(tmp_path, &cfg), PS_ERR_CONFIG);
+    cleanup_tmp();
+}
+
+static void test_mtls_without_webhook_url_rejected(void **state) {
+    (void)state;
+    assert_int_equal(write_tls_file(tls_cert_path, sizeof(tls_cert_path), 0644),
+                     0);
+    assert_int_equal(write_tls_file(tls_key_path, sizeof(tls_key_path), 0600),
+                     0);
+    char content[1024];
+    snprintf(content, sizeof(content),
+             "webhook_client_cert = %s\n"
+             "webhook_client_key = %s\n",
+             tls_cert_path, tls_key_path);
+    write_tmp_config(content);
+    ps_config_t cfg;
+    assert_int_equal(ps_config_load(tmp_path, &cfg), PS_ERR_CONFIG);
+    cleanup_tmp();
+    cleanup_tls_files();
+}
+
+static void test_mtls_path_with_quote_rejected(void **state) {
+    (void)state;
+    write_tmp_config("webhook_url = https://example.com/hook\n"
+                     "webhook_client_cert = /etc/pamsignal/cert\"name.crt\n"
+                     "webhook_client_key = /etc/pamsignal/key.key\n");
+    ps_config_t cfg;
+    assert_int_equal(ps_config_load(tmp_path, &cfg), PS_ERR_CONFIG);
+    cleanup_tmp();
+}
+
+static void test_mtls_combined_with_auth_header(void **state) {
+    (void)state;
+    // Bearer + mTLS together — the common Wazuh / corporate-SIEM pattern.
+    assert_int_equal(write_tls_file(tls_cert_path, sizeof(tls_cert_path), 0644),
+                     0);
+    assert_int_equal(write_tls_file(tls_key_path, sizeof(tls_key_path), 0600),
+                     0);
+    char content[1536];
+    snprintf(content, sizeof(content),
+             "webhook_url = https://example.com/hook\n"
+             "webhook_auth_header = Authorization: Bearer xyz\n"
+             "webhook_client_cert = %s\n"
+             "webhook_client_key = %s\n",
+             tls_cert_path, tls_key_path);
+    write_tmp_config(content);
+    ps_config_t cfg;
+    int ret = ps_config_load(tmp_path, &cfg);
+    assert_int_equal(ret, PS_OK);
+    assert_string_equal(cfg.webhook_auth_header, "Authorization: Bearer xyz");
+    assert_string_equal(cfg.webhook_client_cert, tls_cert_path);
+    cleanup_tmp();
+    cleanup_tls_files();
+}
+
 // --- webhook_auth_header parse + validation ---
 
 static void test_webhook_auth_header_bearer_loads(void **state) {
@@ -593,6 +839,17 @@ int main(void) {
         cmocka_unit_test(test_webhook_auth_header_with_quote_rejected),
         cmocka_unit_test(test_webhook_auth_header_with_backslash_rejected),
         cmocka_unit_test(test_webhook_auth_header_bad_name_char_rejected),
+        cmocka_unit_test(test_mtls_cert_and_key_load),
+        cmocka_unit_test(test_mtls_with_ca_bundle),
+        cmocka_unit_test(test_mtls_cert_without_key_rejected),
+        cmocka_unit_test(test_mtls_key_without_cert_rejected),
+        cmocka_unit_test(test_mtls_world_readable_key_rejected),
+        cmocka_unit_test(test_mtls_group_readable_key_rejected),
+        cmocka_unit_test(test_mtls_symlink_rejected),
+        cmocka_unit_test(test_mtls_nonexistent_path_rejected),
+        cmocka_unit_test(test_mtls_without_webhook_url_rejected),
+        cmocka_unit_test(test_mtls_path_with_quote_rejected),
+        cmocka_unit_test(test_mtls_combined_with_auth_header),
         cmocka_unit_test(test_validate_whatsapp_phone_id_non_numeric),
         cmocka_unit_test(test_validate_whatsapp_recipient_non_numeric),
         cmocka_unit_test(test_validate_whatsapp_token_bad_char),
