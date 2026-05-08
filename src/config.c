@@ -90,6 +90,9 @@ static const cfg_entry_t config_keys[] = {
     CFG_STR(discord_webhook_url),
     CFG_STR(webhook_url),
     CFG_STR(webhook_auth_header),
+    CFG_STR(webhook_client_cert),
+    CFG_STR(webhook_client_key),
+    CFG_STR(webhook_ca_bundle),
     CFG_STR(provider),
     CFG_STR(service_name),
     CFG_INT(fail_threshold, 1, 10000),
@@ -211,6 +214,115 @@ static int is_telegram_chat_id(const char *s) {
     return 1;
 }
 
+// Validates a filesystem path that pamsignal will hand to curl as
+// --cert / --key / --cacert. Refuses symlinks, non-regular files, ownership
+// outside {root, euid}. The `private` flag tightens to "no group/world read"
+// for the client key — certs and CA bundles are public material so we leave
+// their read-perms to the operator's discretion. Existence is required (a
+// missing cert file would surface as a curl runtime error long after startup,
+// hiding the misconfiguration).
+//
+// Also refuses `"`, `\`, and control chars in the path itself so the path
+// can be safely written into a curl -K config file as a quoted value
+// (the same constraint applied to webhook_auth_header).
+static int validate_tls_path(const char *path, const char *label, int private) {
+    for (const unsigned char *p = (const unsigned char *)path; *p; p++) {
+        if (*p < 0x20 || *p == 0x7F || *p == '"' || *p == '\\') {
+            sd_journal_print(LOG_ERR,
+                             "pamsignal: config: %s: path contains a control "
+                             "character, quote, or backslash",
+                             label);
+            return -1;
+        }
+    }
+
+    int fd = open(path, O_RDONLY | O_NOFOLLOW | O_CLOEXEC);
+    if (fd < 0) {
+        if (errno == ELOOP) {
+            sd_journal_print(LOG_ERR,
+                             "pamsignal: config: %s: refusing to follow "
+                             "symlink at %s",
+                             label, path);
+        } else {
+            sd_journal_print(LOG_ERR,
+                             "pamsignal: config: %s: cannot open %s: %s", label,
+                             path, strerror(errno));
+        }
+        return -1;
+    }
+
+    struct stat st;
+    if (fstat(fd, &st) < 0) {
+        sd_journal_print(LOG_ERR, "pamsignal: config: %s: fstat(%s) failed: %s",
+                         label, path, strerror(errno));
+        close(fd);
+        return -1;
+    }
+    close(fd);
+
+    if (!S_ISREG(st.st_mode)) {
+        sd_journal_print(LOG_ERR,
+                         "pamsignal: config: %s: %s is not a regular file",
+                         label, path);
+        return -1;
+    }
+
+    if (st.st_uid != 0 && st.st_uid != geteuid()) {
+        sd_journal_print(LOG_ERR,
+                         "pamsignal: config: %s: %s must be owned by root or "
+                         "the daemon user (uid=%u)",
+                         label, path, (unsigned)st.st_uid);
+        return -1;
+    }
+
+    if (private && (st.st_mode & (S_IRGRP | S_IROTH))) {
+        sd_journal_print(LOG_ERR,
+                         "pamsignal: config: %s: %s must not be group- or "
+                         "world-readable (mode 0%o); private keys belong to "
+                         "the daemon only",
+                         label, path, st.st_mode & 0777);
+        return -1;
+    }
+
+    return 0;
+}
+
+static int validate_webhook_tls(const ps_config_t *cfg) {
+    int errors = 0;
+    int has_cert = cfg->webhook_client_cert[0] != '\0';
+    int has_key = cfg->webhook_client_key[0] != '\0';
+    int has_ca = cfg->webhook_ca_bundle[0] != '\0';
+
+    if (!has_cert && !has_key && !has_ca)
+        return 0;
+
+    if (!cfg->webhook_url[0]) {
+        sd_journal_print(LOG_ERR,
+                         "pamsignal: config: webhook TLS keys "
+                         "(webhook_client_cert/key/ca_bundle) are set but "
+                         "webhook_url is not configured");
+        errors++;
+    }
+
+    if (has_cert != has_key) {
+        sd_journal_print(LOG_ERR, "pamsignal: config: webhook_client_cert and "
+                                  "webhook_client_key must be set together");
+        errors++;
+    }
+
+    if (has_cert && validate_tls_path(cfg->webhook_client_cert,
+                                      "webhook_client_cert", 0) < 0)
+        errors++;
+    if (has_key &&
+        validate_tls_path(cfg->webhook_client_key, "webhook_client_key", 1) < 0)
+        errors++;
+    if (has_ca &&
+        validate_tls_path(cfg->webhook_ca_bundle, "webhook_ca_bundle", 0) < 0)
+        errors++;
+
+    return errors;
+}
+
 static int validate_alert_targets(const ps_config_t *cfg) {
     int errors = 0;
 
@@ -283,6 +395,8 @@ static int validate_alert_targets(const ps_config_t *cfg) {
             errors++;
         }
     }
+
+    errors += validate_webhook_tls(cfg);
 
     return errors;
 }
@@ -430,7 +544,7 @@ int ps_config_load(const char *path, ps_config_t *cfg) {
     sd_journal_print(LOG_INFO,
                      "pamsignal: config loaded: telegram=%s slack=%s teams=%s "
                      "whatsapp=%s discord=%s webhook=%s webhook_auth=%s "
-                     "fail_threshold=%d fail_window_sec=%d "
+                     "webhook_mtls=%s fail_threshold=%d fail_window_sec=%d "
                      "max_tracked_ips=%d alert_cooldown_sec=%d "
                      "provider=%s service_name=%s",
                      cfg->telegram_bot_token[0] ? "on" : "off",
@@ -440,6 +554,7 @@ int ps_config_load(const char *path, ps_config_t *cfg) {
                      cfg->discord_webhook_url[0] ? "on" : "off",
                      cfg->webhook_url[0] ? "on" : "off",
                      cfg->webhook_auth_header[0] ? "on" : "off",
+                     cfg->webhook_client_cert[0] ? "on" : "off",
                      cfg->fail_threshold, cfg->fail_window_sec,
                      cfg->max_tracked_ips, cfg->alert_cooldown_sec,
                      cfg->provider[0] ? cfg->provider : "none",

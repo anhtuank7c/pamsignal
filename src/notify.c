@@ -96,8 +96,20 @@ static size_t json_escape(const char *src, char *dst, size_t dst_len) {
 // local user. We write a curl config file to a memfd and pass it to curl as
 // "-K /dev/fd/<N>". The memfd has CLOEXEC cleared via dup2 so it survives
 // execv; everything else is closed in the child before exec.
+//
+// TLS client-cert paths are not themselves secret (the file *contents* are,
+// and stay on disk under the daemon's trust boundary), but we route them
+// through the same memfd config so argv stays minimal and uniform.
 
-static int build_secrets_memfd(const char *url, const char *auth_header) {
+typedef struct {
+    const char *url;
+    const char *auth_header; // optional
+    const char *client_cert; // optional
+    const char *client_key;  // optional, paired with client_cert
+    const char *ca_bundle;   // optional
+} curl_config_t;
+
+static int build_secrets_memfd(const curl_config_t *cfg) {
     int fd = memfd_create("pamsignal-curl", MFD_CLOEXEC);
     if (fd < 0) {
         sd_journal_print(LOG_WARNING,
@@ -105,17 +117,47 @@ static int build_secrets_memfd(const char *url, const char *auth_header) {
         return -1;
     }
 
-    char buf[2048];
-    int n;
-    if (auth_header) {
-        n = snprintf(buf, sizeof(buf), "url = \"%s\"\nheader = \"%s\"\n", url,
-                     auth_header);
-    } else {
-        n = snprintf(buf, sizeof(buf), "url = \"%s\"\n", url);
-    }
+    char buf[4096];
+    int n = snprintf(buf, sizeof(buf), "url = \"%s\"\n", cfg->url);
     if (n < 0 || (size_t)n >= sizeof(buf)) {
         close(fd);
         return -1;
+    }
+    if (cfg->auth_header) {
+        int m = snprintf(buf + n, sizeof(buf) - (size_t)n, "header = \"%s\"\n",
+                         cfg->auth_header);
+        if (m < 0 || (size_t)n + (size_t)m >= sizeof(buf)) {
+            close(fd);
+            return -1;
+        }
+        n += m;
+    }
+    if (cfg->client_cert) {
+        int m = snprintf(buf + n, sizeof(buf) - (size_t)n, "cert = \"%s\"\n",
+                         cfg->client_cert);
+        if (m < 0 || (size_t)n + (size_t)m >= sizeof(buf)) {
+            close(fd);
+            return -1;
+        }
+        n += m;
+    }
+    if (cfg->client_key) {
+        int m = snprintf(buf + n, sizeof(buf) - (size_t)n, "key = \"%s\"\n",
+                         cfg->client_key);
+        if (m < 0 || (size_t)n + (size_t)m >= sizeof(buf)) {
+            close(fd);
+            return -1;
+        }
+        n += m;
+    }
+    if (cfg->ca_bundle) {
+        int m = snprintf(buf + n, sizeof(buf) - (size_t)n, "cacert = \"%s\"\n",
+                         cfg->ca_bundle);
+        if (m < 0 || (size_t)n + (size_t)m >= sizeof(buf)) {
+            close(fd);
+            return -1;
+        }
+        n += m;
     }
 
     ssize_t total = 0;
@@ -214,11 +256,24 @@ static void fire_curl(int memfd, char *body) {
         close(memfd);
 }
 
-static void post_alert(const char *url, const char *auth_header, char *body) {
-    int memfd = build_secrets_memfd(url, auth_header);
+static void post_alert(const curl_config_t *cc, char *body) {
+    int memfd = build_secrets_memfd(cc);
     if (memfd < 0)
         return;
     fire_curl(memfd, body);
+}
+
+static curl_config_t webhook_curl_config(const ps_config_t *cfg) {
+    return (curl_config_t){
+        .url = cfg->webhook_url,
+        .auth_header =
+            cfg->webhook_auth_header[0] ? cfg->webhook_auth_header : NULL,
+        .client_cert =
+            cfg->webhook_client_cert[0] ? cfg->webhook_client_cert : NULL,
+        .client_key =
+            cfg->webhook_client_key[0] ? cfg->webhook_client_key : NULL,
+        .ca_bundle = cfg->webhook_ca_bundle[0] ? cfg->webhook_ca_bundle : NULL,
+    };
 }
 
 // --- Message formatting ---
@@ -522,7 +577,7 @@ static void send_telegram(const ps_config_t *cfg, const char *text) {
         return;
     }
 
-    post_alert(url, NULL, body);
+    post_alert(&(curl_config_t){.url = url}, body);
 }
 
 static void send_simple_webhook(const char *url, const char *text_key,
@@ -537,7 +592,7 @@ static void send_simple_webhook(const char *url, const char *text_key,
         return;
     }
 
-    post_alert(url, NULL, body);
+    post_alert(&(curl_config_t){.url = url}, body);
 }
 
 static void send_whatsapp(const ps_config_t *cfg, const char *text) {
@@ -574,7 +629,7 @@ static void send_whatsapp(const ps_config_t *cfg, const char *text) {
         return;
     }
 
-    post_alert(url, auth, body);
+    post_alert(&(curl_config_t){.url = url, .auth_header = auth}, body);
 }
 
 // --- Cooldown ---
@@ -616,10 +671,8 @@ void ps_notify_event(const ps_config_t *cfg, const ps_pam_event_t *event) {
     if (cfg->webhook_url[0]) {
         char json[2048];
         format_event_json(cfg, event, json, sizeof(json));
-        post_alert(cfg->webhook_url,
-                   cfg->webhook_auth_header[0] ? cfg->webhook_auth_header
-                                               : NULL,
-                   json);
+        curl_config_t cc = webhook_curl_config(cfg);
+        post_alert(&cc, json);
     }
 }
 
@@ -648,10 +701,8 @@ void ps_notify_brute_force(const ps_config_t *cfg, const char *source_ip,
         format_brute_json(cfg, source_ip, attempts, window_sec, last_username,
                           hostname, timestamp_usec, last_pid, json,
                           sizeof(json));
-        post_alert(cfg->webhook_url,
-                   cfg->webhook_auth_header[0] ? cfg->webhook_auth_header
-                                               : NULL,
-                   json);
+        curl_config_t cc = webhook_curl_config(cfg);
+        post_alert(&cc, json);
     }
 }
 
@@ -681,9 +732,7 @@ void ps_notify_local_brute_force(const ps_config_t *cfg, ps_service_t service,
         format_local_brute_json(cfg, service, actor_username, target_username,
                                 attempts, window_sec, hostname, timestamp_usec,
                                 last_pid, json, sizeof(json));
-        post_alert(cfg->webhook_url,
-                   cfg->webhook_auth_header[0] ? cfg->webhook_auth_header
-                                               : NULL,
-                   json);
+        curl_config_t cc = webhook_curl_config(cfg);
+        post_alert(&cc, json);
     }
 }

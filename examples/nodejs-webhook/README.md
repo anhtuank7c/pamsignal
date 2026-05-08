@@ -71,6 +71,36 @@ If you front the receiver with Nginx/Caddy/Traefik anyway (TLS termination, rate
 - Proxy: `proxy_set_header Authorization "Bearer your_super_secret_token_here";`
 - pamsignal.conf: `webhook_url = https://your-secure-proxy.local/webhook/pamsignal` (omit `webhook_auth_header`)
 
+### Mutual TLS (advanced)
+
+If you already run an internal PKI, configure the receiver to require client certs and let pamsignal authenticate with one. Replace this example's plain Express server with `https.createServer` and verify the peer cert:
+
+```ts
+import https from 'node:https';
+import fs from 'node:fs';
+
+const server = https.createServer({
+  key: fs.readFileSync('/etc/ssl/private/server.key'),
+  cert: fs.readFileSync('/etc/ssl/certs/server.crt'),
+  ca: fs.readFileSync('/etc/ssl/certs/internal-ca.crt'),
+  requestCert: true,
+  rejectUnauthorized: true,
+}, app);
+server.listen(8443);
+```
+
+On the pamsignal side:
+
+```ini
+webhook_url = https://your-receiver.internal:8443/webhook/pamsignal
+webhook_client_cert = /etc/pamsignal/webhook-client.crt
+webhook_client_key  = /etc/pamsignal/webhook-client.key
+# Only if your receiver's CA isn't in the system trust store
+webhook_ca_bundle   = /etc/pamsignal/internal-ca.crt
+```
+
+mTLS combines additively with `webhook_auth_header` if the receiver wants both (mTLS for service identity, Bearer for per-request authorization).
+
 ## 🛠️ Deploying as a Systemd Daemon
 
 For production, you should run this webhook receiver as a background service so it automatically starts on boot and restarts if it crashes. 
