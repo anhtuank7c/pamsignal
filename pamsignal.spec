@@ -1,5 +1,5 @@
 Name:           pamsignal
-Version:        0.3.4
+Version:        0.4.0
 Release:        1%{?dist}
 Summary:        Real-time PAM login monitor with multi-channel alerts
 
@@ -98,6 +98,42 @@ fi
 %config(noreplace) %attr(0640,root,pamsignal) %{_sysconfdir}/pamsignal/pamsignal.conf
 
 %changelog
+* Fri May 08 2026 Tuan Nguyen <anhtuank7c@hotmail.com> - 0.4.0-1
+- Feature: webhook_auth_header config key for the custom webhook
+  channel (#7). Operators can send a single arbitrary HTTP header
+  (Bearer token, X-API-Key, Splunk HEC, Datadog DD-API-KEY, HMAC,
+  etc.) with each webhook POST. The header value is rendered into
+  the existing memfd-backed curl -K config, so the secret never
+  appears in argv or /proc/<pid>/cmdline. Validator rejects CRLF /
+  quote / backslash injection and refuses the key set without
+  webhook_url.
+- Feature: optional mTLS client authentication for the custom
+  webhook channel (#8). Three new keys — webhook_client_cert,
+  webhook_client_key, webhook_ca_bundle — let operators with PKI
+  (internal CA, cert-manager, SPIFFE, service-mesh issuance)
+  authenticate with a client certificate. Combines additively with
+  webhook_auth_header for the Wazuh / corporate-SIEM pattern.
+  Cert/key/CA paths flow through the same memfd-backed curl config
+  as the auth header, so argv stays byte-identical regardless of
+  which auth modes are configured. Validator: O_NOFOLLOW open,
+  regular-file, ownership in {root, daemon-uid},
+  webhook_client_key not group/world-readable, cert/key set
+  together, and any TLS key without webhook_url rejected.
+- Internal API: post_alert() and build_secrets_memfd() in
+  src/notify.c swap from positional arguments to a curl_config_t
+  struct. The four legacy callers (Telegram, Slack, Teams, Discord,
+  WhatsApp) pass struct-literal arguments and produce identical
+  wire output.
+- Documentation: docs/configuration.md gains "Custom webhook
+  authentication"; docs/alerts.md extends with "Mutual TLS";
+  docs/architecture.md documents the curl_config_t / memfd-backed
+  -K dispatch model; docs/deployment.md documents cert/key file
+  placement; docs/threat-model.md updates attack #3 and rewrites
+  NS8; examples/nodejs-webhook/README.md adds an mTLS-enabled
+  Express receiver variant.
+- Tests: 20 new CMocka cases in tests/test_config.c (test_config
+  suite 33 -> 53). ASAN + UBSAN clean; clang-tidy clean.
+
 * Sun May 03 2026 Tuan Nguyen <anhtuank7c@hotmail.com> - 0.3.4-1
 - Security: extend the _EXE anti-spoofing allowlist to accept
   sshd-session. OpenSSH 9.8 (released 2024-07) split sshd into a

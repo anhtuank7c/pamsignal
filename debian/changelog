@@ -1,3 +1,58 @@
+pamsignal (0.4.0-1) unstable; urgency=medium
+
+  * Feature: webhook_auth_header config key for the custom webhook
+    channel (#7). Operators can send a single arbitrary HTTP header
+    (Bearer token, X-API-Key, Splunk HEC, Datadog DD-API-KEY, HMAC,
+    etc.) with each webhook POST. Previously the only authenticated
+    path was a reverse proxy in front of the receiver injecting the
+    header — the bundled examples/nodejs-webhook/ reference receiver
+    explicitly required this setup. The header value is rendered into
+    the existing memfd-backed curl -K config, so the secret never
+    appears in argv or /proc/<pid>/cmdline. Validator rejects CRLF /
+    quote / backslash injection at config-load time; setting the
+    header without webhook_url is also rejected.
+  * Feature: optional mTLS client authentication for the custom
+    webhook channel (#8). Three new config keys —
+    webhook_client_cert, webhook_client_key, webhook_ca_bundle —
+    target the operator profile that already runs PKI (internal CA,
+    cert-manager, SPIFFE, service-mesh issuance). Combines additively
+    with webhook_auth_header — the corporate-SIEM / Wazuh pattern
+    (mTLS for service identity, Bearer for per-request authorization).
+    Cert/key/CA paths flow through the same memfd-backed curl config
+    as the auth header, so argv stays byte-identical regardless of
+    which auth modes are configured. Validator at config load:
+    O_NOFOLLOW open (symlinks rejected), regular-file required,
+    ownership outside {root, daemon-uid} rejected,
+    webhook_client_key additionally rejected if group/world-readable.
+    Cross-field consistency: cert without key (or vice versa) is a
+    config-load error, and any TLS key without webhook_url is
+    rejected. Path strings constrained to printable ASCII minus
+    quote and backslash so they are safe in the curl -K quoted
+    value.
+  * Internal API change in src/notify.c: post_alert() and
+    build_secrets_memfd() swap from positional arguments to a
+    curl_config_t struct that carries the optional auth header and
+    TLS paths by name. The four legacy callers (Telegram, Slack,
+    Teams, Discord, WhatsApp) pass struct-literal arguments and
+    produce identical wire output.
+  * Documentation: docs/configuration.md gains a "Custom webhook
+    authentication" section (Bearer + mTLS reference); docs/alerts.md
+    extends the "Authentication (optional)" subsection with an
+    "Mutual TLS (optional, advanced)" block; docs/architecture.md
+    documents the curl_config_t / memfd-backed -K dispatch model;
+    docs/deployment.md documents cert/key file placement;
+    docs/threat-model.md updates attack #3 (alert credentials
+    exposure via process metadata) and rewrites NS8 (HMAC-signed
+    payloads remain out of scope; Bearer + mTLS now ship);
+    examples/nodejs-webhook/README.md adds an mTLS-enabled
+    Express receiver variant.
+  * Tests: 20 new CMocka cases in tests/test_config.c covering
+    parse + validation paths for both webhook_auth_header (9) and
+    mTLS (11). Suite grew 33 -> 53. ASAN + UBSAN clean; clang-tidy
+    clean.
+
+ -- Tuan Nguyen <anhtuank7c@hotmail.com>  Fri, 08 May 2026 04:50:00 +0000
+
 pamsignal (0.3.4-1) unstable; urgency=medium
 
   * Security: extend the _EXE allowlist to accept sshd-session.

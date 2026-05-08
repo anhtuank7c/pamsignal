@@ -127,9 +127,9 @@ Each item names the attack, the adversary class from above, the mitigation, and 
 
 ### 3. Alert credentials exposure via process metadata (B, D)
 
-**Attack.** Read `/proc/<pamsignal-pid>/cmdline` or `/proc/<pamsignal-curl-child-pid>/cmdline` to harvest Telegram bot tokens / webhook URLs.
+**Attack.** Read `/proc/<pamsignal-pid>/cmdline` or `/proc/<pamsignal-curl-child-pid>/cmdline` to harvest Telegram bot tokens, webhook URLs, custom-webhook bearer tokens, or the on-disk paths of mTLS client cert / key files.
 
-**Mitigation.** Secrets are written to a `memfd_create()`-backed file (`src/notify.c:101`) and passed to curl as `-K /dev/fd/9`; they never appear in the curl child's argv. The parent daemon's argv is `pamsignal --foreground` plus an optional `--config <path>` — no credentials.
+**Mitigation.** Every per-channel sender funnels through a `memfd_create()`-backed curl `-K` config file (`src/notify.c:101`) that carries the URL, the optional `webhook_auth_header` (since v0.4.0), and the optional mTLS `cert =` / `key =` / `cacert =` paths (since v0.4.0). The memfd is pinned at `fd 9` via `dup2` (which clears `O_CLOEXEC` on the destination); every other inherited descriptor is closed in the child before `execv`. The curl child's argv is byte-identical for every alert dispatch — `curl -s -S --max-time 10 --proto =https --proto-redir =https -H "Content-Type: application/json" -K /dev/fd/9 -d <body>` — regardless of which channel or which authentication mode is in use. A local unprivileged user reading `/proc/*/cmdline` cannot tell whether a token, a client cert, or both are configured, let alone harvest the values. The parent daemon's argv is `pamsignal --foreground` plus an optional `--config <path>` — no credentials there either.
 
 ### 4. Alert dispatch hijack via `PATH` / `LD_PRELOAD` (D)
 
@@ -218,9 +218,9 @@ PAMSignal alerts are fire-and-forget: a curl child is fork+exec'd, the parent do
 
 Each PAMSignal instance is independent. There is no central aggregation, no shared brute-force table across hosts. An attacker hitting 50 hosts with 4 attempts each will not trigger any threshold, even if the cumulative pattern is obviously an attack. Operators who need cross-host correlation pipe the JSON-webhook output to a SIEM that does correlation properly.
 
-### NS8. Authenticated alert delivery
+### NS8. HMAC-signed alert payloads
 
-PAMSignal does not HMAC-sign or otherwise cryptographically authenticate alert payloads. A webhook receiver cannot prove that a request came from a *specific* PAMSignal instance vs. an attacker who has obtained the webhook URL. Operators who need authenticated delivery put a reverse proxy in front of their webhook that validates a shared secret (or use mTLS).
+Since v0.4.0 the custom-webhook channel can authenticate to its receiver via either a shared-secret HTTP header (`webhook_auth_header`, e.g. `Authorization: Bearer …`, an API key, or a Splunk/Datadog token) or mTLS (`webhook_client_cert` + `webhook_client_key`, optional `webhook_ca_bundle`), additively. Both are *transport-layer* authentication: the receiver knows the connection came from a holder of the secret / cert. **What pamsignal still does not do is HMAC-sign the *payload itself*** — there's no body signature, no replay-protection nonce, no per-event MAC. A receiver that has accepted a request cannot prove the body wasn't replayed by a previously-authenticated client, and a leaked token is replayable until rotated. HMAC payload signing is deliberately out-of-scope: it would require linking libcrypto into the daemon (or hand-rolling SHA-256), and the threat model it defends against (third-party delivery through untrusted intermediaries, à la GitHub/Stripe webhook delivery) doesn't match pamsignal's deployment shape (operator → operator's own SIEM ingest layer over TLS). Operators with that adversary model should pre-share state via mTLS and let the receiver do payload-level deduplication on `(host, @timestamp, event.action)`. The chat channels (Telegram, Slack, Teams, WhatsApp, Discord) authenticate using each provider's own token-in-URL or bearer scheme; pamsignal does not add a second auth layer on top.
 
 ### NS9. Defense against admin misconfiguration
 
@@ -239,7 +239,8 @@ A trust boundary is a place in the system where untrusted-or-attacker-influenced
 | Journal entry → parser | journald-recorded `MESSAGE` field | `ps_parse_message` + `_EXE` allowlist | `src/utils.c`, `src/journal_watch.c:345-381` |
 | Conf file → daemon config | file contents (root-controlled but on-disk) | `ps_config_load` + permission/ownership checks | `src/config.c:249-300` |
 | Event → JSON webhook payload | `event->username`, `event->source_ip`, `event->hostname` | `sanitize_string` + `json_escape` | `src/utils.c:13`, `src/notify.c:27` |
-| Daemon → curl child | webhook URL, bearer token, body | memfd-backed `--config`, fixed argv, `--proto =https`, absolute-path `execv` | `src/notify.c:101-209` |
+| Daemon → curl child | webhook URL, bearer token, mTLS cert/key/CA paths, body | memfd-backed `--config` (URL + optional `header =` + optional `cert/key/cacert =`), fixed argv, `--proto =https`, absolute-path `execv` | `src/notify.c:101-209` |
+| Config → curl `-K` parser | string values from `pamsignal.conf` | `is_https_url` (URLs), `is_http_header` (auth header), `validate_tls_path` (cert/key/CA paths reject `"`, `\`, control chars, follow-symlinks, world-readable keys) | `src/config.c:140-330` |
 
 ## Design limitations (deliberate trade-offs)
 
@@ -259,10 +260,11 @@ A PAMSignal install is only as secure as its surrounding configuration. The thre
 
 1. **Do not add untrusted users to the `pamsignal` group.** Doing so extends configuration-file read access (and therefore alert-credentials access) to those users. The package's `postinst` does not add anyone; the only member by default is the daemon.
 2. **Keep `/etc/pamsignal/pamsignal.conf` at `0640 root:pamsignal`.** The package sets this on first install. PAMSignal warns at startup if the mode is looser; it does not refuse to start, in case an operator is intentionally running with stricter perms.
-3. **For high-assurance deployments, send alerts to a custom webhook you control.** Third-party chat providers (Telegram, Slack, Teams, Discord, WhatsApp) see your alert metadata. A webhook on infrastructure you control gives you durable storage, HMAC validation, multi-host aggregation, and full control over retention.
-4. **Rotate alert credentials periodically.** PAMSignal does not rotate credentials itself; rotation is operator responsibility. Update `pamsignal.conf` and `systemctl reload pamsignal`.
-5. **Don't run PAMSignal as `root`.** It refuses anyway, but the underlying expectation is that the daemon stays at the package-created `pamsignal` user. Custom unit overrides that change `User=` invalidate the threat model.
-6. **For defense-in-depth on the alert path, pair PAMSignal with a fail2ban (or equivalent) instance** that consumes the same journal entries to add firewall rules. PAMSignal observes; fail2ban acts. The two are complementary, not redundant; see `examples/fail2ban/` in this repo for a sample integration.
+3. **For high-assurance deployments, send alerts to a custom webhook you control.** Third-party chat providers (Telegram, Slack, Teams, Discord, WhatsApp) see your alert metadata. A webhook on infrastructure you control gives you durable storage, multi-host aggregation, and full control over retention. Authenticate the receiver-bound connection using `webhook_auth_header` (Bearer / API key / Splunk HEC / Datadog), or — if your environment runs a PKI — `webhook_client_cert` + `webhook_client_key` for mTLS. The two combine additively. See [Configuration → Custom webhook authentication](./configuration.md#custom-webhook-authentication).
+4. **Set `webhook_client_key` to mode `0640 root:pamsignal`** (or `0600 pamsignal:pamsignal` if you run the daemon as that user). PAMSignal refuses to start if the key is group- or world-readable. Cert and CA bundle don't have the same constraint — they're public material.
+5. **Rotate alert credentials periodically.** PAMSignal does not rotate credentials itself; rotation is operator responsibility. For shared-secret tokens (Telegram bot tokens, `webhook_auth_header`, etc.), update `pamsignal.conf` and `systemctl reload pamsignal`. For `webhook_client_cert` / `webhook_client_key`, replace the files in place — the cert manager (cert-manager / certbot / `systemd-creds`) handles atomic rotation; the next alert dispatch picks up the new files automatically. SIGHUP is not required for cert/key rotation since the paths in config don't change.
+6. **Don't run PAMSignal as `root`.** It refuses anyway, but the underlying expectation is that the daemon stays at the package-created `pamsignal` user. Custom unit overrides that change `User=` invalidate the threat model.
+7. **For defense-in-depth on the alert path, pair PAMSignal with a fail2ban (or equivalent) instance** that consumes the same journal entries to add firewall rules. PAMSignal observes; fail2ban acts. The two are complementary, not redundant; see `examples/fail2ban/` in this repo for a sample integration.
 
 ## Reporting issues
 
