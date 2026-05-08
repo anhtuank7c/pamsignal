@@ -87,6 +87,19 @@ telegram_chat_id = <chat_id>
 
 See [Configuration](./configuration.md) for all options.
 
+### Custom webhook authentication
+
+If you point `webhook_url` at your own SIEM or receiver, configure authentication with `webhook_auth_header` (Bearer token, API key, etc.) or — for environments that already run a PKI — `webhook_client_cert` + `webhook_client_key` for mTLS:
+
+```bash
+# Place client cert + key under the daemon's config directory.
+sudo install -d -o root -g pamsignal -m 0750 /etc/pamsignal
+sudo install -o root -g pamsignal -m 0644 webhook-client.crt /etc/pamsignal/
+sudo install -o root -g pamsignal -m 0640 webhook-client.key /etc/pamsignal/
+```
+
+The daemon refuses to start if `webhook_client_key` is group- or world-readable; mode `0640` with group `pamsignal` is the canonical layout (matches `pamsignal.conf` itself). If your cert manager (cert-manager, certbot, `systemd-creds`) deploys keys elsewhere, point `webhook_client_key` at that path — pamsignal opens it with `O_NOFOLLOW` and validates ownership and mode at every config load. See [Configuration → Custom webhook authentication](./configuration.md#custom-webhook-authentication) for the full reference.
+
 ## Start the service
 
 ```bash

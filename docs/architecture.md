@@ -159,6 +159,20 @@ graph LR
 6. `SIGCHLD` is ignored (`SA_NOCLDWAIT`) so zombie processes are automatically reaped
 7. The child `exec`s `curl` — no HTTP library linked into the parent process at all
 
+### Curl invocation (memfd-backed config)
+
+Every per-channel sender — Telegram, Slack/Teams/Discord, WhatsApp, custom webhook — funnels through one internal entry point (`post_alert` in `src/notify.c`) that writes the per-request configuration to an in-memory `memfd_create()`-backed file and passes it to curl as `-K /dev/fd/9`. The memfd has its CLOEXEC bit cleared via `dup2`; every other inherited file descriptor is closed in the child before `execv`.
+
+What lands in the memfd config:
+
+- `url = "<endpoint>"` — always present.
+- `header = "<full Name: value>"` — present when the channel needs an auth header. WhatsApp uses this internally for its Meta Cloud API Bearer; the custom-webhook channel uses it for `webhook_auth_header`.
+- `cert = "<path>"`, `key = "<path>"`, `cacert = "<path>"` — present when the custom-webhook channel has mTLS configured. The paths are not themselves secret (the file *contents* are, and stay on disk under the daemon's trust boundary), but routing them through the same memfd config keeps the curl child's `argv` minimal and uniform regardless of how many auth options are configured.
+
+Effect on the curl child's `/proc/<pid>/cmdline`: every alert dispatch produces an `argv` of `curl -s -S --max-time 10 --proto =https --proto-redir =https -H "Content-Type: application/json" -K /dev/fd/9 -d <body>`, byte-identical no matter which channel it's for or which authentication mode is in use. A local unprivileged user reading `/proc/*/cmdline` cannot tell from the command line whether a token, a client cert, or both are configured, let alone harvest the values.
+
+The `--proto =https` / `--proto-redir =https` flags stay on `argv` (not in the config file) so they're externally inspectable as a hardening guarantee — anyone reviewing the running process can confirm cleartext / non-HTTPS schemes are refused even before the validator gate.
+
 ## Structured journal fields
 
 PAMSignal writes events using `sd_journal_send()` with [Elastic Common Schema (ECS)] aligned field names so existing SIEM tooling can ingest the journal directly via the standard ECS field names rather than a vendor-specific dictionary. (Through the v0.2.x series PAMSignal also emitted a parallel `PAMSIGNAL_*` field set; those legacy fields were retired in v0.3.0 — update any `journalctl PAMSIGNAL_EVENT=…` queries to the ECS forms below.)

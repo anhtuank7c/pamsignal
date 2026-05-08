@@ -100,11 +100,19 @@ The configuration file. The compiled-in default path is set at meson
 configure time from
 .B sysconfdir
 and may differ for non-system installs. The file holds alert-channel
-credentials (Telegram bot tokens, webhook URLs) and brute-force tuning
-parameters; it is shipped with mode
+credentials (Telegram bot tokens, webhook URLs, optional
+.B webhook_auth_header
+value, optional mTLS file paths) and brute-force tuning parameters;
+it is shipped with mode
 .B 0640
 and group
 .BR pamsignal .
+When the optional mTLS keys are configured, the referenced
+.IR webhook_client_cert " / " webhook_client_key " / " webhook_ca_bundle
+files are validated at config load (regular file, ownership in
+.RB { root , euid }, " webhook_client_key"
+not group- or world-readable, opened with
+.BR O_NOFOLLOW ).
 See
 .BR pamsignal.conf (5)
 \(em or, until that page exists,
@@ -188,13 +196,26 @@ Alert credentials are passed to the curl child through a memfd-backed
 .B \-\-config
 file rather than via argv, so they do not appear in
 .B /proc/<pid>/cmdline
-or in process accounting.
+or in process accounting. The same memfd carries the optional
+.B webhook_auth_header
+value (Bearer token, API key, HMAC, etc.) and the optional
+.B webhook_client_cert " / " webhook_client_key " / " webhook_ca_bundle
+paths used for mTLS, so the curl child's
+.B argv
+is byte-identical regardless of which authentication mode is in use.
 .IP \(bu 2
 Webhook URLs are constrained to
 .B https://
 via curl's
 .B \-\-proto =https
-flag.
+flag. Mutual-TLS authentication for the custom webhook channel is
+optional and additive with
+.BR webhook_auth_header ;
+.B webhook_client_key
+must not be group- or world-readable (the daemon refuses to start
+otherwise), and all three TLS path values are opened with
+.B O_NOFOLLOW
+so symlinked targets are rejected at config load.
 .IP \(bu 2
 Journal entries are filtered through an
 .B _EXE
