@@ -45,15 +45,15 @@ The server will start listening on `http://localhost:3000/webhook/pamsignal`.
 
 ## ⚙️ Integrating with PAMSignal
 
-PAMSignal currently sends webhook POST requests without custom HTTP headers. Because this Express app strictly enforces `Authorization: Bearer <token>` for security (avoiding tokens in URLs), you will need a reverse proxy (like Nginx, Caddy, or Traefik) to inject the header.
+This Express app strictly enforces `Authorization: Bearer <token>` to avoid leaking secrets through URL access logs. PAMSignal supports this directly via the `webhook_auth_header` config key — no reverse proxy required.
 
-1. Expose your Express app locally (e.g., `http://127.0.0.1:3000/webhook/pamsignal`).
-2. Configure your reverse proxy to forward traffic to the Express app and inject the header:
-   `proxy_set_header Authorization "Bearer your_super_secret_token_here";`
-3. Edit your `/etc/pamsignal/pamsignal.conf` to point to the proxy URL:
+### Direct configuration (recommended)
+
+Edit `/etc/pamsignal/pamsignal.conf`:
 
 ```ini
-webhook_url = https://your-secure-proxy.local/webhook/pamsignal
+webhook_url = https://your-receiver.example.com/webhook/pamsignal
+webhook_auth_header = Authorization: Bearer your_super_secret_token_here
 ```
 
 Reload PAMSignal to apply the changes:
@@ -61,6 +61,15 @@ Reload PAMSignal to apply the changes:
 ```bash
 sudo systemctl reload pamsignal
 ```
+
+The header value is passed to curl via a memfd-backed config file, so the token never appears in `/proc/<pid>/cmdline`. Set `0640 root:pamsignal` on `pamsignal.conf` to keep the value off-disk-readable for non-daemon users.
+
+### Reverse proxy (alternative)
+
+If you front the receiver with Nginx/Caddy/Traefik anyway (TLS termination, rate-limit, etc.), you can let the proxy inject the header instead:
+
+- Proxy: `proxy_set_header Authorization "Bearer your_super_secret_token_here";`
+- pamsignal.conf: `webhook_url = https://your-secure-proxy.local/webhook/pamsignal` (omit `webhook_auth_header`)
 
 ## 🛠️ Deploying as a Systemd Daemon
 

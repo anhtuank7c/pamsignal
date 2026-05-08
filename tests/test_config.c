@@ -391,6 +391,97 @@ static void test_validate_webhook_with_backslash(void **state) {
     cleanup_tmp();
 }
 
+// --- webhook_auth_header parse + validation ---
+
+static void test_webhook_auth_header_bearer_loads(void **state) {
+    (void)state;
+    write_tmp_config(
+        "webhook_url = https://example.com/hook\n"
+        "webhook_auth_header = Authorization: Bearer s3cr3t-token-abc.123\n");
+    ps_config_t cfg;
+    int ret = ps_config_load(tmp_path, &cfg);
+    assert_int_equal(ret, PS_OK);
+    assert_string_equal(cfg.webhook_auth_header,
+                        "Authorization: Bearer s3cr3t-token-abc.123");
+    cleanup_tmp();
+}
+
+static void test_webhook_auth_header_api_key_loads(void **state) {
+    (void)state;
+    write_tmp_config("webhook_url = https://example.com/hook\n"
+                     "webhook_auth_header = X-API-Key: deadbeef\n");
+    ps_config_t cfg;
+    int ret = ps_config_load(tmp_path, &cfg);
+    assert_int_equal(ret, PS_OK);
+    assert_string_equal(cfg.webhook_auth_header, "X-API-Key: deadbeef");
+    cleanup_tmp();
+}
+
+static void test_webhook_auth_header_default_empty(void **state) {
+    (void)state;
+    write_tmp_config("webhook_url = https://example.com/hook\n");
+    ps_config_t cfg;
+    int ret = ps_config_load(tmp_path, &cfg);
+    assert_int_equal(ret, PS_OK);
+    assert_int_equal(cfg.webhook_auth_header[0], '\0');
+    cleanup_tmp();
+}
+
+static void test_webhook_auth_header_without_url_rejected(void **state) {
+    (void)state;
+    write_tmp_config("webhook_auth_header = Authorization: Bearer xyz\n");
+    ps_config_t cfg;
+    assert_int_equal(ps_config_load(tmp_path, &cfg), PS_ERR_CONFIG);
+    cleanup_tmp();
+}
+
+static void test_webhook_auth_header_no_colon_rejected(void **state) {
+    (void)state;
+    write_tmp_config("webhook_url = https://example.com/hook\n"
+                     "webhook_auth_header = AuthorizationBearer xyz\n");
+    ps_config_t cfg;
+    assert_int_equal(ps_config_load(tmp_path, &cfg), PS_ERR_CONFIG);
+    cleanup_tmp();
+}
+
+static void test_webhook_auth_header_empty_name_rejected(void **state) {
+    (void)state;
+    write_tmp_config("webhook_url = https://example.com/hook\n"
+                     "webhook_auth_header = : Bearer xyz\n");
+    ps_config_t cfg;
+    assert_int_equal(ps_config_load(tmp_path, &cfg), PS_ERR_CONFIG);
+    cleanup_tmp();
+}
+
+static void test_webhook_auth_header_with_quote_rejected(void **state) {
+    (void)state;
+    // Embedded `"` would terminate the curl-config quoted value.
+    write_tmp_config("webhook_url = https://example.com/hook\n"
+                     "webhook_auth_header = Authorization: Bearer ab\"cd\n");
+    ps_config_t cfg;
+    assert_int_equal(ps_config_load(tmp_path, &cfg), PS_ERR_CONFIG);
+    cleanup_tmp();
+}
+
+static void test_webhook_auth_header_with_backslash_rejected(void **state) {
+    (void)state;
+    write_tmp_config("webhook_url = https://example.com/hook\n"
+                     "webhook_auth_header = X-Token: abc\\def\n");
+    ps_config_t cfg;
+    assert_int_equal(ps_config_load(tmp_path, &cfg), PS_ERR_CONFIG);
+    cleanup_tmp();
+}
+
+static void test_webhook_auth_header_bad_name_char_rejected(void **state) {
+    (void)state;
+    // Space inside the header name is not a valid token char per RFC 7230.
+    write_tmp_config("webhook_url = https://example.com/hook\n"
+                     "webhook_auth_header = X Token: abc\n");
+    ps_config_t cfg;
+    assert_int_equal(ps_config_load(tmp_path, &cfg), PS_ERR_CONFIG);
+    cleanup_tmp();
+}
+
 // --- Validators: WhatsApp field rejection ---
 
 static void test_validate_whatsapp_phone_id_non_numeric(void **state) {
@@ -493,6 +584,15 @@ int main(void) {
         cmocka_unit_test(test_validate_webhook_no_scheme),
         cmocka_unit_test(test_validate_webhook_with_quote),
         cmocka_unit_test(test_validate_webhook_with_backslash),
+        cmocka_unit_test(test_webhook_auth_header_bearer_loads),
+        cmocka_unit_test(test_webhook_auth_header_api_key_loads),
+        cmocka_unit_test(test_webhook_auth_header_default_empty),
+        cmocka_unit_test(test_webhook_auth_header_without_url_rejected),
+        cmocka_unit_test(test_webhook_auth_header_no_colon_rejected),
+        cmocka_unit_test(test_webhook_auth_header_empty_name_rejected),
+        cmocka_unit_test(test_webhook_auth_header_with_quote_rejected),
+        cmocka_unit_test(test_webhook_auth_header_with_backslash_rejected),
+        cmocka_unit_test(test_webhook_auth_header_bad_name_char_rejected),
         cmocka_unit_test(test_validate_whatsapp_phone_id_non_numeric),
         cmocka_unit_test(test_validate_whatsapp_recipient_non_numeric),
         cmocka_unit_test(test_validate_whatsapp_token_bad_char),

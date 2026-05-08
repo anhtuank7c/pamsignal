@@ -44,3 +44,7 @@
 
 # Custom webhook (receives JSON POST, see docs/alerts.md)
 # webhook_url = <webhook_url>
+# Optional auth header sent with the custom webhook POST. Full
+# "Name: value" form so any header works (Bearer, API keys, HMAC).
+# Secret stays out of /proc/<pid>/cmdline (passed via memfd to curl).
+# webhook_auth_header = Authorization: Bearer <token>

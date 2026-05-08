@@ -211,6 +211,27 @@ Sent as a `POST` request with `Content-Type: application/json`. Conforms to ECS 
 | Content-Type | `application/json` |
 | Expected response | `2xx` (non-2xx is logged as a warning) |
 
+**Authentication (optional):**
+
+Set `webhook_auth_header` in `pamsignal.conf` to send an arbitrary HTTP header with each POST:
+
+```ini
+webhook_url = https://siem.example.com/ingest/pamsignal
+webhook_auth_header = Authorization: Bearer s3cr3t-token-here
+```
+
+Common patterns:
+
+| Receiver | Header |
+|----------|--------|
+| Bearer / OAuth | `Authorization: Bearer <token>` |
+| Generic API key | `X-API-Key: <key>` |
+| Splunk HEC | `Authorization: Splunk <token>` |
+| Datadog Logs | `DD-API-KEY: <key>` |
+| Wazuh API | `Authorization: Bearer <jwt>` |
+
+The header value is passed to curl via a memfd-backed `-K` config file, so the secret never appears in `argv`, `/proc/<pid>/cmdline`, or any process listing. Only one header is supported; values containing `\r`, `\n`, `"`, or `\` are rejected at config load.
+
 ### Event types
 
 | `event.action` (ECS) | `pamsignal.event_type` (legacy) | When | Severity |
