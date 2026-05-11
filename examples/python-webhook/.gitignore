@@ -1,0 +1,15 @@
+# Python bytecode / caches
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+
+# uv virtualenv and lockfile-less environment artefacts
+.venv/
+
+# Local env file (never commit secrets)
+.env
+
+# The `certs` symlink itself is committed (points at examples/shared-certs/);
+# the actual generated *.crt/*.key files live there and are ignored by that
+# directory's own .gitignore.
