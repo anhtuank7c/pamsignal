@@ -991,9 +991,10 @@ jobs:
             <p>Fingerprint: <span class="fpr">$FPR_PRETTY</span></p>
 
             <h2>Debian / Ubuntu</h2>
-            <pre><code>curl -fsSL $BASE/key.asc \\
-            | sudo gpg --dearmor -o /usr/share/keyrings/pamsignal.gpg
-          echo "deb [signed-by=/usr/share/keyrings/pamsignal.gpg] $BASE stable main" \\
+            <pre><code>sudo install -d -m 0755 /etc/apt/keyrings
+          curl -fsSL $BASE/key.asc \\
+            | sudo gpg --dearmor -o /etc/apt/keyrings/pamsignal.gpg
+          echo "deb [signed-by=/etc/apt/keyrings/pamsignal.gpg] $BASE stable main" \\
             | sudo tee /etc/apt/sources.list.d/pamsignal.list
           sudo apt update
           sudo apt install pamsignal</code></pre>
