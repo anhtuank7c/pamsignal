@@ -1,0 +1,24 @@
+[project]
+name = "pamsignal-python-webhook"
+version = "1.0.0"
+description = "An example Python Flask webhook receiver for PAMSignal"
+requires-python = ">=3.10"
+dependencies = [
+    "flask>=3.0.0",
+    "python-dotenv>=1.0.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0.0",
+    "requests>=2.32.0",
+]
+
+# This is an application example, not a library — uv should not try to build /
+# install the project itself, only its dependencies.
+[tool.uv]
+package = false
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
