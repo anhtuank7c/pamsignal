@@ -111,8 +111,9 @@ jobs:
           3. Save GPG_PUBLIC_KEY.asc somewhere — the publishing workflow
              will commit it to gh-pages/key.asc so users can import it
              with:
+                 sudo install -d -m 0755 /etc/apt/keyrings
                  curl -fsSL https://<user>.github.io/pamsignal/key.asc \
-                     | sudo gpg --dearmor -o /usr/share/keyrings/pamsignal.gpg
+                     | sudo gpg --dearmor -o /etc/apt/keyrings/pamsignal.gpg
 
           4. After the secrets are in place:
              - DELETE this workflow run from the Actions UI

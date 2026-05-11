@@ -9,12 +9,15 @@ If you build from source, you do those steps yourself; see the "Source build" su
 ### Debian / Ubuntu (apt)
 
 ```bash
+sudo install -d -m 0755 /etc/apt/keyrings
 curl -fsSL https://anhtuank7c.github.io/pamsignal/key.asc \
-  | sudo gpg --dearmor -o /usr/share/keyrings/pamsignal.gpg
-echo "deb [signed-by=/usr/share/keyrings/pamsignal.gpg] https://anhtuank7c.github.io/pamsignal stable main" \
+  | sudo gpg --dearmor -o /etc/apt/keyrings/pamsignal.gpg
+echo "deb [signed-by=/etc/apt/keyrings/pamsignal.gpg] https://anhtuank7c.github.io/pamsignal stable main" \
   | sudo tee /etc/apt/sources.list.d/pamsignal.list
 sudo apt update && sudo apt install pamsignal
 ```
+
+`/etc/apt/keyrings` is the standard location for system-administrator-installed APT signing keys (per `sources.list(5)`); the `install -d` line is idempotent and safe to re-run on systems where the directory already exists.
 
 The package installs `/usr/bin/pamsignal`, `/usr/lib/systemd/system/pamsignal.service`, `/etc/pamsignal/pamsignal.conf`, and `/usr/share/man/man8/pamsignal.8.gz`. The `pamsignal` user and `systemd-journal` group membership are created in `postinst`. Continue at [Configure](#configure).
 
