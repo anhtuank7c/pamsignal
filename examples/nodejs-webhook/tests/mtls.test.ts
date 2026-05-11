@@ -6,7 +6,8 @@
 // unauthenticated TLS handshakes and accepts authenticated ones.
 //
 // Certs are generated fresh under a temp dir at setup via openssl (same
-// commands as scripts/gen-test-certs.sh). No fixtures committed to the repo.
+// commands as ../shared-certs/gen-test-certs.sh). No fixtures committed to
+// the repo.
 
 import * as fs from 'node:fs';
 import * as https from 'node:https';
