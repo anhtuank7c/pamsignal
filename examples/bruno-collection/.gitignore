@@ -1,11 +1,3 @@
-node_modules
-dist
-.env
-
 # The `certs` symlink itself is committed (points at examples/shared-certs/);
 # the actual generated *.crt/*.key files live there and are ignored by that
 # directory's own .gitignore.
-
-# Project uses pnpm; keep npm/yarn lockfiles out of the repo.
-package-lock.json
-yarn.lock

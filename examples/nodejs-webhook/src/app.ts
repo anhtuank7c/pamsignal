@@ -1,3 +1,5 @@
+import { timingSafeEqual } from 'node:crypto';
+
 import express, { Request, Response, NextFunction } from 'express';
 import helmet from 'helmet';
 import morgan from 'morgan';
@@ -11,8 +13,40 @@ if (process.env.NODE_ENV !== 'test') {
 }
 app.use(helmet());
 
-// Parse JSON bodies (PAMSignal sends JSON payloads)
-app.use(express.json());
+// Parse JSON bodies (PAMSignal sends JSON payloads). 64 KB cap keeps an
+// unauthenticated attacker from forcing unbounded JSON allocation; PAMSignal
+// payloads are well under 4 KB in practice.
+app.use(express.json({ limit: '64kb' }));
+
+/**
+ * Constant-time string comparison. `a === b` short-circuits at the first
+ * differing byte, leaking the secret byte-by-byte via response-time
+ * differences. timingSafeEqual requires equal-length buffers.
+ */
+export function safeEqual(a: string, b: string): boolean {
+  const ab = Buffer.from(a, 'utf8');
+  const bb = Buffer.from(b, 'utf8');
+  if (ab.length !== bb.length) {
+    // Still do a fixed-length compare so total time stays input-independent.
+    timingSafeEqual(ab, ab);
+    return false;
+  }
+  return timingSafeEqual(ab, bb);
+}
+
+/**
+ * Strip control characters from user-controlled values before logging.
+ * PAMSignal payloads are JSON, so an attacker can put newlines, ANSI escape
+ * sequences, or fake log lines in any string field. Replace anything below
+ * 0x20 (and DEL) with '?' and cap length so a malicious peer cannot inject
+ * log entries or terminal escapes into the receiver's stdout.
+ */
+// eslint-disable-next-line no-control-regex
+const CONTROL_CHARS = /[\x00-\x1f\x7f]/g;
+export function safe(value: unknown): string {
+  if (value === undefined || value === null) return String(value);
+  return String(value).replace(CONTROL_CHARS, '?').slice(0, 200);
+}
 
 /**
  * Authentication Middleware
@@ -31,14 +65,10 @@ const authenticate = (req: Request, res: Response, next: NextFunction): void => 
     return next();
   }
 
-  const authHeader = req.headers.authorization;
-
-  // 1. Check Bearer Token
-  if (authHeader && authHeader.startsWith('Bearer ')) {
-    const token = authHeader.split(' ')[1];
-    if (token === WEBHOOK_SECRET) {
-      return next();
-    }
+  const authHeader = req.headers.authorization ?? '';
+  const token = authHeader.startsWith('Bearer ') ? authHeader.slice('Bearer '.length) : '';
+  if (safeEqual(token, WEBHOOK_SECRET)) {
+    return next();
   }
 
   if (process.env.NODE_ENV !== 'test') {
@@ -51,6 +81,17 @@ const authenticate = (req: Request, res: Response, next: NextFunction): void => 
  * PAMSignal Webhook Endpoint
  */
 app.post('/webhook/pamsignal', authenticate, (req: Request, res: Response): void => {
+  // express.json() silently skips parsing for non-application/json bodies
+  // (req.body stays undefined). Without this explicit 415 a text/plain POST
+  // would fall through to the payload validator and return 400, which is
+  // technically wrong: ASVS-aligned APIs answer 415 for unsupported media
+  // types so clients can tell the difference between "your body was bad"
+  // and "I don't accept this content type".
+  if (!req.is('application/json')) {
+    res.status(415).json({ error: 'Unsupported Media Type: expected application/json' });
+    return;
+  }
+
   const payload = req.body;
 
   // Basic validation to ensure it's a valid PAMSignal ECS payload
@@ -67,27 +108,27 @@ app.post('/webhook/pamsignal', authenticate, (req: Request, res: Response): void
   if (process.env.NODE_ENV !== 'test') {
     switch (eventAction) {
       case 'login_success':
-        console.log(`✅ [LOGIN_SUCCESS] User '${user?.name}' logged in via ${source?.ip} on ${host?.hostname} (PID: ${proc?.pid})`);
+        console.log(`✅ [LOGIN_SUCCESS] User '${safe(user?.name)}' logged in via ${safe(source?.ip)} on ${safe(host?.hostname)} (PID: ${safe(proc?.pid)})`);
         break;
 
       case 'login_failure':
-        console.log(`❌ [LOGIN_FAILED] Failed login attempt for user '${user?.name}' from ${source?.ip} on ${host?.hostname}`);
+        console.log(`❌ [LOGIN_FAILED] Failed login attempt for user '${safe(user?.name)}' from ${safe(source?.ip)} on ${safe(host?.hostname)}`);
         break;
 
       case 'brute_force_detected':
-        console.log(`🚨 [BRUTE_FORCE] ${pamsignal?.attempts} failed attempts detected from IP ${source?.ip} in ${pamsignal?.window_sec}s!`);
+        console.log(`🚨 [BRUTE_FORCE] ${safe(pamsignal?.attempts)} failed attempts detected from IP ${safe(source?.ip)} in ${safe(pamsignal?.window_sec)}s!`);
         break;
 
       case 'session_opened':
-        console.log(`ℹ️ [SESSION_OPEN] Session opened for user '${user?.name}' on ${host?.hostname}`);
+        console.log(`ℹ️ [SESSION_OPEN] Session opened for user '${safe(user?.name)}' on ${safe(host?.hostname)}`);
         break;
 
       case 'session_closed':
-        console.log(`ℹ️ [SESSION_CLOSE] Session closed for user '${user?.name}' on ${host?.hostname}`);
+        console.log(`ℹ️ [SESSION_CLOSE] Session closed for user '${safe(user?.name)}' on ${safe(host?.hostname)}`);
         break;
 
       default:
-        console.log(`[UNKNOWN_EVENT] Received unknown event action: ${eventAction}`);
+        console.log(`[UNKNOWN_EVENT] Received unknown event action: ${safe(eventAction)}`);
         break;
     }
   }

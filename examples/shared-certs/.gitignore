@@ -1,0 +1,5 @@
+# Demo certs and keys — generated locally by gen-test-certs.sh. Never commit.
+*.crt
+*.key
+*.csr
+*.srl

@@ -78,8 +78,10 @@ If you already run an internal PKI, this example can run as an mTLS-enforcing HT
 #### Local end-to-end demo
 
 ```bash
-# 1. Generate a CA + server cert + client cert under ./certs/
-./scripts/gen-test-certs.sh
+# 1. Generate a CA + server cert + client cert in the shared dir.
+#    The `./certs/` path here is a symlink to ../shared-certs/, so the
+#    Python example and the Bruno collection pick up the same files.
+(cd ../shared-certs && ./gen-test-certs.sh)
 
 # 2. Configure this example to listen on HTTPS and require a client cert.
 cat >> .env <<'EOF'
@@ -177,11 +179,17 @@ For production, you should run this webhook receiver as a background service so 
 
 ### Using Bruno API Client
 
-We have provided a ready-to-use **Bruno** collection to easily test the webhook. 
+A shared **Bruno** collection lives at [`../bruno-collection/`](../bruno-collection/) and works against any receiver that implements the PAMSignal webhook contract — this Node.js example and the Python Flask example both qualify. It ships two environments:
+
+- **Local** — plain HTTP, Bearer-token only
+- **Local-mTLS** — HTTPS with a client cert (pair with `TLS_REQUIRE_CLIENT_CERT=true` here)
+
+See [`../bruno-collection/README.md`](../bruno-collection/README.md) for cert-symlink setup. Quick start:
+
 1. Download [Bruno](https://www.usebruno.com/).
-2. Click **Open Collection** and select the `examples/nodejs-webhook/bruno-collection` folder.
-3. Open any of the requests (e.g., *Login Success*, *Brute Force Detected*).
-4. Update the `Auth` tab to match your `WEBHOOK_SECRET` from `.env` and click **Send**!
+2. Click **Open Collection** (not *Import Collection* — that path expects Postman/OpenAPI JSON) and select the `examples/bruno-collection` folder.
+3. Pick the environment from the dropdown (top right) — `Local` or `Local-mTLS`.
+4. Update the chosen environment's `WEBHOOK_SECRET` to match your `.env` and click **Send**.
 
 ### Using Curl
 
