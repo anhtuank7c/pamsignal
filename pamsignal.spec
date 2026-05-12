@@ -1,5 +1,5 @@
 Name:           pamsignal
-Version:        0.4.0
+Version:        0.4.1
 Release:        1%{?dist}
 Summary:        Real-time PAM login monitor with multi-channel alerts
 

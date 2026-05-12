@@ -1,3 +1,55 @@
+pamsignal (0.4.1-1) unstable; urgency=medium
+
+  * Feature: pamsignal --version / -V flag. The man page synopsis and
+    the package post-install smoke check both assumed this flag
+    existed, but parse_args only handled --foreground and --config —
+    passing --version fell through to the non-root invariant and
+    exit-1'd with the "should not run as root" message under every
+    dpkg / rpm / container-RUN post-install context. The new branch
+    prints PAMSIGNAL_VERSION (meson-injected) and exits 0 before any
+    privilege checks, so smoke tests across distros now work.
+  * Docs: APT signing key path migrated to /etc/apt/keyrings per
+    sources.list(5) convention (#14, reported by @hongquan). Apt
+    accepts either path in signed-by=, so existing installs continue
+    to work without intervention; the docs and gh-pages install
+    snippet now match the FHS recommendation. Migration commands for
+    operators who want to move the keyring are documented in
+    CHANGELOG.md.
+  * Docs: docs/distros.md now spells out the three independent
+    reasons CentOS / RHEL 7 isn't supportable (kernel 3.10 lacks
+    memfd_create, glibc 2.17 lacks the wrapper, distro is EOL since
+    2024-06-30) and gives operators three concrete migration paths
+    (in-place migration to AlmaLinux 9 / Rocky 9 / RHEL 9, container
+    deployment on a kernel-backport ≥ 3.17 host, or auditd + SIEM
+    correlation as a stop-gap).
+  * Examples: bundled Node.js webhook receiver gains an HTTPS + mTLS
+    server variant (#12). Implementation now matches what the
+    README's "Mutual TLS (advanced)" section promised — the server
+    branches on TLS_KEY_PATH / TLS_CERT_PATH env vars, with optional
+    TLS_CLIENT_CA_PATH and TLS_REQUIRE_CLIENT_CERT. scripts/
+    gen-test-certs.sh produces a runnable end-to-end demo cert
+    pipeline (CA + server cert + client cert with mode 0600). Three
+    new Jest cases cover the TLS layer (valid client cert succeeds,
+    missing client cert rejected at TLS, mismatched Bearer 401s on a
+    successful handshake). No change to pamsignal itself.
+  * Tests: integration test suite rewritten (tests/test_integration.c)
+    to exercise the full parse → track → format pipeline on real
+    journal log lines (5 scenarios: SSH brute force from IPv4 / IPv6,
+    pure-local sudo, sudo with rhost SSH-elevation, multi-IP
+    interleaved). tests/test_notify.c formatter coverage expanded
+    from 4 to 27 cases by including src/notify.c directly to reach
+    file-static helpers; fixes two assertions that asserted on the
+    type-name "login_failed" instead of the actual ECS action string
+    "login_failure". meson test under ASAN + UBSAN passes 5/5 suites.
+  * Tests: test_install_docker.sh default matrix narrowed to Tier 1
+    (ubuntu:24.04 + fedora:40 — the two distros the bundled packages
+    are actually built against). The full seven-distro matrix
+    remains opt-in via positional distro-name args. Eliminates the
+    false-negative install failures on older glibc targets that
+    correctly apt/dnf-refuse the libc-pinned packages.
+
+ -- Tuan Nguyen <anhtuank7c@hotmail.com>  Tue, 12 May 2026 04:40:59 +0000
+
 pamsignal (0.4.0-1) unstable; urgency=medium
 
   * Feature: webhook_auth_header config key for the custom webhook
