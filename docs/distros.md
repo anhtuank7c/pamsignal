@@ -44,11 +44,33 @@ For all Tier 2 rows, the pamsignal daemon's parser, brute-force tracker, and ale
 | **Ubuntu** | 16.04 LTS (Xenial) | 229 | 2.23 | **Won't compile** — `memfd_create()` missing from glibc 2.23; alert credentials would have to fall back to argv exposure, which directly contradicts a documented threat-model mitigation (attack #3 in `docs/threat-model.md`) |
 | **Debian** | 11 (Bullseye) | 247 | 2.31 | `debhelper-compat (= 13)` borderline; some hardening directives missing; effectively the same posture as Ubuntu 20.04 |
 | **Debian** | ≤10 | ≤241 | ≤2.28 | Same blockers as older Ubuntu releases |
-| **CentOS / RHEL** | 7 | 219 | 2.17 | Won't compile; many hardening directives ignored even if patched to compile |
+| **CentOS / RHEL** | 7 (EOL'd 2024-06-30) | 219 | 2.17 | **Won't compile** — `memfd_create()` missing from glibc 2.17 and the stock kernel 3.10 lacks the underlying syscall (Linux 3.17+ required). Alert credentials would have to fall back to argv exposure, which contradicts a documented threat-model mitigation (attack #3 in `docs/threat-model.md`). systemd 219 also ignores roughly half the hardening directives the unit relies on. See [Why CentOS / RHEL 7 isn't supportable](#why-centos--rhel-7-isnt-supportable) below for the migration path. |
 | **CentOS / RHEL** | 8 (EOL'd 2021/2024) | 239 | 2.28 | Equivalent to Ubuntu 18.04 — sandbox posture too far from the threat model's claims |
 | **Anything older** | — | — | — | The combination of glibc + systemd + OpenSSH that pamsignal's hardening relies on doesn't exist. |
 
 The cutoffs are explicit because the threat model makes specific claims (compiler hardening, sandbox directives, the `_EXE` allowlist matching against the actual on-disk binary path) that depend on these versions. A pamsignal install on Tier 3 would *run* in many cases, but it would be running with a substantially weaker isolation posture than the security policy advertises — operators who deploy it would be making decisions based on guarantees the host doesn't actually provide.
+
+## Why CentOS / RHEL 7 isn't supportable
+
+Operators with a CentOS 7 fleet sometimes ask whether the cutoff can be relaxed. The answer is no, for three independent reasons:
+
+1. **No `memfd_create()` syscall in the kernel.** The Linux kernel added `memfd_create` in 3.17 (October 2014). Stock RHEL 7 / CentOS 7 ships kernel 3.10 with vendor backports — `memfd_create` is *not* among the backported syscalls. Confirm on your host with `grep memfd_create /proc/kallsyms` (no match means absent). pamsignal calls it at [`src/notify.c:113`](../src/notify.c) to build the curl child's config file in an anonymous in-memory descriptor; the descriptor name `pamsignal-curl` carries the webhook URL, auth header, and TLS-path config so the curl child's `argv` reveals none of them in `/proc/<pid>/cmdline` (verifiable with `ps auxf` during an active alert). Without that syscall, the only remaining places to put credentials are argv (visible to every local user) or a tempfile (visible to anyone with `/tmp` read access at the right moment) — both are call-out targets in [`docs/threat-model.md`](./threat-model.md) attack #3. The threat model would have to be revised downward to claim support for CentOS 7, which we won't do.
+
+2. **No `memfd_create()` glibc wrapper.** Even if a backported kernel had the syscall, RHEL 7's glibc is 2.17 — the wrapper landed in glibc 2.27 (2018). The daemon calls `memfd_create("pamsignal-curl", MFD_CLOEXEC)` as a libc function, not `syscall(SYS_memfd_create, ...)`. Switching to the raw syscall form is doable, but it doesn't unlock CentOS 7 — see point 1.
+
+3. **EOL on 2024-06-30.** CentOS 7 reached end-of-life on June 30, 2024 — no further upstream security updates. Running a *security-monitoring* daemon on a host that no longer receives security updates is an inversion of priorities: the host's exposure is now larger than what the daemon detects, and any unpatched CVE in the kernel, openssh, sudo, or systemd would be exploited well before pamsignal could observe a failed-auth event from the attack.
+
+### Migration paths for CentOS 7 hosts
+
+Three realistic options, in increasing order of disruption:
+
+| Option | What it looks like | When to use it |
+|---|---|---|
+| **In-place migration to AlmaLinux 9 / Rocky Linux 9 / RHEL 9** | Run the vendor migration script (`almalinux-deploy.sh` from AlmaLinux, `migrate2rocky.sh` from Rocky, `convert2rhel` from Red Hat). All three are Tier 1 / Tier 2 for pamsignal, glibc 2.34, systemd 252, kernel 5.14 with a 10-year support window. Existing `/etc/sudoers`, sshd config, and most app stacks carry forward unchanged. | The host is a long-lived production server you want to keep running. This is the recommended path. |
+| **Container deployment on the existing CentOS 7 host** | Run pamsignal inside a `podman run` (or docker) container based on `almalinux:9` or `ubuntu:24.04`. The container ships its own newer glibc, so the libc-level constraint is satisfied. **Hard prerequisite**: the host kernel must be ≥ 3.17 — `uname -r` must report a backport newer than stock 3.10 (some CentOS 7 hosts run elrepo's `kernel-lt` 5.4 or `kernel-ml` 6.x, which work; the original `3.10.0-1160.x.x.el7` does not). The container also needs read-only access to `/var/log/journal` from the host (the journal is what pamsignal observes), which is operationally awkward when the host's journald is the source of truth. | The host can't be migrated (vendor application support contract, regulatory pin, etc.) and its kernel has been updated to a recent backport. |
+| **Different tooling** | `auditd` is already on every RHEL host; pair it with `rsyslog`/`journald` forwarding to a SIEM (e.g. Wazuh, Splunk, Loki) and write the brute-force-detection correlation rules SIEM-side. This is what most enterprise CentOS 7 deployments already do. | The host is going to be decommissioned within the next 12 months and isn't worth the migration effort, but you still want the detection coverage in the meantime. |
+
+If the choice is option 1, the migration is operationally lightweight: the AlmaLinux/Rocky scripts swap packages in-place without a reboot for most of the transition (a final reboot loads the new kernel). pamsignal's Tier 1 `dnf install pamsignal` works immediately on the migrated host.
 
 ## Architecture
 
