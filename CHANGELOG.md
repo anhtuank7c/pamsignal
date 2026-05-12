@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+(no changes yet)
+
+## 0.4.1 — 2026-05-12
+
+Patch release. Closes one operator-facing UX gap (`pamsignal --version` now works — the man page synopsis and the package post-install smoke checks have always claimed this flag existed, but it didn't), documents the rationale for one cutoff that came up in operator conversations (CentOS / RHEL 7 unsupportability + migration paths), aligns the APT install snippet with the FHS keyring-path convention (#14), and ships an HTTPS + mTLS variant of the bundled Node.js webhook receiver to match what the threat-model docs claimed it could do (#12). No daemon behaviour changes; existing configs work unchanged. Internal: integration test suite rewritten to exercise the parse → track → format pipeline on real journal log lines, formatter coverage in test_notify.c expanded 4 → 27 cases, install-test default matrix narrowed to the build-matching Tier 1 pair. ASAN + UBSAN clean across all five test suites.
+
 ### Documentation
 - [x] **`docs/distros.md`: CentOS / RHEL 7 unsupportability fully documented.** The Tier 3 table row previously said only "Won't compile; many hardening directives ignored" — operators asking whether the cutoff could be relaxed for their CentOS 7 fleet had no specific answer to point at. Rewrote the row to cite the three independent blockers (stock kernel 3.10 lacks the `memfd_create` syscall added in Linux 3.17; glibc 2.17 lacks the wrapper added in 2.27; CentOS 7 itself reached EOL on 2024-06-30 — running a security daemon on an OS that no longer receives upstream security updates is counter-productive) and added a "Why CentOS / RHEL 7 isn't supportable" subsection that spells out exactly which part of the threat model breaks (attack #3, alert-credential exposure via `/proc/<pid>/cmdline` when memfd-backed curl config isn't available) and offers three concrete migration paths: in-place migration to AlmaLinux 9 / Rocky 9 / RHEL 9 via the official `convert2rhel` / `migrate2rocky.sh` / `almalinux-deploy.sh` scripts (recommended), container deployment on the existing host with a newer-glibc image (works only if `uname -r` shows a backport ≥ 3.17, not stock 3.10), or sidestepping pamsignal entirely with `auditd` + SIEM correlation. Linked from the Tier 3 table so the migration path is one click away from the "is my host supported" lookup.
 
