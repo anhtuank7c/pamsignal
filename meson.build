@@ -18,6 +18,7 @@ add_project_arguments(
   '-Werror=format-security',
   '-fstack-protector-strong',
   '-D_GNU_SOURCE',
+  '-DPAMSIGNAL_VERSION="' + meson.project_version() + '"',
   language: 'c'
 )
 

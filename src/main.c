@@ -21,6 +21,15 @@ static void parse_args(int argc, char *argv[], int *foreground,
     *config_path = PS_DEFAULT_CONFIG_PATH;
 
     for (int i = 1; i < argc; i++) {
+        if (strcmp(argv[i], "--version") == 0 || strcmp(argv[i], "-V") == 0) {
+            // Print version and exit immediately, before any privilege or
+            // journal-access checks. This lets package post-install scripts
+            // and `--version`-style smoke tests run from any context (root,
+            // dpkg, rpm) without tripping the non-root invariant enforced
+            // later in main().
+            printf("pamsignal %s\n", PAMSIGNAL_VERSION);
+            exit(0);
+        }
         if (strcmp(argv[i], "--foreground") == 0 ||
             strcmp(argv[i], "-f") == 0) {
             *foreground = 1;
