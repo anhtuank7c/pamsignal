@@ -21,7 +21,7 @@ This project would look very different — or wouldn't exist at all — without 
 </td>
 <td valign="top">
 
-Gave the kind of honest, no-punches-pulled feedback on Linux standards and operator expectations that reshaped PAMSignal's roadmap and architecture. The single biggest design decision in this codebase — subscribing to <code>systemd-journald</code> for PAM events instead of tailing <code>/var/log/auth.log</code> — came directly from his pushback. The result is a daemon that fits the modern Linux stack instead of working around it; every piece of structured-event handling, ECS field mapping, and <code>_EXE</code> allowlisting downstream of that call exists because of his input. 🙇
+Gave the kind of honest, no-punches-pulled feedback on Linux standards and operator expectations that reshaped PAMSignal's roadmap and architecture. The single biggest design decision in this codebase — subscribing to <code>systemd-journald</code> for PAM events instead of tailing <code>/var/log/auth.log</code> — came directly from his pushback. His strong emphasis on Linux <a href="https://refspecs.linuxfoundation.org/FHS_3.0/fhs/index.html">FHS</a> compliance also threads through every file-path choice in the project: the binary under <code>/usr/bin</code>, config under <code>/etc/pamsignal/</code>, runtime state under <code>/run/pamsignal/</code>, the systemd vendor unit under <code>/usr/lib/systemd/system/</code>, and the apt repository keyring at <code>/etc/apt/keyrings/pamsignal.gpg</code> (<a href="https://github.com/anhtuank7c/pamsignal/issues/14">#14</a>). The result is a daemon that fits the modern Linux stack instead of working around it. 🙇
 
 </td>
 </tr>
