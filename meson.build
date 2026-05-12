@@ -168,10 +168,12 @@ if cmocka_dep.found()
     protocol: 'exitcode',
   )
 
+  # test_notify #includes ../src/notify.c so it can drive file-static
+  # formatting helpers (format_event_json, format_brute_json, json_escape).
+  # Do NOT also list src/notify.c here — that would produce duplicate symbols.
   test('test_notify',
     executable('test_notify',
       'tests/test_notify.c',
-      'src/notify.c',
       'src/utils.c',
       'src/config.c',
       include_directories: inc,
@@ -187,6 +189,21 @@ if cmocka_dep.found()
     executable('test_journal_watch',
       'tests/test_journal_watch.c',
       'src/notify.c',
+      'src/utils.c',
+      'src/config.c',
+      include_directories: inc,
+      dependencies: [cmocka_dep, libsystemd_dep],
+    ),
+    protocol: 'exitcode',
+  )
+
+  # test_integration #includes BOTH ../src/journal_watch.c and ../src/notify.c
+  # so it can drive the parse → track → format pipeline and assert on the
+  # alert payload using file-static formatters. Do NOT also list those two
+  # sources here — that would yield duplicate symbols.
+  test('test_integration',
+    executable('test_integration',
+      'tests/test_integration.c',
       'src/utils.c',
       'src/config.c',
       include_directories: inc,
