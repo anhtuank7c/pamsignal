@@ -1,24 +1,24 @@
 Architectures: amd64
 Codename: stable
 Components: main
-Date: Fri, 08 May 2026 04:58:01 +0000
+Date: Tue, 12 May 2026 06:51:22 +0000
 Description: pamsignal release apt repo
 Label: pamsignal
 Origin: pamsignal
 Suite: stable
 MD5Sum:
- d4d6cfceb225fcf086ef0cb8191880d9              182 Release
- c25073a25ecdbae56cf1c1eec1efb7dd            20000 main/binary-amd64/Packages
- d8fa890f0b0d8b2eca150210e0e40159             4881 main/binary-amd64/Packages.gz
+ f5317516c819624e68388b4fc6cce01d              182 Release
+ fb7c34c13976a79d9c6226efff07b33c            22000 main/binary-amd64/Packages
+ 32641fbb2e0be60a97bdb5bb9d72430b             5274 main/binary-amd64/Packages.gz
 SHA1:
- c13253f21d986f2b1f732f55469e7e7a9dbbbd32              182 Release
- db972999a2ec1f27fb45d3481d962d8c69214239            20000 main/binary-amd64/Packages
- 294a3443e5cd900fa5d756da65a7cad85520d1aa             4881 main/binary-amd64/Packages.gz
+ c5299a37df1b1bcb27576c4810e1d81e96bf5156              182 Release
+ baa8532c76873cce7ed34a6bf34314e968cddd8e            22000 main/binary-amd64/Packages
+ 05d70f7f31ac2d57b68df48c1ac7702157d2445a             5274 main/binary-amd64/Packages.gz
 SHA256:
- 4a77c016ffb08e230f1a7db84c7ed7d3b1918241d4e46759178d4c0df3e1af52              182 Release
- 1f19fbe0a552e5f178c057fbb9bc29e8562c01055b99b4eec98ef1463c0fe140            20000 main/binary-amd64/Packages
- a394d57efbef7eea8b1086d06c1bf3cb8d68d8675c371e407f2fd94df5c3692e             4881 main/binary-amd64/Packages.gz
+ d4c05dc4d3c214b3053dca8a220fdfe40646de9c0f38dbdeb1fa7c636608c40f              182 Release
+ 97092907d0dcb384b8e34f53d4d9e674b804daae33780e8d3bc352fcad67934d            22000 main/binary-amd64/Packages
+ 2f6a93138439123044b354ad08ac172908470eda45ef840954f63dee2ea45cc3             5274 main/binary-amd64/Packages.gz
 SHA512:
- 024a3398dfe498f448efdf2cfa67b951037ed7c6d150f08aa2fc54b63430364234ea26ed09780e9951467bb56c8ce85f391b44cd79097794471055d2f0405d38              182 Release
- 35ab4c08bb7b08d3541af12d71ba0e64a218ce1e9e4363085472be422ce55fb47ca19339ffc2babe740fa6a37f4a7e49aec807fdf8886085d5cb28a8b743dfe7            20000 main/binary-amd64/Packages
- a2e262a4354e64c1c0fae053ccf27f577b45ac618889f3b0539e5125def4745df9bca0820de462eed9934aee3132a27753a59aebb7ab154213f1c8a8ad03d928             4881 main/binary-amd64/Packages.gz
+ edcf25b4dea77e580e79f52efd437f354b0f361e49ac2f2503f5f3cd6382c34c20ccb8af37695662a012b3a7ec465a470053af7a53cc7947d11a1289d7128740              182 Release
+ 148ea1e054c5cedc8cddf35c1958e20f8c7aa277b795ec40b99f42fae34917019ed0236b9ce090424a3cdd6907006f46f63221a32d152bfc1a1e70f3a84269df            22000 main/binary-amd64/Packages
+ aeafb240b17123550173d70744f305d5250568318afe268984ffba699236b13c7cc7da9e2f514591a9c918fc259146346e885b688f4c9c7db85d843d94b3dcf0             5274 main/binary-amd64/Packages.gz
