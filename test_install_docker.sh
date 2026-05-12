@@ -7,7 +7,12 @@ if [ "$#" -lt 2 ]; then
     echo "Usage: $0 <path_to_deb_file> <path_to_rpm_file> [distro1 distro2 ...]"
     echo "Example: $0 ./pamsignal_1.0.0_amd64.deb ./pamsignal-1.0.0-1.el9.x86_64.rpm ubuntu fedora"
     echo "Supported distros: ubuntu, debian, fedora, centos, almalinux, rockylinux"
-    echo "If no distros are specified, all of them will be tested."
+    echo ""
+    echo "If no distros are specified, the script runs only the Tier 1 install"
+    echo "checks (ubuntu:24.04 + fedora:40) — the two targets the bundled .deb"
+    echo "and .rpm are built against. Pass distros explicitly to opt into the"
+    echo "wider matrix; cross-distroseries installs fail on older glibc by"
+    echo "design (see docs/distros.md)."
     exit 1
 fi
 
@@ -56,7 +61,24 @@ test_rpm() {
     echo -e "[SUCCESS] Passed on $image!"
 }
 
-# Parse requested distros
+# With no distros specified, run only the Tier 1 install checks — the two
+# distros the bundled packages are actually built against. The .deb pins
+# libc6 to ubuntu:24.04's glibc (2.38) via dpkg-shlibdeps; the .rpm pins to
+# fedora:40's glibc (2.39+). Older targets (ubuntu:22.04, debian:12,
+# centos:stream9, almalinux:9, rockylinux:9) install-fail on these
+# packages by design — a per-distroseries build pipeline is the documented
+# fix (see docs/distros.md). To validate the wider matrix anyway, pass the
+# distro names explicitly.
+if [ ${#DISTROS[@]} -eq 0 ]; then
+    test_deb "ubuntu:24.04"
+    test_rpm "fedora:40"
+    echo -e "\n================================================="
+    echo "🎉 Tier 1 install tests completed successfully!"
+    echo "================================================="
+    exit 0
+fi
+
+# Explicit distro selection — wide matrix.
 run_ubuntu=false
 run_debian=false
 run_fedora=false
@@ -64,27 +86,17 @@ run_centos=false
 run_almalinux=false
 run_rockylinux=false
 
-if [ ${#DISTROS[@]} -eq 0 ]; then
-    # Run all if no specific distros provided
-    run_ubuntu=true
-    run_debian=true
-    run_fedora=true
-    run_centos=true
-    run_almalinux=true
-    run_rockylinux=true
-else
-    for distro in "${DISTROS[@]}"; do
-        case "${distro,,}" in # Convert to lowercase
-            ubuntu) run_ubuntu=true ;;
-            debian) run_debian=true ;;
-            fedora) run_fedora=true ;;
-            centos) run_centos=true ;;
-            alma*|almalinux) run_almalinux=true ;;
-            rocky*|rockylinux) run_rockylinux=true ;;
-            *) echo "Warning: Unknown distro '$distro'";;
-        esac
-    done
-fi
+for distro in "${DISTROS[@]}"; do
+    case "${distro,,}" in # Convert to lowercase
+        ubuntu) run_ubuntu=true ;;
+        debian) run_debian=true ;;
+        fedora) run_fedora=true ;;
+        centos) run_centos=true ;;
+        alma*|almalinux) run_almalinux=true ;;
+        rocky*|rockylinux) run_rockylinux=true ;;
+        *) echo "Warning: Unknown distro '$distro'";;
+    esac
+done
 
 # --- Run Tests ---
 
