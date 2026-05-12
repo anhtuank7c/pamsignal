@@ -12,8 +12,32 @@ If you manage a handful of servers and want to know instantly when someone logs 
 
 This project would look very different — or wouldn't exist at all — without two friends:
 
-- **[Nguyen Hong Quang](https://github.com/hongquan)** gave the kind of honest, no-punches-pulled feedback on Linux standards and operator expectations that reshaped PAMSignal's roadmap and architecture. The single biggest design decision in this codebase — subscribing to `systemd-journald` for PAM events instead of tailing `/var/log/auth.log` — came directly from his pushback. The result is a daemon that fits the modern Linux stack instead of working around it; every piece of structured-event handling, ECS field mapping, and `_EXE` allowlisting downstream of that call exists because of his input. 🙇
-- **[Samuel Le](https://github.com/lehiep1994)** kept me reading and kept me building. He sent me books on Linux internals at exactly the moments I needed them, and the steady encouragement to *not* abandon this project — through every "is this even worth shipping?" stretch — is a real part of why PAMSignal made it to a release. 🙇
+<table>
+<tr>
+<td width="100" align="center" valign="top">
+<a href="https://github.com/hongquan"><img src="https://github.com/hongquan.png" width="72" alt="@hongquan" /></a><br/>
+<sub><b><a href="https://github.com/hongquan">Nguyen Hong&nbsp;Quang</a></b></sub><br/>
+<sub>@hongquan</sub>
+</td>
+<td valign="top">
+
+Gave the kind of honest, no-punches-pulled feedback on Linux standards and operator expectations that reshaped PAMSignal's roadmap and architecture. The single biggest design decision in this codebase — subscribing to <code>systemd-journald</code> for PAM events instead of tailing <code>/var/log/auth.log</code> — came directly from his pushback. The result is a daemon that fits the modern Linux stack instead of working around it; every piece of structured-event handling, ECS field mapping, and <code>_EXE</code> allowlisting downstream of that call exists because of his input. 🙇
+
+</td>
+</tr>
+<tr>
+<td width="100" align="center" valign="top">
+<a href="https://github.com/lehiep1994"><img src="https://github.com/lehiep1994.png" width="72" alt="@lehiep1994" /></a><br/>
+<sub><b><a href="https://github.com/lehiep1994">Samuel&nbsp;Le</a></b></sub><br/>
+<sub>@lehiep1994</sub>
+</td>
+<td valign="top">
+
+Kept me reading and kept me building. He sent me books on Linux internals at exactly the moments I needed them, and the steady encouragement to *not* abandon this project — through every "is this even worth shipping?" stretch — is a real part of why PAMSignal made it to a release. 🙇
+
+</td>
+</tr>
+</table>
 
 ## ✨ Why PAMSignal?
 
