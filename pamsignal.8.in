@@ -8,6 +8,9 @@ pamsignal \- real-time PAM authentication monitor with multi-channel alerts
 .RB [ \-f \ |\  \-\-foreground ]
 .RB [ \-c \ |\  \-\-config
 .IR PATH ]
+.br
+.B pamsignal
+.RB { \-V \ |\  \-\-version }
 .SH DESCRIPTION
 .B pamsignal
 is a lightweight C daemon that monitors PAM authentication events through
