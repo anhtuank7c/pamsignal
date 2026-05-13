@@ -16,7 +16,7 @@ This project would look very different — or wouldn't exist at all — without 
 <tr>
 <td width="100" align="center" valign="top">
 <a href="https://github.com/hongquan"><img src="https://github.com/hongquan.png" width="72" alt="@hongquan" /></a><br/>
-<sub><b><a href="https://github.com/hongquan">Nguyen Hong&nbsp;Quang</a></b></sub><br/>
+<sub><b><a href="https://github.com/hongquan">Nguyen Hong&nbsp;Quan</a></b></sub><br/>
 <sub>@hongquan</sub>
 </td>
 <td valign="top">
