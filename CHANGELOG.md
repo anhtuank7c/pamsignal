@@ -2,7 +2,8 @@
 
 ## Unreleased
 
-(no changes yet)
+### Security
+- [x] **`examples/python-webhook/`: bump `idna` 3.14 → 3.15 in `uv.lock`** (Dependabot alert #1, [CVE-2026-45409](https://github.com/advisories/GHSA-65pc-fj4g-8rjx), CVSS v4 6.9 medium). `idna < 3.15` is vulnerable to a DoS when `idna.encode()` is called with crafted long inputs (e.g. `"٠" * N`): `valid_contexto` runs before the length-rejection check, re-opening the gap that CVE-2024-3651 was supposed to close. PAMSignal itself is C and unaffected; the alert fires only on the Flask example receiver's transitive dep via `requests`. Lockfile-only refresh via `uv lock --upgrade-package idna`; `pyproject.toml` unchanged.
 
 ## 0.4.1 — 2026-05-12
 
