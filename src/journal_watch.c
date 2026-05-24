@@ -97,7 +97,7 @@ static int fail_table_count = 0;
 static int fail_table_capacity = 0;
 
 int ps_fail_table_init(int capacity) {
-    if (capacity <= 0)
+    if (capacity <= 0 || capacity > 100000)
         return PS_ERR_INIT;
 
     ps_fail_entry_t *t = calloc((size_t)capacity, sizeof(ps_fail_entry_t));
