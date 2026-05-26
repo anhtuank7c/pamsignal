@@ -652,7 +652,29 @@ static int event_cooled_down(const ps_config_t *cfg) {
 
 // --- Public API ---
 
+// Map a PAM event type onto its PS_NOTIFY_* category bit. Returns 0 for
+// events we don't classify (e.g. PS_EVENT_UNKNOWN), which keeps unknown
+// kinds from ever firing a chat alert.
+static unsigned int event_notify_bit(ps_event_type_t type) {
+    switch (type) {
+    case PS_EVENT_LOGIN_SUCCESS:
+        return PS_NOTIFY_LOGIN_SUCCESS;
+    case PS_EVENT_LOGIN_FAILED:
+        return PS_NOTIFY_LOGIN_FAILED;
+    case PS_EVENT_SESSION_OPEN:
+        return PS_NOTIFY_SESSION_OPEN;
+    case PS_EVENT_SESSION_CLOSE:
+        return PS_NOTIFY_SESSION_CLOSE;
+    case PS_EVENT_UNKNOWN:
+        break;
+    }
+    return 0;
+}
+
 void ps_notify_event(const ps_config_t *cfg, const ps_pam_event_t *event) {
+    unsigned int bit = event_notify_bit(event->type);
+    if ((cfg->enable_notification_type & bit) == 0)
+        return;
     if (!event_cooled_down(cfg))
         return;
 
@@ -680,6 +702,8 @@ void ps_notify_brute_force(const ps_config_t *cfg, const char *source_ip,
                            int attempts, int window_sec,
                            const char *last_username, const char *hostname,
                            uint64_t timestamp_usec, pid_t last_pid) {
+    if ((cfg->enable_notification_type & PS_NOTIFY_BRUTE_FORCE) == 0)
+        return;
     // Caller (journal_watch.c) applies the per-source-IP cooldown using
     // fail_entry state, so we don't gate brute-force alerts here. Suppressing
     // them globally would let a chatty login flood mute brute-force signals.
@@ -711,6 +735,8 @@ void ps_notify_local_brute_force(const ps_config_t *cfg, ps_service_t service,
                                  const char *target_username, int attempts,
                                  int window_sec, const char *hostname,
                                  uint64_t timestamp_usec, pid_t last_pid) {
+    if ((cfg->enable_notification_type & PS_NOTIFY_BRUTE_FORCE) == 0)
+        return;
     // Caller (journal_watch.c) applies the per-actor cooldown using
     // fail_entry state, mirroring the IP-based path above.
     char text[1024];

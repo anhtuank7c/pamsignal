@@ -11,6 +11,20 @@
 #define PS_DEFAULT_MAX_TRACKED_IPS    256
 #define PS_DEFAULT_ALERT_COOLDOWN_SEC 60
 
+// Notification-type filter bits. enable_notification_type is a bitmask of
+// these flags; default is PS_NOTIFY_ALL so existing deployments keep their
+// behaviour. Filters only affect chat dispatch (Telegram/Slack/Teams/
+// WhatsApp/Discord/webhook); the local systemd-journal trail emitted by
+// ps_log_event is unaffected.
+#define PS_NOTIFY_LOGIN_SUCCESS 0x01u
+#define PS_NOTIFY_LOGIN_FAILED  0x02u
+#define PS_NOTIFY_SESSION_OPEN  0x04u
+#define PS_NOTIFY_SESSION_CLOSE 0x08u
+#define PS_NOTIFY_BRUTE_FORCE   0x10u
+#define PS_NOTIFY_ALL                                   \
+    (PS_NOTIFY_LOGIN_SUCCESS | PS_NOTIFY_LOGIN_FAILED | \
+     PS_NOTIFY_SESSION_OPEN | PS_NOTIFY_SESSION_CLOSE | PS_NOTIFY_BRUTE_FORCE)
+
 typedef struct {
     // Alert channels (empty = disabled)
     char telegram_bot_token[256];
@@ -38,6 +52,9 @@ typedef struct {
 
     // Alert rate limiting
     int alert_cooldown_sec; // 0..86400 (0 = no cooldown)
+
+    // Chat-dispatch filter (bitmask of PS_NOTIFY_*). Default PS_NOTIFY_ALL.
+    unsigned int enable_notification_type;
 } ps_config_t;
 
 // Fill cfg with compiled defaults

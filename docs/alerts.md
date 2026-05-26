@@ -257,14 +257,16 @@ mTLS combines additively with `webhook_auth_header` — operators with receivers
 
 ### Event types
 
-| `event.action` (ECS) | `pamsignal.event_type` (legacy) | When | Severity |
-|---|---|---|---|
-| `session_opened` | `SESSION_OPEN` | A PAM session opens (sshd / sudo / su / login) | 3 (info) |
-| `session_closed` | `SESSION_CLOSE` | A PAM session closes | 3 (info) |
-| `login_success` | `LOGIN_SUCCESS` | Successful SSH auth (password or public key) | 4 (notice) |
-| `login_failure` | `LOGIN_FAILED` | Failed SSH auth | 5 (warning) |
-| `login_failure` (sudo/su) | `LOGIN_FAILED` | Failed sudo/su attempt — **journal-only** (no per-event chat alert; tracked toward the brute-force threshold) | 5 (warning) |
-| `brute_force_detected` | `BRUTE_FORCE_DETECTED` | Failed attempts from one IP **or** from one local actor (sudo/su) exceeded the threshold within the window | 8 (alert) |
+| `event.action` (ECS) | `pamsignal.event_type` (legacy) | When | Severity | `enable_notification_type` token |
+|---|---|---|---|---|
+| `session_opened` | `SESSION_OPEN` | A PAM session opens (sshd / sudo / su / login) | 3 (info) | `session_open` |
+| `session_closed` | `SESSION_CLOSE` | A PAM session closes | 3 (info) | `session_close` |
+| `login_success` | `LOGIN_SUCCESS` | Successful SSH auth (password or public key) | 4 (notice) | `login_success` |
+| `login_failure` | `LOGIN_FAILED` | Failed SSH auth | 5 (warning) | `login_failed` |
+| `login_failure` (sudo/su) | `LOGIN_FAILED` | Failed sudo/su attempt — **journal-only** (no per-event chat alert; tracked toward the brute-force threshold) | 5 (warning) | `login_failed` (suppression is independent and still applies) |
+| `brute_force_detected` | `BRUTE_FORCE_DETECTED` | Failed attempts from one IP **or** from one local actor (sudo/su) exceeded the threshold within the window | 8 (alert) | `brute_force` |
+
+The last column is the token to list in `enable_notification_type` to receive that category as a chat alert. The default (`all`, or the key omitted) enables every category. The filter only gates chat dispatch — `journalctl -t pamsignal` records every event regardless. See [Configuration → Notification-type filter](./configuration.md#notification-type-filter) for the full reference.
 
 ### Field reference (ECS webhook JSON)
 

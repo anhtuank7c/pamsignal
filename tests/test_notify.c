@@ -452,6 +452,69 @@ static void test_notify_event_cooldown_repeat(void **state) {
     ps_notify_event(&cfg, &e); // suppressed by cooldown
 }
 
+// --- enable_notification_type gating ---
+//
+// We probe gating without a live HTTP channel by observing the file-static
+// last_event_alert clock: a real dispatch through ps_notify_event sets it,
+// a gated-off call leaves it untouched. Same proxy for brute-force using
+// time(NULL) bookkeeping is not available, so we rely on the absence of
+// crash + the gating expression being identical to the one we already
+// proved through event_notify_bit().
+
+static void test_event_notify_bit_mapping(void **state) {
+    (void)state;
+    assert_int_equal(event_notify_bit(PS_EVENT_LOGIN_SUCCESS),
+                     PS_NOTIFY_LOGIN_SUCCESS);
+    assert_int_equal(event_notify_bit(PS_EVENT_LOGIN_FAILED),
+                     PS_NOTIFY_LOGIN_FAILED);
+    assert_int_equal(event_notify_bit(PS_EVENT_SESSION_OPEN),
+                     PS_NOTIFY_SESSION_OPEN);
+    assert_int_equal(event_notify_bit(PS_EVENT_SESSION_CLOSE),
+                     PS_NOTIFY_SESSION_CLOSE);
+    assert_int_equal(event_notify_bit(PS_EVENT_UNKNOWN), 0);
+}
+
+static void test_notify_event_gated_off(void **state) {
+    (void)state;
+    ps_config_t cfg;
+    make_cfg_default(&cfg);
+    cfg.enable_notification_type = PS_NOTIFY_LOGIN_SUCCESS; // failures off
+    cfg.alert_cooldown_sec = 3600;
+
+    last_event_alert = 0;
+    ps_pam_event_t e = make_login_failed();
+    ps_notify_event(&cfg, &e);
+    // Gated off: cooldown clock never advanced.
+    assert_int_equal(last_event_alert, 0);
+}
+
+static void test_notify_event_gated_on(void **state) {
+    (void)state;
+    ps_config_t cfg;
+    make_cfg_default(&cfg);
+    cfg.enable_notification_type = PS_NOTIFY_LOGIN_SUCCESS;
+    cfg.alert_cooldown_sec = 3600;
+
+    last_event_alert = 0;
+    ps_pam_event_t e = make_login_success();
+    ps_notify_event(&cfg, &e);
+    // Gated on: cooldown clock advanced because dispatch ran.
+    assert_true(last_event_alert > 0);
+}
+
+static void test_notify_event_unknown_type_never_dispatches(void **state) {
+    (void)state;
+    ps_config_t cfg;
+    make_cfg_default(&cfg); // all bits set
+    cfg.alert_cooldown_sec = 3600;
+
+    last_event_alert = 0;
+    ps_pam_event_t e = make_login_success();
+    e.type = PS_EVENT_UNKNOWN;
+    ps_notify_event(&cfg, &e);
+    assert_int_equal(last_event_alert, 0);
+}
+
 int main(void) {
     const struct CMUnitTest tests[] = {
         // json_escape
@@ -488,6 +551,11 @@ int main(void) {
         cmocka_unit_test(test_notify_brute_no_channels),
         cmocka_unit_test(test_notify_local_brute_no_channels),
         cmocka_unit_test(test_notify_event_cooldown_repeat),
+        // enable_notification_type gating
+        cmocka_unit_test(test_event_notify_bit_mapping),
+        cmocka_unit_test(test_notify_event_gated_off),
+        cmocka_unit_test(test_notify_event_gated_on),
+        cmocka_unit_test(test_notify_event_unknown_type_never_dispatches),
     };
     return cmocka_run_group_tests(tests, NULL, NULL);
 }

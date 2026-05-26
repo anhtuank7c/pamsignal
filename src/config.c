@@ -23,6 +23,7 @@ void ps_config_defaults(ps_config_t *cfg) {
     cfg->fail_window_sec = PS_DEFAULT_FAIL_WINDOW_SEC;
     cfg->max_tracked_ips = PS_DEFAULT_MAX_TRACKED_IPS;
     cfg->alert_cooldown_sec = PS_DEFAULT_ALERT_COOLDOWN_SEC;
+    cfg->enable_notification_type = PS_NOTIFY_ALL;
 }
 
 // Locale-independent whitespace classifier. Avoids the ctype.h __ctype_b_loc
@@ -56,9 +57,70 @@ static int parse_int_range(const char *val, int min, int max, int *out) {
     return 0;
 }
 
+// Parse a comma-separated notification-type list ("login_success,brute_force",
+// "all", etc.) into a bitmask. Returns -1 on unknown token, empty value, or
+// an empty list element (we want "a,,b" to be a hard error, not silently
+// coalesced into {a,b} — strtok_r would skip the empty element, so we split
+// by hand). Whitespace around each element is tolerated. Case-insensitive.
+static int parse_notification_mask(const char *val, unsigned int *out) {
+    if (!val || !*val)
+        return -1;
+
+    static const struct {
+        const char *name;
+        unsigned int flag;
+    } tokens[] = {
+        {"login_success", PS_NOTIFY_LOGIN_SUCCESS},
+        {"login_failed", PS_NOTIFY_LOGIN_FAILED},
+        {"session_open", PS_NOTIFY_SESSION_OPEN},
+        {"session_close", PS_NOTIFY_SESSION_CLOSE},
+        {"brute_force", PS_NOTIFY_BRUTE_FORCE},
+        {"all", PS_NOTIFY_ALL},
+    };
+
+    char buf[256];
+    if (snprintf(buf, sizeof(buf), "%s", val) >= (int)sizeof(buf))
+        return -1;
+
+    unsigned int mask = 0;
+    int matched_any = 0;
+    char *p = buf;
+    while (1) {
+        char *comma = strchr(p, ',');
+        if (comma)
+            *comma = '\0';
+
+        char *t = trim(p);
+        if (*t == '\0')
+            return -1;
+        for (char *q = t; *q; q++)
+            *q = (char)tolower((unsigned char)*q);
+
+        int found = 0;
+        for (size_t i = 0; i < sizeof(tokens) / sizeof(tokens[0]); i++) {
+            if (strcmp(t, tokens[i].name) == 0) {
+                mask |= tokens[i].flag;
+                found = 1;
+                matched_any = 1;
+                break;
+            }
+        }
+        if (!found)
+            return -1;
+
+        if (!comma)
+            break;
+        p = comma + 1;
+    }
+    if (!matched_any)
+        return -1;
+    *out = mask;
+    return 0;
+}
+
 // --- Config key mapping table ---
 
-typedef enum { CFG_STRING, CFG_INT } cfg_type_t;
+typedef enum { CFG_STRING, CFG_INT, CFG_NOTIFY_MASK } cfg_type_t;
 
 typedef struct {
     const char *key;
@@ -78,6 +140,8 @@ typedef struct {
      0}
 #define CFG_INT(name, lo, hi) \
     {#name, CFG_INT, offsetof(ps_config_t, name), 0, lo, hi}
+#define CFG_NOTIFY(name) \
+    {#name, CFG_NOTIFY_MASK, offsetof(ps_config_t, name), 0, 0, 0}
 
 static const cfg_entry_t config_keys[] = {
     CFG_STR(telegram_bot_token),
@@ -99,6 +163,7 @@ static const cfg_entry_t config_keys[] = {
     CFG_INT(fail_window_sec, 1, 86400),
     CFG_INT(max_tracked_ips, 1, 100000),
     CFG_INT(alert_cooldown_sec, 0, 86400),
+    CFG_NOTIFY(enable_notification_type),
 };
 
 static const size_t config_keys_count =
@@ -512,13 +577,25 @@ int ps_config_load(const char *path, ps_config_t *cfg) {
             if (config_keys[i].type == CFG_STRING) {
                 char *dst = (char *)cfg + config_keys[i].offset;
                 snprintf(dst, config_keys[i].size, "%s", val);
-            } else {
+            } else if (config_keys[i].type == CFG_INT) {
                 int *dst = (int *)((char *)cfg + config_keys[i].offset);
                 if (parse_int_range(val, config_keys[i].min, config_keys[i].max,
                                     dst) < 0) {
                     sd_journal_print(
                         LOG_ERR, "pamsignal: config:%d: %s must be %d..%d",
                         lineno, key, config_keys[i].min, config_keys[i].max);
+                    errors++;
+                }
+            } else {
+                unsigned int *dst =
+                    (unsigned int *)((char *)cfg + config_keys[i].offset);
+                if (parse_notification_mask(val, dst) < 0) {
+                    sd_journal_print(
+                        LOG_ERR,
+                        "pamsignal: config:%d: %s must be a comma-separated "
+                        "list of login_success, login_failed, session_open, "
+                        "session_close, brute_force, or 'all'",
+                        lineno, key);
                     errors++;
                 }
             }
@@ -546,6 +623,7 @@ int ps_config_load(const char *path, ps_config_t *cfg) {
                      "whatsapp=%s discord=%s webhook=%s webhook_auth=%s "
                      "webhook_mtls=%s fail_threshold=%d fail_window_sec=%d "
                      "max_tracked_ips=%d alert_cooldown_sec=%d "
+                     "enable_notification_type=0x%02x "
                      "provider=%s service_name=%s",
                      cfg->telegram_bot_token[0] ? "on" : "off",
                      cfg->slack_webhook_url[0] ? "on" : "off",
@@ -557,6 +635,7 @@ int ps_config_load(const char *path, ps_config_t *cfg) {
                      cfg->webhook_client_cert[0] ? "on" : "off",
                      cfg->fail_threshold, cfg->fail_window_sec,
                      cfg->max_tracked_ips, cfg->alert_cooldown_sec,
+                     cfg->enable_notification_type,
                      cfg->provider[0] ? cfg->provider : "none",
                      cfg->service_name[0] ? cfg->service_name : "none");
     return PS_OK;

@@ -20,6 +20,16 @@
 # Alert rate limiting
 # alert_cooldown_sec = 60
 
+# Chat-dispatch filter. Comma-separated list of event categories that
+# should fire a chat alert. Default = all five (preserves prior behaviour).
+# Valid tokens: login_success, login_failed, session_open, session_close,
+# brute_force, all. Filters only the chat channels; the local journal
+# (journalctl -t pamsignal) still records every event.
+# Examples:
+#   enable_notification_type = login_success,brute_force
+#   enable_notification_type = all
+# enable_notification_type = all
+
 # --- Alert channels (optional, best-effort) ---
 # Only configure the channels you use.
 # Alerts are fire-and-forget — failures won't break monitoring.
