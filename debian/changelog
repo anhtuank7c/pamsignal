@@ -1,3 +1,40 @@
+pamsignal (0.5.0-1) unstable; urgency=medium
+
+  * Feature: new `enable_notification_type` config key — comma-separated
+    list of event categories (`login_success`, `login_failed`,
+    `session_open`, `session_close`, `brute_force`, or `all`) that
+    selects which categories produce chat alerts (#22, requested by
+    @huy-lv). Default is `all`, so existing deployments behave
+    unchanged. Filter only gates chat dispatch
+    (Telegram / Slack / Teams / WhatsApp / Discord / custom webhook);
+    `journalctl -t pamsignal` still records every event, preserving
+    the forensic trail. Unknown tokens, empty values, and empty list
+    elements are hard config errors. The existing per-event
+    suppression for sudo/su LOGIN_FAILED is unchanged and layered
+    beneath this filter.
+  * Security (examples): bump `idna` 3.14 -> 3.15 in
+    `examples/python-webhook/uv.lock` (Dependabot alert #1,
+    CVE-2026-45409, CVSS 6.9). `idna < 3.15` is vulnerable to a DoS
+    when `idna.encode()` is called with crafted long inputs; the
+    length-rejection check ran after `valid_contexto`, reopening the
+    gap CVE-2024-3651 was supposed to close. PAMSignal itself is C
+    and unaffected; the alert fires only on the example Flask
+    receiver's transitive dep via `requests`. Lockfile-only refresh.
+  * Security (examples): bump `qs` 6.14.2 / 6.15.1 -> 6.15.2 in
+    `examples/nodejs-webhook/pnpm-lock.yaml` (Dependabot alert #2,
+    CVE-2026-8723, CVSS 6.3). `qs >= 6.11.1, <= 6.15.1` throws
+    `TypeError` synchronously when `stringify` is called with
+    `arrayFormat: 'comma'` and `encodeValuesOnly: true` on an array
+    containing `null`/`undefined`. PAMSignal itself is C and
+    unaffected; the alert fires only on the example Express
+    receiver's transitive `qs`. Pinned via pnpm `overrides` so both
+    6.14.2 (express 4.x) and 6.15.1 (body-parser / formidable)
+    collapse to the patched 6.15.2.
+  * Docs: README acknowledgments corrected — Hong Quan (not "Hong
+    Quang"), FHS contribution (not ECS). Avatars added.
+
+ -- Tuan Nguyen <anhtuank7c@hotmail.com>  Tue, 26 May 2026 10:40:00 +0000
+
 pamsignal (0.4.1-1) unstable; urgency=medium
 
   * Feature: pamsignal --version / -V flag. The man page synopsis and
