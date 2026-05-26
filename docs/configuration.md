@@ -18,6 +18,9 @@ fail_window_sec = 300
 max_tracked_ips = 256
 alert_cooldown_sec = 60
 
+# Chat-dispatch filter (default: all)
+enable_notification_type = all
+
 # Telegram
 telegram_bot_token = <bot_token>
 telegram_chat_id = <chat_id>
@@ -56,6 +59,34 @@ webhook_ca_bundle   = /etc/pamsignal/webhook-ca.pem
 | `fail_window_sec` | `300` | 1 - 86400 | Time window (seconds) for counting failures per IP |
 | `max_tracked_ips` | `256` | 1 - 100000 | Maximum IPs tracked simultaneously |
 | `alert_cooldown_sec` | `60` | 0 - 86400 | Minimum seconds between alerts for the same IP (0 = no cooldown) |
+
+## Notification-type filter
+
+`enable_notification_type` selects which event categories trigger chat alerts. It is a comma-separated list. The default — when the key is omitted, or when `all` is given — is every category, preserving prior behaviour. Unknown tokens are a hard config error; empty values and empty list elements are rejected.
+
+| Token | Triggers chat alert when… |
+|-------|---------------------------|
+| `login_success` | A successful login is detected (sshd, login) |
+| `login_failed` | A failed login is detected (sshd, login; sudo/su failures stay subject to the existing per-event suppression — see below) |
+| `session_open` | A PAM session opens (incl. systemd background sessions like cron) |
+| `session_close` | A PAM session closes |
+| `brute_force` | Either remote (IP-based) or local (sudo/su actor-based) brute-force threshold is crossed |
+| `all` | Sentinel for every category above (equivalent to omitting the key) |
+
+**Scope.** This filter only gates chat dispatch (Telegram, Slack, Teams, WhatsApp, Discord, custom webhook). The local `journalctl -t pamsignal` trail records every event regardless, so the forensic log stays complete. The existing per-event suppression for sudo/su `LOGIN_FAILED` (only the brute-force alert fires) is independent and layered beneath this filter.
+
+Examples:
+
+```ini
+# Only successful logins and brute-force detections
+enable_notification_type = login_success,brute_force
+
+# Only brute-force
+enable_notification_type = brute_force
+
+# Everything (default)
+enable_notification_type = all
+```
 
 ## Alert channels
 

@@ -301,6 +301,107 @@ static void test_config_load_partial(void **state) {
     cleanup_tmp();
 }
 
+// --- enable_notification_type ---
+
+static void test_notify_type_default_is_all(void **state) {
+    (void)state;
+    ps_config_t cfg;
+    ps_config_defaults(&cfg);
+    assert_int_equal(cfg.enable_notification_type, PS_NOTIFY_ALL);
+}
+
+static void test_notify_type_single_category(void **state) {
+    (void)state;
+    write_tmp_config("enable_notification_type = login_success\n");
+    ps_config_t cfg;
+    int ret = ps_config_load(tmp_path, &cfg);
+    assert_int_equal(ret, PS_OK);
+    assert_int_equal(cfg.enable_notification_type, PS_NOTIFY_LOGIN_SUCCESS);
+    cleanup_tmp();
+}
+
+static void test_notify_type_multiple_categories(void **state) {
+    (void)state;
+    write_tmp_config("enable_notification_type = login_success,brute_force\n");
+    ps_config_t cfg;
+    int ret = ps_config_load(tmp_path, &cfg);
+    assert_int_equal(ret, PS_OK);
+    assert_int_equal(cfg.enable_notification_type,
+                     PS_NOTIFY_LOGIN_SUCCESS | PS_NOTIFY_BRUTE_FORCE);
+    cleanup_tmp();
+}
+
+static void test_notify_type_all_sentinel(void **state) {
+    (void)state;
+    write_tmp_config("enable_notification_type = all\n");
+    ps_config_t cfg;
+    int ret = ps_config_load(tmp_path, &cfg);
+    assert_int_equal(ret, PS_OK);
+    assert_int_equal(cfg.enable_notification_type, PS_NOTIFY_ALL);
+    cleanup_tmp();
+}
+
+static void test_notify_type_whitespace_and_case(void **state) {
+    (void)state;
+    write_tmp_config("enable_notification_type =  Login_Success , "
+                     "Session_Open ,BRUTE_FORCE\n");
+    ps_config_t cfg;
+    int ret = ps_config_load(tmp_path, &cfg);
+    assert_int_equal(ret, PS_OK);
+    assert_int_equal(cfg.enable_notification_type, PS_NOTIFY_LOGIN_SUCCESS |
+                                                       PS_NOTIFY_SESSION_OPEN |
+                                                       PS_NOTIFY_BRUTE_FORCE);
+    cleanup_tmp();
+}
+
+static void test_notify_type_all_five_categories(void **state) {
+    (void)state;
+    write_tmp_config("enable_notification_type = login_success,login_failed,"
+                     "session_open,session_close,brute_force\n");
+    ps_config_t cfg;
+    int ret = ps_config_load(tmp_path, &cfg);
+    assert_int_equal(ret, PS_OK);
+    assert_int_equal(cfg.enable_notification_type, PS_NOTIFY_ALL);
+    cleanup_tmp();
+}
+
+static void test_notify_type_unknown_category_rejected(void **state) {
+    (void)state;
+    write_tmp_config("enable_notification_type = login_success,bogus\n");
+    ps_config_t cfg;
+    int ret = ps_config_load(tmp_path, &cfg);
+    assert_int_equal(ret, PS_ERR_CONFIG);
+    cleanup_tmp();
+}
+
+static void test_notify_type_empty_value_rejected(void **state) {
+    (void)state;
+    write_tmp_config("enable_notification_type = \n");
+    ps_config_t cfg;
+    int ret = ps_config_load(tmp_path, &cfg);
+    assert_int_equal(ret, PS_ERR_CONFIG);
+    cleanup_tmp();
+}
+
+static void test_notify_type_empty_element_rejected(void **state) {
+    (void)state;
+    write_tmp_config("enable_notification_type = login_success,,brute_force\n");
+    ps_config_t cfg;
+    int ret = ps_config_load(tmp_path, &cfg);
+    assert_int_equal(ret, PS_ERR_CONFIG);
+    cleanup_tmp();
+}
+
+static void test_notify_type_omitted_keeps_default(void **state) {
+    (void)state;
+    write_tmp_config("fail_threshold = 7\n");
+    ps_config_t cfg;
+    int ret = ps_config_load(tmp_path, &cfg);
+    assert_int_equal(ret, PS_OK);
+    assert_int_equal(cfg.enable_notification_type, PS_NOTIFY_ALL);
+    cleanup_tmp();
+}
+
 // --- Validators: telegram_bot_token rejection ---
 
 static void test_validate_telegram_token_no_colon(void **state) {
@@ -820,6 +921,16 @@ int main(void) {
         cmocka_unit_test(test_config_load_missing_equals),
         cmocka_unit_test(test_config_load_unknown_key),
         cmocka_unit_test(test_config_load_partial),
+        cmocka_unit_test(test_notify_type_default_is_all),
+        cmocka_unit_test(test_notify_type_single_category),
+        cmocka_unit_test(test_notify_type_multiple_categories),
+        cmocka_unit_test(test_notify_type_all_sentinel),
+        cmocka_unit_test(test_notify_type_whitespace_and_case),
+        cmocka_unit_test(test_notify_type_all_five_categories),
+        cmocka_unit_test(test_notify_type_unknown_category_rejected),
+        cmocka_unit_test(test_notify_type_empty_value_rejected),
+        cmocka_unit_test(test_notify_type_empty_element_rejected),
+        cmocka_unit_test(test_notify_type_omitted_keeps_default),
         cmocka_unit_test(test_validate_telegram_token_no_colon),
         cmocka_unit_test(test_validate_telegram_token_short_suffix),
         cmocka_unit_test(test_validate_telegram_token_bad_chars),
