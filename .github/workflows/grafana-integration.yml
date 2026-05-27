@@ -55,7 +55,19 @@ jobs:
             grafana/alloy:v1.5.0 fmt --test /cfg.alloy
 
       - name: Validate dashboard JSON
-        run: python -m json.tool dashboards/pamsignal-v1.json > /dev/null
+        run: |
+          python -m json.tool dashboards/pamsignal-v1.json > /dev/null
+          python -m json.tool dashboards/pamsignal-v1.grafana-com.json > /dev/null
+          # The grafana.com variant must use the ${DS_LOKI} placeholder
+          # everywhere (no hardcoded "loki" datasource refs leaked).
+          if grep -q '"uid": "loki"' dashboards/pamsignal-v1.grafana-com.json; then
+            echo "::error::pamsignal-v1.grafana-com.json still has hardcoded loki uid"
+            exit 1
+          fi
+          if ! grep -q '__inputs' dashboards/pamsignal-v1.grafana-com.json; then
+            echo "::error::pamsignal-v1.grafana-com.json missing __inputs block"
+            exit 1
+          fi
 
       - name: Validate alerts.yaml
         run: |
