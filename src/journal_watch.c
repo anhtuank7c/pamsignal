@@ -372,7 +372,10 @@ static void ps_process_entry(sd_journal *j) {
         return;
 
     // Copy message to null-terminated buffer
-    size_t msg_len = length - (size_t)(msg_val - (const char *)data);
+    size_t prefix_len = (size_t)(msg_val - (const char *)data);
+    if (prefix_len > length)
+        return;
+    size_t msg_len = length - prefix_len;
     char message[2048];
     if (msg_len >= sizeof(message))
         msg_len = sizeof(message) - 1;
