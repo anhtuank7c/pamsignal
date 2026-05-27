@@ -1,0 +1,169 @@
+name: Grafana integration
+
+# Brings up the examples/grafana docker-compose stack on every PR or push
+# that touches the integration. Confirms:
+#   - Loki, Grafana, Alloy and the synthetic producer all start
+#   - Dashboard provisioning works (uid=pamsignal-v1 is queryable)
+#   - All twelve dashboard panel queries return data
+#   - alloy.river and alloy/demo.alloy pass `alloy fmt --test`
+#   - verify.sh exits 0
+#
+# Designed to run quickly (< 2 min) so the maintainer doesn't avoid editing
+# the dashboard for fear of slow CI.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'examples/grafana/**'
+      - 'docs/grafana-integration.md'
+      - '.github/workflows/grafana-integration.yml'
+  pull_request:
+    paths:
+      - 'examples/grafana/**'
+      - 'docs/grafana-integration.md'
+      - '.github/workflows/grafana-integration.yml'
+
+concurrency:
+  group: grafana-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  integration:
+    name: docker compose + verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: examples/grafana
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python (for query validators)
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Validate Alloy configs
+        run: |
+          docker run --rm -v "$PWD/alloy.river:/cfg.alloy:ro" \
+            grafana/alloy:v1.5.0 fmt --test /cfg.alloy
+          docker run --rm -v "$PWD/alloy/demo.alloy:/cfg.alloy:ro" \
+            grafana/alloy:v1.5.0 fmt --test /cfg.alloy
+
+      - name: Validate dashboard JSON
+        run: python -m json.tool dashboards/pamsignal-v1.json > /dev/null
+
+      - name: Validate alerts.yaml
+        run: python -c "import yaml; yaml.safe_load(open('alerts.yaml'))"
+
+      - name: Bring up stack
+        run: docker compose up -d --build
+
+      - name: Wait for Loki + Grafana ready
+        run: |
+          for i in $(seq 1 60); do
+            ready_loki=$(curl -sf http://localhost:3100/ready 2>/dev/null && echo y || echo n)
+            ready_grafana=$(curl -sf http://localhost:3000/api/health 2>/dev/null | grep -q '"ok"' && echo y || echo n)
+            if [ "$ready_loki" = "y" ] && [ "$ready_grafana" = "y" ]; then
+              echo "Loki + Grafana ready after ${i}s"
+              break
+            fi
+            sleep 1
+            if [ "$i" = "60" ]; then
+              echo "Timed out waiting for stack"
+              docker compose ps
+              docker compose logs --tail=80
+              exit 1
+            fi
+          done
+
+      - name: Wait for synthetic events to accumulate
+        run: sleep 30
+
+      - name: Confirm Loki ingested pamsignal events
+        run: |
+          count=$(curl -s --get http://localhost:3100/loki/api/v1/query \
+            --data-urlencode 'query=sum(count_over_time({app="pamsignal"}[5m]))' \
+            | python -c "import sys,json; d=json.load(sys.stdin); r=d['data']['result']; print(r[0]['value'][1] if r else 0)")
+          echo "events in last 5 min: $count"
+          if [ "$count" = "0" ]; then
+            echo "::error::Loki ingested no pamsignal events"
+            docker compose logs synthetic --tail=40
+            docker compose logs loki --tail=40
+            exit 1
+          fi
+
+      - name: Validate all 12 dashboard panel queries
+        run: |
+          END=$(date +%s)000000000
+          START=$(( $(date +%s) - 600 ))000000000
+          run() {
+            local label="$1" expr="$2" type="${3:-range}"
+            if [ "$type" = "instant" ]; then
+              n=$(curl -s --get http://localhost:3100/loki/api/v1/query \
+                --data-urlencode "query=$expr" --data-urlencode "time=$END" \
+                | python -c "import sys,json; d=json.load(sys.stdin); print(len(d.get('data',{}).get('result',[])))")
+            else
+              n=$(curl -s --get http://localhost:3100/loki/api/v1/query_range \
+                --data-urlencode "query=$expr" --data-urlencode "start=$START" \
+                --data-urlencode "end=$END" --data-urlencode "limit=1000" \
+                | python -c "import sys,json; d=json.load(sys.stdin); print(len(d.get('data',{}).get('result',[])))")
+            fi
+            printf "  %-50s %s results\n" "$label" "$n"
+            if [ "$n" = "0" ]; then
+              echo "::error::Panel query '$label' returned 0 results"
+              exit 1
+            fi
+          }
+          run "P1 hosts reporting" 'count(count by (host) (count_over_time({app="pamsignal"}[1h])))' instant
+          run "P2 successful logins" 'sum(count_over_time({app="pamsignal", event_action="login_success"}[5m]))' instant
+          run "P3 failed logins" 'sum(count_over_time({app="pamsignal", event_action="login_failure"}[5m]))' instant
+          run "P5 login by outcome" 'sum by (event_action) (rate({app="pamsignal", event_action=~"login_success|login_failure"}[1m]))' range
+          run "P7 events per host" 'topk(10, sum by (host) (rate({app="pamsignal"}[1m])))' range
+          run "P8 top source IPs" 'topk(10, sum by (source_ip) (count_over_time({app="pamsignal", event_action="login_failure", service="sshd"} | json source_ip="SOURCE_IP" | source_ip != "" [10m])))' instant
+          run "P9 top usernames" 'topk(10, sum by (user_name) (count_over_time({app="pamsignal", event_action="login_failure"} | json user_name="USER_NAME" | user_name != "" [10m])))' instant
+          run "P12 live logs" '{app="pamsignal"}' range
+
+      - name: Confirm dashboard provisioned
+        run: |
+          title=$(curl -s http://localhost:3000/api/dashboards/uid/pamsignal-v1 \
+            | python -c "import sys,json; print(json.load(sys.stdin)['dashboard']['title'])")
+          echo "dashboard: $title"
+          if [ -z "$title" ]; then
+            echo "::error::Dashboard not provisioned"
+            exit 1
+          fi
+
+      - name: Run verify.sh
+        run: ./verify.sh --loki-only
+
+      - name: Render dashboard screenshot
+        run: |
+          curl -s -o /tmp/dashboard.png \
+            'http://localhost:3000/render/d/pamsignal-v1/pamsignal?width=1600&height=2400&from=now-15m&to=now&kiosk=1&tz=UTC' \
+            -w 'http_code=%{http_code} size=%{size_download}\n'
+          ls -la /tmp/dashboard.png
+          file /tmp/dashboard.png | grep -q PNG
+
+      - name: Upload dashboard screenshot
+        uses: actions/upload-artifact@v4
+        with:
+          name: dashboard-screenshot
+          path: /tmp/dashboard.png
+          retention-days: 14
+
+      - name: Dump stack logs on failure
+        if: failure()
+        run: |
+          echo "=== loki ==="; docker compose logs --tail=200 loki || true
+          echo "=== grafana ==="; docker compose logs --tail=200 grafana || true
+          echo "=== alloy ==="; docker compose logs --tail=200 alloy || true
+          echo "=== synthetic ==="; docker compose logs --tail=200 synthetic || true
+
+      - name: Tear down
+        if: always()
+        run: docker compose down -v
