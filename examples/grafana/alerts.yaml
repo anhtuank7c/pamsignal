@@ -1,0 +1,211 @@
+# PAMSignal — Grafana-native alert rules
+#
+# Apply via:   grafana-cli admin provision-folders --path ./provisioning
+# Or import:   Grafana → Alerting → Alert rules → Import (this YAML)
+#
+# Each rule fires on the conditions designed in docs/grafana-integration.md.
+# Operators are expected to:
+#   1. Edit the `folder` field to match their Grafana folder
+#   2. Wire `notifications:` to their contact point (Slack, Telegram, PagerDuty, ...)
+#   3. Tune thresholds (especially #3) to fleet baseline
+
+apiVersion: 1
+
+groups:
+  - orgId: 1
+    name: pamsignal
+    folder: PAMSignal
+    interval: 1m
+    rules:
+      # ----------------------------------------------------------------------
+      # 1. Brute-force detected — fire on every PAMSignal-validated detection.
+      #    Severity: critical. PAMSignal already validated the threshold, so
+      #    one detection is enough.
+      # ----------------------------------------------------------------------
+      - uid: pamsignal-brute-force
+        title: PAMSignal — brute-force detected
+        condition: B
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: loki
+            model:
+              datasource: { type: loki, uid: loki }
+              expr: 'sum(count_over_time({app="pamsignal", event_action="brute_force_detected"}[5m]))'
+              instant: true
+              refId: A
+              queryType: instant
+          - refId: B
+            relativeTimeRange: { from: 0, to: 0 }
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              refId: B
+              expression: A
+              conditions:
+                - evaluator: { type: gt, params: [0] }
+                  operator: { type: and }
+                  query: { params: [B] }
+                  reducer: { params: [], type: last }
+                  type: query
+        noDataState: OK
+        execErrState: Error
+        for: 0s
+        annotations:
+          summary: 'Brute-force pattern detected by PAMSignal (last 5 min)'
+          description: |
+            PAMSignal detected one or more brute-force patterns in the last 5 minutes.
+            Drill in via the "Recent brute-force alerts" panel on the dashboard.
+        labels:
+          severity: critical
+          source: pamsignal
+
+      # ----------------------------------------------------------------------
+      # 2. Successful root login over SSH — fire on every match.
+      #    Severity: high. Direct root SSH is the canonical "investigate" event.
+      #    Disable PermitRootLogin in sshd_config to silence permanently.
+      # ----------------------------------------------------------------------
+      - uid: pamsignal-root-ssh-login
+        title: PAMSignal — root login over ssh
+        condition: B
+        data:
+          - refId: A
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: loki
+            model:
+              datasource: { type: loki, uid: loki }
+              expr: |
+                sum(count_over_time(
+                  {app="pamsignal", event_action="login_success", service="sshd"}
+                  | json user_name="USER_NAME"
+                  | user_name="root"
+                  [10m]
+                ))
+              instant: true
+              refId: A
+              queryType: instant
+          - refId: B
+            relativeTimeRange: { from: 0, to: 0 }
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              refId: B
+              expression: A
+              conditions:
+                - evaluator: { type: gt, params: [0] }
+                  operator: { type: and }
+                  query: { params: [B] }
+                  reducer: { params: [], type: last }
+                  type: query
+        noDataState: OK
+        execErrState: Error
+        for: 0s
+        annotations:
+          summary: 'Successful root login over SSH'
+          description: |
+            One or more successful root logins over SSH were observed in the last 10 minutes.
+            If unexpected, investigate immediately and consider disabling PermitRootLogin.
+        labels:
+          severity: high
+          source: pamsignal
+
+      # ----------------------------------------------------------------------
+      # 3. Failed-login spike from one IP — safety net if `fail_threshold`
+      #    is tuned higher than the host's tolerance.
+      #    Severity: high. Tune the threshold to your fleet's baseline.
+      # ----------------------------------------------------------------------
+      - uid: pamsignal-ip-fail-spike
+        title: PAMSignal — ≥10 failed logins from one IP in 5 min
+        condition: B
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: loki
+            model:
+              datasource: { type: loki, uid: loki }
+              expr: |
+                max(
+                  sum by (source_ip) (
+                    count_over_time(
+                      {app="pamsignal", event_action="login_failure", service="sshd"}
+                      | json source_ip="SOURCE_IP"
+                      | source_ip != ""
+                      [5m]
+                    )
+                  )
+                )
+              instant: true
+              refId: A
+              queryType: instant
+          - refId: B
+            relativeTimeRange: { from: 0, to: 0 }
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              refId: B
+              expression: A
+              conditions:
+                - evaluator: { type: gte, params: [10] }
+                  operator: { type: and }
+                  query: { params: [B] }
+                  reducer: { params: [], type: last }
+                  type: query
+        noDataState: OK
+        execErrState: Error
+        for: 0s
+        annotations:
+          summary: 'Failed-login spike from one IP'
+          description: |
+            At least one SOURCE_IP has accumulated ≥10 failed SSH logins in the last 5 minutes.
+            See the "Top source IPs" panel on the dashboard to identify the source.
+        labels:
+          severity: high
+          source: pamsignal
+
+      # ----------------------------------------------------------------------
+      # 4. Host stopped reporting — heartbeat alert.
+      #    Severity: medium. Fires if a host emitted events in the prior hour
+      #    but nothing in the last 10 minutes.
+      # ----------------------------------------------------------------------
+      - uid: pamsignal-host-silent
+        title: PAMSignal — host stopped reporting
+        condition: B
+        data:
+          - refId: A
+            relativeTimeRange: { from: 3600, to: 0 }
+            datasourceUid: loki
+            model:
+              datasource: { type: loki, uid: loki }
+              expr: |
+                count by (host) (count_over_time({app="pamsignal"}[1h] offset 10m))
+                unless
+                count by (host) (count_over_time({app="pamsignal"}[10m]))
+              instant: true
+              refId: A
+              queryType: instant
+          - refId: B
+            relativeTimeRange: { from: 0, to: 0 }
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              refId: B
+              expression: A
+              conditions:
+                - evaluator: { type: gt, params: [0] }
+                  operator: { type: and }
+                  query: { params: [B] }
+                  reducer: { params: [], type: last }
+                  type: query
+        noDataState: OK
+        execErrState: Error
+        for: 5m
+        annotations:
+          summary: 'Host {{ $labels.host }} stopped reporting PAMSignal events'
+          description: |
+            Host {{ $labels.host }} emitted PAMSignal events in the last hour but
+            none in the last 10 minutes. The pamsignal daemon may have crashed,
+            the host may be offline, or Alloy may have lost contact with Loki.
+            Check: systemctl status pamsignal alloy on the host.
+        labels:
+          severity: medium
+          source: pamsignal

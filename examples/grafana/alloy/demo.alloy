@@ -1,0 +1,60 @@
+// Alloy config for the docker-compose try-it stack.
+//
+// Reads pamsignal-shaped JSON lines from a shared file the synthetic
+// producer appends to, and pushes them into Loki with the same label set
+// the production journald pipeline uses.
+//
+// This config is NOT for production hosts. The production config is
+// examples/grafana/alloy.river — that one reads systemd journald directly.
+
+logging {
+	level  = "warn"
+	format = "logfmt"
+}
+
+local.file_match "pamsignal_demo" {
+	path_targets = [
+		{
+			__path__ = "/var/log/pamsignal-demo/*.jsonl",
+			app      = "pamsignal",
+		},
+	]
+}
+
+loki.source.file "pamsignal_demo" {
+	targets    = local.file_match.pamsignal_demo.targets
+	forward_to = [loki.process.pamsignal_demo.receiver]
+}
+
+loki.process "pamsignal_demo" {
+	forward_to = [loki.write.default.receiver]
+
+	// Parse the JSON body so we can promote a few low-cardinality fields to
+	// Loki labels matching the production pipeline.
+	stage.json {
+		expressions = {
+			service      = "SERVICE_NAME",
+			event_action = "EVENT_ACTION",
+			host_field   = "HOST_HOSTNAME",
+		}
+	}
+
+	stage.labels {
+		values = {
+			service      = "",
+			event_action = "",
+			host         = "host_field",
+		}
+	}
+
+	// The "host_field" extracted label is not needed once promoted to "host".
+	stage.label_drop {
+		values = ["host_field"]
+	}
+}
+
+loki.write "default" {
+	endpoint {
+		url = "http://loki:3100/loki/api/v1/push"
+	}
+}
