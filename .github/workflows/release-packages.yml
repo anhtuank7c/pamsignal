@@ -213,6 +213,13 @@ jobs:
     needs: verify-versions
     env:
       DEBIAN_FRONTEND: noninteractive
+    defaults:
+      run:
+        # Force bash for every run-step in this job. ubuntu:20.04's /bin/sh
+        # is dash, which doesn't support ${var/pat/repl} parameter
+        # substitution; the rename step below relies on that bash idiom.
+        # Setting the default at the job level avoids per-step shell: bash.
+        shell: bash
     steps:
       - name: Install base tooling inside the focal container
         # ubuntu:20.04 is minimal — git/curl/gnupg/ca-certificates aren't
@@ -827,6 +834,11 @@ jobs:
       image: ubuntu:20.04
     env:
       DEBIAN_FRONTEND: noninteractive
+    defaults:
+      run:
+        # Match build-deb-focal — keep bash as the default shell so future
+        # edits with bash idioms don't silently break on ubuntu:20.04's dash.
+        shell: bash
     steps:
       - name: Install base tooling
         run: |
