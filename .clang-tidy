@@ -37,6 +37,11 @@ CheckOptions:
     value: lower_case
   - key: readability-identifier-naming.MacroDefinitionCase
     value: UPPER_CASE
+  # Exempt the systemd-style RAII cleanup helpers (_cleanup_close_,
+  # _cleanup_free_, _cleanup_fclose_) — these are attribute-syntax sugar,
+  # not value constants, and follow the established systemd convention.
+  - key: readability-identifier-naming.MacroDefinitionIgnoredRegexp
+    value: '^_cleanup_[a-z]+_$'
   - key: readability-identifier-naming.TypedefCase
     value: lower_case
   - key: readability-identifier-naming.TypedefSuffix

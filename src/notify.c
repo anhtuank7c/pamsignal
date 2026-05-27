@@ -15,6 +15,7 @@
 #include <unistd.h>
 
 #include "notify.h"
+#include "ps_cleanup.h"
 #include "utils.h"
 
 // --- JSON escaping ---
@@ -110,7 +111,7 @@ typedef struct {
 } curl_config_t;
 
 static int build_secrets_memfd(const curl_config_t *cfg) {
-    int fd = memfd_create("pamsignal-curl", MFD_CLOEXEC);
+    _cleanup_close_ int fd = memfd_create("pamsignal-curl", MFD_CLOEXEC);
     if (fd < 0) {
         sd_journal_print(LOG_WARNING,
                          "pamsignal: memfd_create failed: %m, dropping alert");
@@ -119,70 +120,65 @@ static int build_secrets_memfd(const curl_config_t *cfg) {
 
     char buf[4096];
     int n = snprintf(buf, sizeof(buf), "url = \"%s\"\n", cfg->url);
-    if (n < 0 || (size_t)n >= sizeof(buf)) {
-        close(fd);
+    if (n < 0 || (size_t)n >= sizeof(buf))
         return -1;
-    }
+
     if (cfg->auth_header) {
         int m = snprintf(buf + n, sizeof(buf) - (size_t)n, "header = \"%s\"\n",
                          cfg->auth_header);
-        if (m < 0 || (size_t)n + (size_t)m >= sizeof(buf)) {
-            close(fd);
+        if (m < 0 || (size_t)n + (size_t)m >= sizeof(buf))
             return -1;
-        }
         n += m;
     }
     if (cfg->client_cert) {
         int m = snprintf(buf + n, sizeof(buf) - (size_t)n, "cert = \"%s\"\n",
                          cfg->client_cert);
-        if (m < 0 || (size_t)n + (size_t)m >= sizeof(buf)) {
-            close(fd);
+        if (m < 0 || (size_t)n + (size_t)m >= sizeof(buf))
             return -1;
-        }
         n += m;
     }
     if (cfg->client_key) {
         int m = snprintf(buf + n, sizeof(buf) - (size_t)n, "key = \"%s\"\n",
                          cfg->client_key);
-        if (m < 0 || (size_t)n + (size_t)m >= sizeof(buf)) {
-            close(fd);
+        if (m < 0 || (size_t)n + (size_t)m >= sizeof(buf))
             return -1;
-        }
         n += m;
     }
     if (cfg->ca_bundle) {
         int m = snprintf(buf + n, sizeof(buf) - (size_t)n, "cacert = \"%s\"\n",
                          cfg->ca_bundle);
-        if (m < 0 || (size_t)n + (size_t)m >= sizeof(buf)) {
-            close(fd);
+        if (m < 0 || (size_t)n + (size_t)m >= sizeof(buf))
             return -1;
-        }
         n += m;
     }
 
     ssize_t total = 0;
     while (total < n) {
         ssize_t w = write(fd, buf + total, (size_t)(n - total));
-        if (w < 0) {
-            close(fd);
+        if (w < 0)
             return -1;
-        }
         total += w;
     }
-    if (lseek(fd, 0, SEEK_SET) < 0) {
-        close(fd);
+    if (lseek(fd, 0, SEEK_SET) < 0)
         return -1;
-    }
-    return fd;
+
+    /* Ownership transfer: the caller will dup2 and manage lifetime.
+     * Disarm _cleanup_close_ — the store is read by ps_closep through
+     * __attribute__((cleanup)), which clang-analyzer cannot see.
+     */
+    int ret = fd;
+    // NOLINTNEXTLINE(clang-analyzer-deadcode.DeadStores)
+    fd = -1;
+    return ret;
 }
 
-static void fire_curl(int memfd, char *body) {
+static void fire_curl(int raw_memfd, char *body) {
+    _cleanup_close_ int memfd =
+        raw_memfd; /* RAII close on all function exits (parent path) */
     pid_t pid = fork();
     if (pid < 0) {
         sd_journal_print(LOG_WARNING, "pamsignal: fork failed for alert");
-        if (memfd >= 0)
-            close(memfd);
-        return;
+        return; /* memfd closed automatically by _cleanup_close_ */
     }
     if (pid == 0) {
         // Child: pin memfd at fd 9 (dup2 clears CLOEXEC on the destination)
@@ -252,15 +248,15 @@ static void fire_curl(int memfd, char *body) {
     }
     // Parent: fire-and-forget; SIGCHLD is set to SIG_IGN | SA_NOCLDWAIT so
     // the kernel reaps the child.
-    if (memfd >= 0)
-        close(memfd);
+    // memfd is closed automatically by the _cleanup_close_ parameter.
 }
 
 static void post_alert(const curl_config_t *cc, char *body) {
     int memfd = build_secrets_memfd(cc);
     if (memfd < 0)
         return;
-    fire_curl(memfd, body);
+    fire_curl(memfd, body); /* ownership transferred; closed inside fire_curl
+                               via local _cleanup_close_ */
 }
 
 static curl_config_t webhook_curl_config(const ps_config_t *cfg) {

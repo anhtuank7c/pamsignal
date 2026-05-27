@@ -13,6 +13,7 @@
 
 #include "config.h"
 #include "init.h"
+#include "ps_cleanup.h"
 
 ps_config_t g_config;
 const char *g_config_path = PS_DEFAULT_CONFIG_PATH;
@@ -301,7 +302,7 @@ static int validate_tls_path(const char *path, const char *label, int private) {
         }
     }
 
-    int fd = open(path, O_RDONLY | O_NOFOLLOW | O_CLOEXEC);
+    _cleanup_close_ int fd = open(path, O_RDONLY | O_NOFOLLOW | O_CLOEXEC);
     if (fd < 0) {
         if (errno == ELOOP) {
             sd_journal_print(LOG_ERR,
@@ -320,10 +321,8 @@ static int validate_tls_path(const char *path, const char *label, int private) {
     if (fstat(fd, &st) < 0) {
         sd_journal_print(LOG_ERR, "pamsignal: config: %s: fstat(%s) failed: %s",
                          label, path, strerror(errno));
-        close(fd);
         return -1;
     }
-    close(fd);
 
     if (!S_ISREG(st.st_mode)) {
         sd_journal_print(LOG_ERR,
@@ -471,20 +470,15 @@ static int validate_alert_targets(const ps_config_t *cfg) {
 // the current effective uid. Returns a FILE* on success, NULL on failure
 // (with errno set on the !found path so the caller can distinguish ENOENT).
 static FILE *open_config_secure(const char *path) {
-    int fd = open(path, O_RDONLY | O_NOFOLLOW | O_CLOEXEC);
+    _cleanup_close_ int fd = open(path, O_RDONLY | O_NOFOLLOW | O_CLOEXEC);
     if (fd < 0)
         return NULL;
 
     struct stat st;
-    if (fstat(fd, &st) < 0) {
-        int e = errno;
-        close(fd);
-        errno = e;
+    if (fstat(fd, &st) < 0)
         return NULL;
-    }
 
     if (!S_ISREG(st.st_mode)) {
-        close(fd);
         sd_journal_print(LOG_ERR, "pamsignal: config %s is not a regular file",
                          path);
         errno = EINVAL;
@@ -492,7 +486,6 @@ static FILE *open_config_secure(const char *path) {
     }
 
     if (st.st_mode & (S_IWGRP | S_IWOTH)) {
-        close(fd);
         sd_journal_print(LOG_ERR,
                          "pamsignal: config %s must not be group- or "
                          "world-writable (mode 0%o)",
@@ -502,7 +495,6 @@ static FILE *open_config_secure(const char *path) {
     }
 
     if (st.st_uid != 0 && st.st_uid != geteuid()) {
-        close(fd);
         sd_journal_print(LOG_ERR,
                          "pamsignal: config %s must be owned by root or the "
                          "daemon user (uid=%u)",
@@ -511,20 +503,25 @@ static FILE *open_config_secure(const char *path) {
         return NULL;
     }
 
+    /* Ownership transfer: fdopen takes ownership of the fd. We must disarm
+     * the close attribute before returning the FILE*.
+     */
     FILE *f = fdopen(fd, "r");
-    if (!f) {
-        int e = errno;
-        close(fd);
-        errno = e;
+    if (!f)
         return NULL;
-    }
+
+    // Disarm _cleanup_close_: FILE* now owns the fd. The store is read by
+    // ps_closep through __attribute__((cleanup)), which clang-analyzer
+    // cannot see — suppress the dead-store false positive.
+    // NOLINTNEXTLINE(clang-analyzer-deadcode.DeadStores)
+    fd = -1;
     return f;
 }
 
 int ps_config_load(const char *path, ps_config_t *cfg) {
     ps_config_defaults(cfg);
 
-    FILE *f = open_config_secure(path);
+    _cleanup_fclose_ FILE *f = open_config_secure(path);
     if (!f) {
         if (errno == ENOENT) {
             sd_journal_print(LOG_INFO,
@@ -608,8 +605,6 @@ int ps_config_load(const char *path, ps_config_t *cfg) {
                              key);
         }
     }
-
-    fclose(f);
 
     errors += validate_alert_targets(cfg);
 

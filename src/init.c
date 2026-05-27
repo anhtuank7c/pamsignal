@@ -100,6 +100,13 @@ int ps_init() {
 
 static int pidfile_fd = -1;
 
+static void ps_pidfile_close_and_invalidate(void) {
+    if (pidfile_fd >= 0) {
+        close(pidfile_fd);
+        pidfile_fd = -1;
+    }
+}
+
 // Read the existing pidfile and parse the PID. Returns 0 on success, -1 if
 // the file is missing/unreadable/unparseable.
 static int read_pidfile_pid(int dirfd, pid_t *pid_out) {
@@ -186,21 +193,18 @@ int ps_pidfile_acquire(void) {
     };
 
     if (fcntl(pidfile_fd, F_SETLK, &fl) < 0) {
-        close(pidfile_fd);
-        pidfile_fd = -1;
+        ps_pidfile_close_and_invalidate();
         return PS_ERR_INIT;
     }
 
     char buf[32];
     int n = snprintf(buf, sizeof(buf), "%d\n", getpid());
     if (n < 0 || (size_t)n >= sizeof(buf)) {
-        close(pidfile_fd);
-        pidfile_fd = -1;
+        ps_pidfile_close_and_invalidate();
         return PS_ERR_INIT;
     }
     if (write(pidfile_fd, buf, (size_t)n) != (ssize_t)n) {
-        close(pidfile_fd);
-        pidfile_fd = -1;
+        ps_pidfile_close_and_invalidate();
         return PS_ERR_INIT;
     }
 
@@ -210,7 +214,6 @@ int ps_pidfile_acquire(void) {
 void ps_pidfile_release(void) {
     if (pidfile_fd >= 0) {
         unlink(PS_PID_FILE);
-        close(pidfile_fd);
-        pidfile_fd = -1;
+        ps_pidfile_close_and_invalidate();
     }
 }
