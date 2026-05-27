@@ -1,3 +1,31 @@
+pamsignal (0.6.1-1) unstable; urgency=medium
+
+  * Feature: --help / -h flag. Prints a usage summary covering every
+    option, the compiled-in default config path, the canonical files,
+    and pointers to pamsignal(8) and pamsignal.conf(5). Goes to
+    stdout, exits 0. Runs before any privilege/journal-access check,
+    so it works under root, dpkg/rpm post-install scripts, or a plain
+    operator. Long-overdue baseline — GNU coding standards require
+    both --help and --version for command-line tools; pamsignal had
+    --version since 0.4.1 but --help was missing. The pamsignal(8)
+    man page now also documents both flags in the OPTIONS section
+    (previously --version was only in SYNOPSIS).
+  * CI hardening: test-deb and test-deb-focal now assert that
+    `pamsignal --version` and `pamsignal --help` produce expected
+    non-empty stdout matching the documented format, and that the
+    short forms (-V, -h) match the long forms byte-for-byte. Closes
+    the "installed cleanly but the flag prints nothing" failure mode
+    that a systemctl-is-active check would miss. Also: diagnostic
+    instrumentation in test-deb-focal's verify-file-layout step
+    ([N/9] markers + FAIL: <reason> on assertion failure, printf %q
+    for perm comparison to reveal hidden characters, SIGPIPE-safe
+    man-page content check), and removal of the docker minimal
+    image's `path-exclude=/usr/share/man/*` rule before the test
+    .deb installs (so the verify step exercises the real-host install
+    path, not the docker-strip path).
+
+ -- Tuan Nguyen <anhtuank7c@hotmail.com>  Wed, 27 May 2026 15:23:00 +0000
+
 pamsignal (0.6.0-1) unstable; urgency=medium
 
   * Packaging: Ubuntu 20.04 LTS (Focal) is now an officially supported

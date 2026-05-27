@@ -2,11 +2,15 @@
 
 ## Unreleased
 
-### Features
-- [x] **`--help` / `-h` flag.** Long-overdue GNU-conventions baseline — `pamsignal --help` now prints a usage summary covering every option, the default config path, the canonical files, and pointers to `pamsignal(8)` and `pamsignal.conf(5)`. Goes to stdout, exits 0. `-h` is the short form. Runs before any privilege check, so it works under root, dpkg/rpm post-install scripts, or a plain operator. The existing `-V` / `--version` flag has been refactored into a `print_version()` helper for symmetry. The `pamsignal(8)` man page now also documents both flags explicitly (previously only `--version` was in the SYNOPSIS, not the OPTIONS section).
+## 0.6.1 — 2026-05-27
 
-### CI
-- [x] **Output-asserting CLI smoke check on every release.** Both `test-deb` (Noble) and `test-deb-focal` now verify that `pamsignal --version` and `pamsignal --help` produce expected output, and that the short forms (`-V`, `-h`) match the long forms byte-for-byte. Catches the "binary installed cleanly but the flag prints nothing" failure mode that a `systemctl is-active` check would miss.
+Patch release. Adds the long-missing `--help` / `-h` flag — pamsignal had `--version` since 0.4.1, but `--help` was an unfilled gap relative to GNU coding-standards baseline for Linux CLIs. The new flag prints a complete usage summary (every option, default config path, canonical files, pointers to `pamsignal(8)` and `pamsignal.conf(5)`), goes to stdout, exits 0, and runs before any privilege/journal-access check — so package post-install scripts, smoke tests, and plain-operator invocations all work regardless of context. The `pamsignal(8)` man page now also documents both `-V/--version` and `-h/--help` explicitly in the OPTIONS section (previously `--version` was only in SYNOPSIS).
+
+Also ships output-asserting CLI smoke checks in CI: both `test-deb` (Noble) and `test-deb-focal` now verify that `pamsignal --version` and `pamsignal --help` produce expected non-empty output, and that the short forms (`-V`, `-h`) match the long forms byte-for-byte. Closes the "installed cleanly but the flag prints nothing" failure mode that a `systemctl is-active` check would miss — a real operator-reported issue on 0.6.0 that turned out to be PATH-shadowing by a stale `/usr/local/bin/pamsignal` from an earlier `meson install`.
+
+Internal CI hardening for `test-deb-focal` (will benefit every future release): diagnostic `[N/9]` markers + explicit `FAIL: <reason>` on assertion failure, `printf %q` perm comparison to reveal hidden characters, SIGPIPE-safe man-page content check, and removal of the docker-minimal-image's `path-exclude=/usr/share/man/*` rule before the test `.deb` installs. The instrumentation was what pinpointed the dpkg-excludes bug in the first place — without it, the failure mode (everything green except "Verify file layout" exits 1 with no marker) would have stayed mysterious.
+
+No daemon-side changes. Operators on 0.6.0 don't need to upgrade urgently — `pamsignal.service` behavior is unchanged.
 
 ## 0.6.0 — 2026-05-27
 
