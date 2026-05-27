@@ -115,6 +115,21 @@ telegram_chat_id = <your_chat_id>
 ```
 *See [Alert Setup Guides](./docs/alerts.md) for Slack, Teams, WhatsApp, and Discord.*
 
+**Two tuning keys worth knowing on day one** — one controls *how often* you get pinged, the other controls *what* you get pinged about:
+
+```ini
+# Minimum seconds between brute-force alerts for the same IP.
+# Default 60. Set to 0 to fire on EVERY threshold crossing —
+# useful for low-traffic hosts where you don't want any signal collapsed.
+alert_cooldown_sec = 60
+
+# Which event categories trigger chat alerts. Default is "all" (every category),
+# which is noisy in production. Narrow to just what you care about —
+# most operators only want successful logins and brute-force pings.
+enable_notification_type = login_success,brute_force
+```
+*All six event-type tokens (`login_success`, `login_failed`, `session_open`, `session_close`, `brute_force`, `all`) are documented in [Configuration → Notification-type filter](./docs/configuration.md#notification-type-filter). `journalctl -t pamsignal` keeps the full forensic trail regardless of what you filter out of chat.*
+
 ### 3. Custom Webhook Integrations (Optional)
 
 Need to send alerts to a provider we don't support natively? Or want to build your own auto-banning logic? 

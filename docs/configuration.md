@@ -137,6 +137,8 @@ webhook_client_key  = /etc/pamsignal/webhook-client.key
 webhook_ca_bundle   = /etc/pamsignal/internal-ca.pem
 ```
 
+*Any of these patterns can be paired with `enable_notification_type` to narrow which event categories reach the webhook — see [Notification-type filter](#notification-type-filter) above for the full list of tokens (`login_success`, `login_failed`, `session_open`, `session_close`, `brute_force`, `all`).*
+
 **Validation enforced at config load:**
 
 - Setting any of the three TLS keys without `webhook_url` is a config-load error.
