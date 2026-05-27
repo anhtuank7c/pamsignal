@@ -145,6 +145,15 @@ configure_file(
   install_dir: get_option('mandir') / 'man8',
 )
 
+# Section-5 man page for the configuration file (FHS / packaging expectation).
+configure_file(
+  input: 'pamsignal.conf.5.in',
+  output: 'pamsignal.conf.5',
+  configuration: man_conf,
+  install: true,
+  install_dir: get_option('mandir') / 'man5',
+)
+
 # --- Tests ---
 cmocka_dep = dependency('cmocka', required: false)
 

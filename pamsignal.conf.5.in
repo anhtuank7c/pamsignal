@@ -1,0 +1,215 @@
+.\" pamsignal.conf.5 - manual page for the pamsignal configuration file
+.\" The @VERSION@ is substituted by meson at build time.
+.TH PAMSIGNAL.CONF 5 "" "pamsignal @VERSION@" "File Formats Manual"
+.SH NAME
+pamsignal.conf \- configuration file for the pamsignal PAM authentication monitor
+.SH DESCRIPTION
+.B pamsignal
+reads an optional INI-style configuration file to control brute-force
+detection parameters and to define one or more alert channels (Telegram,
+Slack, Microsoft Teams, WhatsApp, Discord, or a generic HTTPS webhook).
+
+All keys are optional. If the file is absent or a key is omitted, built-in
+sane defaults are used. The file may contain sensitive credentials (bot
+tokens, webhook URLs with embedded secrets, bearer tokens, etc.) and should
+therefore be readable only by root and the
+.B pamsignal
+system user.
+
+The daemon refuses to start if the configuration file exists but is invalid
+(bad syntax, unknown keys, malformed token/URL values, or mTLS paths that
+fail ownership or permission checks).
+.SH FILE FORMAT
+The file uses a simple
+.B key = value
+syntax. Comments begin with
+.B #
+and continue to the end of the line. Whitespace around the
+.B =
+sign is ignored. Values are not quoted.
+
+Example locations (depends on
+.B prefix
+and
+.B sysconfdir
+at build time):
+.PP
+.RS
+/etc/pamsignal/pamsignal.conf
+.br
+/usr/local/etc/pamsignal/pamsignal.conf
+.RE
+.SH BRUTE-FORCE DETECTION
+These four keys tune the in-memory sliding-window tracker.
+
+.TP
+.B fail_threshold
+Number of failed authentication attempts (per IP or per local actor for
+sudo/su) within the window before a brute-force alert is generated.
+Range: 1\(en10000. Default: 5.
+
+.TP
+.B fail_window_sec
+Length of the observation window in seconds. Attempts older than this
+window are discarded. Range: 1\(en86400. Default: 300 (5 minutes).
+
+.TP
+.B max_tracked_ips
+Maximum number of distinct source IPs (or local actors) that are tracked
+simultaneously. When the table is full the oldest entry is evicted.
+Range: 1\(en100000. Default: 256.
+
+.TP
+.B alert_cooldown_sec
+Minimum number of seconds that must elapse between brute-force alerts for
+the same key. 0 disables the cooldown. Range: 0\(en86400. Default: 60.
+
+.SH NOTIFICATION-TYPE FILTER
+.TP
+.B enable_notification_type
+Comma-separated list of event categories that should produce chat alerts.
+The journal trail
+.RB ( journalctl\ \-t\ pamsignal )
+always records every event; this filter only affects Telegram, Slack,
+Teams, WhatsApp, Discord and custom-webhook delivery.
+
+Valid tokens:
+.BR login_success , " " login_failed , " " session_open , " " session_close , " " brute_force , " " all .
+
+Unknown tokens, empty values and empty list elements are hard errors.
+Default (or the token
+.B all
+) means every category.
+
+The existing per-event suppression for sudo/su
+.B LOGIN_FAILED
+(only the aggregate brute-force alert fires) is applied after this filter.
+
+Example:
+.EX
+enable_notification_type = login_success,brute_force
+.EE
+.SH ALERT CHANNELS
+Only the channels for which credentials are present are used. Multiple
+channels may be configured simultaneously; each receives an independent
+copy of every alert that passes the filter.
+
+.TP
+.B telegram_bot_token
+Telegram bot token obtained from @BotFather. Must be of the form
+.IR NNNN:alphanumeric+hyphen/underscore .
+
+.TP
+.B telegram_chat_id
+Numeric chat ID or @channelname.
+
+.TP
+.B slack_webhook_url
+Incoming webhook URL (https://...).
+
+.TP
+.B teams_webhook_url
+Incoming webhook URL for Microsoft Teams.
+
+.TP
+.B whatsapp_access_token
+Meta Cloud API access token.
+
+.TP
+.B whatsapp_phone_number_id
+Phone Number ID (digits only).
+
+.TP
+.B whatsapp_recipient
+Recipient phone number in international format (digits only).
+
+.TP
+.B discord_webhook_url
+Discord incoming webhook URL.
+
+.TP
+.B webhook_url
+Generic HTTPS endpoint that receives a JSON POST (Elastic Common Schema
+plus a small pamsignal.* extension object). See
+.BR pamsignal (8)
+and the
+.I docs/alerts.md
+file in the source tree for the exact payload shape.
+
+.SH CUSTOM WEBHOOK AUTHENTICATION (OPTIONAL)
+Two independent mechanisms may be used with
+.BR webhook_url .
+
+.TP
+.B webhook_auth_header
+Single HTTP header in
+.B "Name: value"
+form (e.g.
+.IR "Authorization: Bearer XXX" ).
+The value is written into the curl
+.B \-K
+config file; it never appears on the command line. Control characters,
+.BR \(dq , " and " \\ 
+are rejected at load time.
+
+.TP
+.B webhook_client_cert
+.TP
+.B webhook_client_key
+.TP
+.B webhook_ca_bundle
+Paths to PEM files for optional mutual-TLS client authentication.
+.B webhook_client_cert
+and
+.B webhook_client_key
+must both be present or both absent. The private key file must not be
+group- or world-readable; the daemon refuses to start otherwise. All
+three paths are opened with
+.B O_NOFOLLOW
+and must be regular files owned by root or the daemon user.
+
+.SH RELOAD
+Send
+.B SIGHUP
+(or run
+.B systemctl reload pamsignal
+) to reload the file. The new configuration is parsed into a temporary
+structure; only on success is it swapped in. On any error the previous
+configuration (and the current brute-force tracking table) is retained
+and a warning is logged.
+.SH SECURITY NOTES
+The configuration file is the only place where alert credentials live.
+They are never logged and are passed to the
+.B curl (1)
+child via a memfd-backed
+.B \-K
+file rather than via argv, so they do not appear in
+.B /proc/<pid>/cmdline
+or in process accounting.
+
+All path values supplied for mTLS are validated at load time for
+symlink attacks, regular-file status, ownership and (for the private key)
+permissions. Strings that could break the curl config parser or produce
+shell metacharacters are rejected early.
+.SH FILES
+.TP
+.I /etc/pamsignal/pamsignal.conf
+Default location of the configuration file (exact path depends on the
+.B sysconfdir
+used at build time).
+.TP
+.I /etc/pamsignal/pamsignal.conf.example
+Example file shipped in the source tree and in some distribution packages.
+.SH SEE ALSO
+.BR pamsignal (8),
+.BR systemd.exec (5),
+.BR journalctl (1)
+.PP
+The source repository contains
+.B docs/threat-model.md
+and
+.B docs/alerts.md
+which expand on the design rationale and on the exact JSON payloads
+delivered to custom webhooks.
+.SH AUTHOR
+Tuan Nguyen <anhtuank7c@hotmail.com>

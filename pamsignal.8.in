@@ -118,9 +118,7 @@ not group- or world-readable, opened with
 .BR O_NOFOLLOW ).
 See
 .BR pamsignal.conf (5)
-\(em or, until that page exists,
-.B pamsignal.conf.example
-in the source tree \(em for the full key reference.
+for the full key reference and validation rules.
 .TP
 .B /run/pamsignal/pamsignal.pid
 PID file written when the daemon is launched without
