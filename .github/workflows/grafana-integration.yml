@@ -67,21 +67,26 @@ jobs:
 
       - name: Wait for Loki + Grafana ready
         run: |
-          for i in $(seq 1 60); do
-            ready_loki=$(curl -sf http://localhost:3100/ready 2>/dev/null && echo y || echo n)
-            ready_grafana=$(curl -sf http://localhost:3000/api/health 2>/dev/null | grep -q '"ok"' && echo y || echo n)
-            if [ "$ready_loki" = "y" ] && [ "$ready_grafana" = "y" ]; then
+          # Grafana 11.4 cold-boots in ~60-90s on GHA runners (database migrations);
+          # Loki is usually healthy within 10s. Give the whole stack 180s.
+          ready=0
+          for i in $(seq 1 180); do
+            curl -sf http://localhost:3100/ready >/dev/null 2>&1 && loki_ok=1 || loki_ok=0
+            graf_body=$(curl -sf http://localhost:3000/api/health 2>/dev/null || true)
+            case "$graf_body" in *'"database"'*'"ok"'*) graf_ok=1 ;; *) graf_ok=0 ;; esac
+            if [ "$loki_ok" = "1" ] && [ "$graf_ok" = "1" ]; then
               echo "Loki + Grafana ready after ${i}s"
+              ready=1
               break
             fi
             sleep 1
-            if [ "$i" = "60" ]; then
-              echo "Timed out waiting for stack"
-              docker compose ps
-              docker compose logs --tail=80
-              exit 1
-            fi
           done
+          if [ "$ready" != "1" ]; then
+            echo "::error::Stack did not become ready within 180s"
+            docker compose ps
+            docker compose logs --tail=120
+            exit 1
+          fi
 
       - name: Wait for synthetic events to accumulate
         run: sleep 30
