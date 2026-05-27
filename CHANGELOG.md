@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+**Grafana integration** ([#25](https://github.com/anhtuank7c/pamsignal/issues/25)). New `examples/grafana/` directory ships everything an operator with a Linux fleet needs to surface PAMSignal events in a single Grafana dashboard:
+
+- `alloy.river` — production [Grafana Alloy](https://grafana.com/docs/alloy/latest/) config. Reads systemd journald filtered to `SYSLOG_IDENTIFIER=pamsignal`, promotes four low-cardinality fields (`app`, `host`, `service`, `event_action`) to Loki labels, and keeps everything else (`SOURCE_IP`, `USER_NAME`, ...) in the JSON line body for query-time parsing. Total streams stay at ~30 × fleet_size — safe to thousands of hosts.
+- `dashboards/pamsignal-v1.json` — 12-panel dashboard. Row 1: hosts-reporting / successful-logins / failed-logins / brute-force stats. Row 2: login-attempts-by-outcome + brute-force-by-service time-series. Row 3: events-per-host stacked area. Row 4: top source IPs + top attacked usernames tables. Row 5: recent brute-force alerts + recent successful root SSH logins. Row 6: live event stream. Multi-select variables for `host`, `service`, `event_action`.
+- `alerts.yaml` — four Grafana-native rules: brute-force detected (critical), successful root SSH login (high), ≥10 failed logins from one IP in 5 min (high, safety net for high `fail_threshold` deployments), host stopped reporting for >10 min (medium).
+- `docker-compose.yml` — single-command local stack with Loki + Grafana + Alloy + image renderer + a Python synthetic event producer. Lets operators see the dashboard before committing to deploy. The producer generates ~2 events/sec across a synthetic 12-host fleet with realistic burst patterns; brute-force bursts trigger every ~25 seconds on average.
+- `verify.sh` — one-shot pipeline health check (Loki ready, probe event ingested, Grafana healthy, Loki datasource configured, dashboard installed). Five exit codes pinpoint the broken step.
+- `.github/workflows/grafana-integration.yml` — CI on every PR touching `examples/grafana/` or `docs/grafana-integration.md`. Validates `alloy fmt --test` on both Alloy configs, JSON/YAML syntax, brings up the docker-compose stack, asserts each of the 12 panel queries returns data, runs `verify.sh`, renders the dashboard screenshot, and uploads it as an artifact.
+
+Design rationale lives in `docs/grafana-integration.md` (schema, label cardinality plan, dashboard story, LogQL query patterns, deliverable layout, success criteria). No PAMSignal daemon changes — the integration consumes the ECS structured fields PAMSignal already emits via `sd_journal_send()`.
+
+- [ ] Submit `pamsignal-v1.json` to [grafana.com/grafana/dashboards](https://grafana.com/grafana/dashboards/) (manual, post-merge)
+- [ ] Launch posts: r/selfhosted, r/sysadmin, r/grafana, Show HN
+
 ## 0.6.1 — 2026-05-27
 
 Patch release. Adds the long-missing `--help` / `-h` flag — pamsignal had `--version` since 0.4.1, but `--help` was an unfilled gap relative to GNU coding-standards baseline for Linux CLIs. The new flag prints a complete usage summary (every option, default config path, canonical files, pointers to `pamsignal(8)` and `pamsignal.conf(5)`), goes to stdout, exits 0, and runs before any privilege/journal-access check — so package post-install scripts, smoke tests, and plain-operator invocations all work regardless of context. The `pamsignal(8)` man page now also documents both `-V/--version` and `-h/--help` explicitly in the OPTIONS section (previously `--version` was only in SYNOPSIS).

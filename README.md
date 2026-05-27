@@ -176,6 +176,21 @@ PAMSignal calculates brute-force thresholds for you. You can take this a step fu
 
 👉 **[Read the Fail2ban Integration Guide](./examples/fail2ban/README.md)**
 
+## 📊 Fleet view in Grafana
+
+Per-host `journalctl` and real-time chat alerts cover one host. For fleet-wide auth visibility — one queryable view across every server — there's a Loki/Alloy/Grafana integration that ships with PAMSignal: ECS-schema events flow into Loki via Alloy, and a single dashboard answers "what's happening with auth across my fleet right now?" at a glance.
+
+![PAMSignal Grafana dashboard](./assets/grafana-dashboard.png)
+
+Local try-it stack (no Linux fleet required):
+
+```bash
+cd examples/grafana && docker compose up -d
+# → http://localhost:3000 (anonymous Admin, dashboard preloaded)
+```
+
+👉 **[Read the Grafana Integration Guide](./examples/grafana/README.md)** — full deploy + Alloy install + 4 alert rules
+
 ## 📚 Documentation
 
 - 🏛️ **[Architecture](./docs/architecture.md)** — C4 diagrams, isolation models, and design decisions
@@ -183,6 +198,7 @@ PAMSignal calculates brute-force thresholds for you. You can take this a step fu
 - 🔔 **[Alerts](./docs/alerts.md)** — Webhook payloads and channel setup
 - 🔒 **[Deployment](./docs/deployment.md)** — Security hardening and systemd setup
 - 🎯 **[Threat Model](./docs/threat-model.md)** — What pamsignal defends against, what it deliberately does not, and the design rationale behind the split
+- 📊 **[Grafana Integration](./docs/grafana-integration.md)** — Fleet-wide auth dashboard design (schema, label cardinality, panel layout)
 - 🐧 **[Supported Distributions](./docs/distros.md)** — Three-tier matrix (CI-tested / expected to work / unsupported) with reasoning per row
 - 🛠️ **[Development](./docs/development.md)** — Building from source and testing
 - 🔐 **[Security Policy](./SECURITY.md)** — Responsible-disclosure channel and supported versions
