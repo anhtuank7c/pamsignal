@@ -551,6 +551,33 @@ jobs:
           which pamsignal
           systemctl is-active pamsignal
 
+      - name: CLI smoke (--version / --help)
+        # Catches the failure mode where an installed binary silently produces
+        # no output for --version (pre-0.4.1 binary that didn't recognise the
+        # flag fell through to "start the daemon"). If either invocation
+        # prints nothing, we fail loudly here instead of letting operators
+        # discover it after upgrade.
+        run: |
+          ver=$(pamsignal --version)
+          test -n "$ver" || { echo "FAIL: --version produced no output"; exit 1; }
+          echo "$ver" | grep -qE '^pamsignal [0-9]+\.[0-9]+\.[0-9]+$' \
+            || { echo "FAIL: --version output unexpected: $ver"; exit 1; }
+          echo "--version OK: $ver"
+
+          help=$(pamsignal --help)
+          test -n "$help" || { echo "FAIL: --help produced no output"; exit 1; }
+          echo "$help" | grep -q '^Usage: pamsignal' \
+            || { echo "FAIL: --help missing Usage: prefix"; exit 1; }
+          echo "$help" | grep -q -- '--foreground' \
+            || { echo "FAIL: --help missing --foreground entry"; exit 1; }
+          echo "--help OK ($(echo "$help" | wc -l) lines)"
+
+          # Short forms must match the long-form output byte-for-byte.
+          diff <(pamsignal -V) <(pamsignal --version) \
+            || { echo "FAIL: -V differs from --version"; exit 1; }
+          diff <(pamsignal -h) <(pamsignal --help) \
+            || { echo "FAIL: -h differs from --help"; exit 1; }
+
       - name: Verify file layout and metadata
         run: |
           # Files at expected paths
@@ -871,7 +898,31 @@ jobs:
           apt-get install -y --no-install-recommends \
             ./out/pamsignal_*_focal_amd64.deb
           which pamsignal
-          pamsignal --version
+
+      - name: CLI smoke (--version / --help)
+        # Mirror of the noble test-deb job. Catches the failure mode where
+        # an installed binary produces no output for --version or --help —
+        # a real operator-facing breakage that systemctl-status checks
+        # would miss.
+        run: |
+          ver=$(pamsignal --version)
+          test -n "$ver" || { echo "FAIL: --version produced no output"; exit 1; }
+          echo "$ver" | grep -qE '^pamsignal [0-9]+\.[0-9]+\.[0-9]+$' \
+            || { echo "FAIL: --version output unexpected: $ver"; exit 1; }
+          echo "--version OK: $ver"
+
+          help=$(pamsignal --help)
+          test -n "$help" || { echo "FAIL: --help produced no output"; exit 1; }
+          echo "$help" | grep -q '^Usage: pamsignal' \
+            || { echo "FAIL: --help missing Usage: prefix"; exit 1; }
+          echo "$help" | grep -q -- '--foreground' \
+            || { echo "FAIL: --help missing --foreground entry"; exit 1; }
+          echo "--help OK ($(echo "$help" | wc -l) lines)"
+
+          diff <(pamsignal -V) <(pamsignal --version) \
+            || { echo "FAIL: -V differs from --version"; exit 1; }
+          diff <(pamsignal -h) <(pamsignal --help) \
+            || { echo "FAIL: -h differs from --help"; exit 1; }
 
       - name: Verify file layout and metadata
         # Verbose / instrumented form so any future failure pinpoints itself

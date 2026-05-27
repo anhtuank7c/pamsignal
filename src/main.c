@@ -15,19 +15,57 @@
 #include "init.h"
 #include "journal_watch.h"
 
+static void print_version(void) {
+    printf("pamsignal %s\n", PAMSIGNAL_VERSION);
+}
+
+static void print_help(void) {
+    printf(
+        "Usage: pamsignal [OPTION]...\n"
+        "Real-time PAM authentication monitor with multi-channel alerts.\n"
+        "\n"
+        "Watches the systemd journal for sshd, sudo, su, and login events,\n"
+        "detects brute-force patterns, and dispatches alerts to Telegram,\n"
+        "Slack, Microsoft Teams, WhatsApp, Discord, or a custom HTTPS webhook.\n"
+        "\n"
+        "Options:\n"
+        "  -f, --foreground       Stay in the foreground (do not daemonize).\n"
+        "                         Required under systemd Type=simple; the\n"
+        "                         shipped pamsignal.service uses this mode.\n"
+        "  -c, --config PATH      Read configuration from PATH instead of\n"
+        "                         the compiled-in default (%s).\n"
+        "  -V, --version          Print version and exit.\n"
+        "  -h, --help             Print this help message and exit.\n"
+        "\n"
+        "Files:\n"
+        "  %s\n"
+        "      Configuration file (alert credentials, brute-force thresholds,\n"
+        "      mTLS paths). See pamsignal.conf(5).\n"
+        "  /run/pamsignal/pamsignal.pid\n"
+        "      PID file (foreground mode skips this).\n"
+        "\n"
+        "See pamsignal(8) and pamsignal.conf(5) for the complete reference.\n"
+        "Report bugs at https://github.com/anhtuank7c/pamsignal/issues\n",
+        PS_DEFAULT_CONFIG_PATH, PS_DEFAULT_CONFIG_PATH);
+}
+
 static void parse_args(int argc, char *argv[], int *foreground,
                        const char **config_path) {
     *foreground = 0;
     *config_path = PS_DEFAULT_CONFIG_PATH;
 
     for (int i = 1; i < argc; i++) {
+        // --version / --help exit immediately, before any privilege or
+        // journal-access checks. This lets package post-install scripts
+        // and smoke tests run from any context (root, dpkg, rpm, plain
+        // user) without tripping the non-root invariant enforced later
+        // in main(). Both go to stdout, exit 0, per GNU conventions.
         if (strcmp(argv[i], "--version") == 0 || strcmp(argv[i], "-V") == 0) {
-            // Print version and exit immediately, before any privilege or
-            // journal-access checks. This lets package post-install scripts
-            // and `--version`-style smoke tests run from any context (root,
-            // dpkg, rpm) without tripping the non-root invariant enforced
-            // later in main().
-            printf("pamsignal %s\n", PAMSIGNAL_VERSION);
+            print_version();
+            exit(0);
+        }
+        if (strcmp(argv[i], "--help") == 0 || strcmp(argv[i], "-h") == 0) {
+            print_help();
             exit(0);
         }
         if (strcmp(argv[i], "--foreground") == 0 ||

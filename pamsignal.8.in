@@ -11,6 +11,9 @@ pamsignal \- real-time PAM authentication monitor with multi-channel alerts
 .br
 .B pamsignal
 .RB { \-V \ |\  \-\-version }
+.br
+.B pamsignal
+.RB { \-h \ |\  \-\-help }
 .SH DESCRIPTION
 .B pamsignal
 is a lightweight C daemon that monitors PAM authentication events through
@@ -76,6 +79,18 @@ is called; an unresolvable path causes
 .B pamsignal
 to refuse to start (defending against symlink swaps and permission
 misconfigurations).
+.TP
+.BR \-V ", " \-\-version
+Print the daemon's version (e.g. "pamsignal 0.6.0") to standard output
+and exit with status 0. Runs before any privilege check, so it works
+under any user (root, dpkg/rpm post-install scripts, plain operator).
+.TP
+.BR \-h ", " \-\-help
+Print a brief usage summary to standard output and exit with status 0.
+The summary covers the option set, the default config path, and a
+pointer to this man page and
+.BR pamsignal.conf (5).
+Also runs before any privilege check.
 .SH SIGNALS
 .TP
 .B SIGHUP

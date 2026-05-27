@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Features
+- [x] **`--help` / `-h` flag.** Long-overdue GNU-conventions baseline — `pamsignal --help` now prints a usage summary covering every option, the default config path, the canonical files, and pointers to `pamsignal(8)` and `pamsignal.conf(5)`. Goes to stdout, exits 0. `-h` is the short form. Runs before any privilege check, so it works under root, dpkg/rpm post-install scripts, or a plain operator. The existing `-V` / `--version` flag has been refactored into a `print_version()` helper for symmetry. The `pamsignal(8)` man page now also documents both flags explicitly (previously only `--version` was in the SYNOPSIS, not the OPTIONS section).
+
+### CI
+- [x] **Output-asserting CLI smoke check on every release.** Both `test-deb` (Noble) and `test-deb-focal` now verify that `pamsignal --version` and `pamsignal --help` produce expected output, and that the short forms (`-V`, `-h`) match the long forms byte-for-byte. Catches the "binary installed cleanly but the flag prints nothing" failure mode that a `systemctl is-active` check would miss.
+
 ## 0.6.0 — 2026-05-27
 
 Minor release. Two operator-visible additions and a documentation push.
