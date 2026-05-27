@@ -862,21 +862,59 @@ jobs:
           pamsignal --version
 
       - name: Verify file layout and metadata
+        # Verbose / instrumented form so any future failure pinpoints itself
+        # in the CI log. The first iteration of this step on the 0.6.0
+        # release failed somewhere between `Config perms` and the final
+        # zcat, with no marker in between — we never want to debug that
+        # blind again.
         run: |
-          test -x /usr/bin/pamsignal
-          test -f /usr/lib/systemd/system/pamsignal.service
-          test -f /etc/pamsignal/pamsignal.conf
+          fail() { echo "FAIL: $*" >&2; exit 1; }
+
+          echo "[1/9] /usr/bin/pamsignal is executable"
+          [ -x /usr/bin/pamsignal ] || fail "/usr/bin/pamsignal not executable"
+
+          echo "[2/9] systemd unit file present"
+          [ -f /usr/lib/systemd/system/pamsignal.service ] \
+            || fail "service file missing"
+
+          echo "[3/9] config file present"
+          [ -f /etc/pamsignal/pamsignal.conf ] || fail "config missing"
+
+          echo "[4/9] ExecStart points at /usr/bin/pamsignal"
           grep -q '^ExecStart=/usr/bin/pamsignal' \
-            /usr/lib/systemd/system/pamsignal.service
-          # Config perms set by postinst
+            /usr/lib/systemd/system/pamsignal.service \
+            || fail "ExecStart line not found"
+
+          echo "[5/9] config perms = root:pamsignal 640 (set by postinst)"
           perms=$(stat -c '%U:%G %a' /etc/pamsignal/pamsignal.conf)
-          echo "Config perms: $perms"
-          [ "$perms" = "root:pamsignal 640" ]
-          # Both man pages installed and compressed by dh_compress.
-          # The conf(5) page landed in 0.6.x — present on every release after.
-          test -f /usr/share/man/man8/pamsignal.8.gz
-          test -f /usr/share/man/man5/pamsignal.conf.5.gz
-          zcat /usr/share/man/man8/pamsignal.8.gz | head -3 | grep -q 'pamsignal '
+          # printf %q reveals any hidden characters (CR, tabs, NBSP) that
+          # an `echo` would render invisibly identical to the expected string.
+          printf '  observed: %q\n' "$perms"
+          printf '  expected: %q\n' "root:pamsignal 640"
+          [ "$perms" = "root:pamsignal 640" ] || fail "perms mismatch"
+
+          echo "[6/9] man8 page present"
+          [ -f /usr/share/man/man8/pamsignal.8.gz ] \
+            || fail "man8 missing"
+
+          echo "[7/9] man5 page present (conf(5), new in 0.6.x)"
+          [ -f /usr/share/man/man5/pamsignal.conf.5.gz ] \
+            || fail "man5 missing"
+
+          # SIGPIPE-safe: read the whole man8 into a tmpfile, then grep it.
+          # The previous `zcat | head -3 | grep` form races on SIGPIPE (head
+          # closes early; zcat then writes to a closed pipe and exits non-
+          # zero; `pipefail` catches it). gzip on focal (1.10) and noble
+          # (1.12) handle this slightly differently, which we want to avoid
+          # caring about.
+          echo "[8/9] man8 content sanity-check"
+          tmp=$(mktemp)
+          zcat /usr/share/man/man8/pamsignal.8.gz > "$tmp"
+          head -3 "$tmp" | grep -q 'pamsignal ' \
+            || fail "man8 first 3 lines don't mention 'pamsignal '"
+          rm -f "$tmp"
+
+          echo "[9/9] all checks passed"
 
       - name: Smoke-launch the binary
         run: |
