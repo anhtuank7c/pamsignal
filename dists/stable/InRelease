@@ -4,40 +4,40 @@ Hash: SHA512
 Architectures: amd64
 Codename: stable
 Components: main
-Date: Wed, 27 May 2026 12:39:01 +0000
+Date: Wed, 27 May 2026 13:21:57 +0000
 Description: pamsignal release apt repo
 Label: pamsignal
 Origin: pamsignal
 Suite: stable
 MD5Sum:
- be84a04089e46408f7dea539ef37fce8              182 Release
+ 5afee0a00565940fa92147f692c7baa6              182 Release
  226aea36b37e16f3d171be78634c7570            26001 main/binary-amd64/Packages
- 2bc4a8f1273e7109265def5d1fd1dc11             6054 main/binary-amd64/Packages.gz
+ 00204d980638902d116079e160e7b0eb             6054 main/binary-amd64/Packages.gz
 SHA1:
- 5cc1a76dcd0efcccb601f1f26057f1c4075f6d39              182 Release
+ 75ef5ba678d4a3488db895446d9a56a3c05514ad              182 Release
  68ebb6b82847ee461ded08153bf0ec7158dfd820            26001 main/binary-amd64/Packages
- 26496c939132415ed6067f8f4784a55b24222687             6054 main/binary-amd64/Packages.gz
+ 4f420b47ccc2c282174cd28f02e11fd6b94b6d3a             6054 main/binary-amd64/Packages.gz
 SHA256:
- 82a06d29153fa4c78fa2223feffb4b4ac9e38d72c04f0be60c25d7fe2128476d              182 Release
+ f27d111b097db88635bf496e3819d868b30f059d5448a70e1ef071121c76407a              182 Release
  061965d0a802be67a8cbea7c282cfe2b941e3a34442c61dae32007eec1c37de3            26001 main/binary-amd64/Packages
- b017cd6b28ac6f8db07c5892a35e56975bf9a6d021f8c6ac9801ba371e2ed10f             6054 main/binary-amd64/Packages.gz
+ 7578200e731505acf5679639d06bb0b98ce51274df9c5dda62d804b9c8564ae6             6054 main/binary-amd64/Packages.gz
 SHA512:
- c1f86d7abe58ca1bc65a568c7b57ef850a2a024f80f56aa0e2952b16647f74b429e3e3f6b367d825f268505320525f5a9460560a675b10550f13f89b05664ad2              182 Release
+ 6a733232f14e56c2810f2d12276f9e81651aaa680d07f6ad18058fd73a29b7e0f6ad355daffc8363afeb49c0e04fbab32a07925d2b2218cb2cee10f8ff713128              182 Release
  3c153320f2888b1d416832405386aa9e909887f87708f758249ecc1ab22bdd716bf8fea5fc55fa7f669f5857fc55e4146e4d0fd0e641cf90c638b7d4f5ff08e9            26001 main/binary-amd64/Packages
- 7e4b6ff537a296aec0a3279947c26712d49c9d715e535ce2bd7e14d504c281b8690bc312f4e5a07e3c7fdf0843cc847d0e022382eb73f62757ed15280fd25675             6054 main/binary-amd64/Packages.gz
+ 0a99c4ba655337398d3f1c60e9ac85f88d2d1c4da9027f73ed85a06ab531758a8a877a1aa8e8f2799cfc53f1057fdd30e61710d2cd69a27bbe0fe36b1046302f             6054 main/binary-amd64/Packages.gz
 -----BEGIN PGP SIGNATURE-----
 
-iQIzBAEBCgAdFiEEhntwd9TEp6wfRkVparXs/0RmipEFAmoW5eYACgkQarXs/0Rm
-ipHJnxAApOJelrO2Lq9BtnBLwJ3KHR7IzzjLxI4wwY0zOSaNfHfob3Q5LqyCPdWP
-tCEkFPTJKdDEeKHpGuFzwX4xELIeiGDtmT/Dxep2UQpX4bVjVO5dfN/jPPPIZ4JC
-EavCfEZ47zVv+xCNnhgZE2LE/pLuArwwo5hPrEDZYvE0CuJuum1WcrBQx2FP5u5M
-Wq3f1bDNS9FP1HetIDYRDfxj1BfHF+qGr54or4ke8L+JSfWl1xkL520O7iqVQxIM
-bbUmL4JRUMufCysdpkZTwsEM49/haj9QU8bWTTcHgLCE1u4uej/chxskXAcm7lzS
-kVtTP33nRIXLq0LjCDCGW4xWNwMrvgVAPhPSBI7FnG3GvH201U2cPqjtUSodPLEJ
-6I4IJIRvn488/cQ8qJ4WVfveu8kTp1HR2pYcy0wwBNgybOmn7/SbJ0Xv9gGUNiQy
-rIsjVGabhsVY5rlrn0kZgmF7pWwvcLkevu2/HwLNOD/MKuMX9kQpf2KTAD88/0hn
-MxVaRffGKt8QYBJ/OvoH32fbM+yXQy8cdK7OQIuk/z0zgU3ARE6o00qhvEemNN74
-zvY9O4sxqRKJX7wJI26raLicGw54Zbc5Zs5Mf4MaS5RimbwnKQuY4+6H+01l2CoS
-Liqp3xWD5hNnlbqifcJIBwiw7aVRAcIGdNZGcz6LUwcXx3PfAec=
-=LqSk
+iQIzBAEBCgAdFiEEhntwd9TEp6wfRkVparXs/0RmipEFAmoW7/YACgkQarXs/0Rm
+ipFONBAAshrGQlE1fTCwCHQ9FxRf02I6P9FLdumPqJysv9mQJCuj5ce9wPg0JTFM
+P+BZ2pcrFMEk0FerYivjD1vtERFNGLYhnOZFp+QcKTKC8joQiD7iXv7+/7ZcsfxY
+zSqLCkFCL7EUGIYE9wwVWSvq/cHueK0myjD0wNlR1Q22ttT8PL/3dw497Y9hNmoc
+puX9c0QYSJUvqaUQg+JtxYOBqU1YqZR404Go2txFUDq6I2XZHEfeSz7K1mSvNzjK
+LnAjzkh3po3VjhpnHk8Tla1q9b4tO10gGp5a1eNKvU2Q30iv7orBmOQR61urRGto
+x6muEpSEuC/Pt0435DkpUlXkFqPMTvaomo19Xy+gGcVlt7Zpa7+vDnK7WctmgXpv
+4b6vjOfxT83Wm8dl+1fWRRUkLnv5JfF54q+WF9tL/tQsCqdr6QX688SgGwui8S50
+4N2LBPk8EYI4xm6RH1iFsoksvfwh113+iStoeuKWf0R9MByTe7eK6rRS21p1XR+Q
+0IOU7X5fxOZS0pjvVko3mpzYdsixTdlN6BQnQtgCg9mFOMCOqyDonJ9QgewQk/PW
+0gXUpN/D1qT2L/vP6gU5Uyqb15VcJjNFZAYlNoOKAHePrCD6LuobhseG9J7SqAwf
++q1ObuGxg761HUj32D+4mb6KJRAQu0wLS/u1SB7seTUn1lwZUnY=
+=462S
 -----END PGP SIGNATURE-----
