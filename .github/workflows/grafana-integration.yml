@@ -58,7 +58,9 @@ jobs:
         run: python -m json.tool dashboards/pamsignal-v1.json > /dev/null
 
       - name: Validate alerts.yaml
-        run: python -c "import yaml; yaml.safe_load(open('alerts.yaml'))"
+        run: |
+          python -m pip install --quiet pyyaml
+          python -c "import yaml; yaml.safe_load(open('alerts.yaml'))"
 
       - name: Bring up stack
         run: docker compose up -d --build
