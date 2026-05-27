@@ -1,0 +1,92 @@
+// Grafana Alloy config — production PAMSignal scraper.
+//
+// Install on every host whose PAMSignal events you want in Loki.
+//
+// 1. Install Alloy (https://grafana.com/docs/alloy/latest/set-up/install/).
+// 2. Copy this file to /etc/alloy/config.alloy (or whatever path
+//    your alloy systemd unit points at).
+// 3. Edit the LOKI_URL constant below for your Loki endpoint.
+// 4. Start: systemctl enable --now alloy
+//
+// Verify: examples/grafana/verify.sh
+//
+// Why this label set: see docs/grafana-integration.md ("Label cardinality
+// plan"). Total streams ≈ 30 × host_count, safe for thousands of hosts.
+
+logging {
+	level  = "info"
+	format = "logfmt"
+}
+
+// ---- Loki destination ----
+// Change the URL for your Loki endpoint. For Grafana Cloud, set
+// basic_auth.username = "<tenant_id>" and basic_auth.password = "<api_key>".
+loki.write "default" {
+	endpoint {
+		url = "http://localhost:3100/loki/api/v1/push"
+		// basic_auth {
+		//   username = sys.env("LOKI_USERNAME")
+		//   password = sys.env("LOKI_PASSWORD")
+		// }
+	}
+	// Cap outbound rate so an event burst can't drown the receiver.
+	external_labels = {
+		job = "pamsignal",
+	}
+}
+
+// ---- Source: systemd journal, filtered to pamsignal entries only ----
+loki.source.journal "pamsignal" {
+	forward_to     = [loki.process.pamsignal.receiver]
+	matches        = "SYSLOG_IDENTIFIER=pamsignal"
+	format_as_json = true
+	labels         = {
+		app = "pamsignal",
+	}
+	// Limit which fields end up in the journal label namespace.
+	// Without this, every PAMSignal field would arrive as a __journal_<x>
+	// label, increasing the relabeling surface.
+	relabel_rules = loki.relabel.pamsignal.rules
+}
+
+// ---- Relabel: promote low-cardinality fields to Loki labels ----
+//
+// host         <- _HOSTNAME              (per-host stream)
+// service      <- SERVICE_NAME           (sshd/sudo/su/login/other, 5 max)
+// event_action <- EVENT_ACTION           (6 enum values)
+//
+// Everything else (SOURCE_IP, USER_NAME, SOURCE_PORT, ...) stays in the
+// JSON body of the log line and is parsed at query time with `| json`.
+loki.relabel "pamsignal" {
+	forward_to = []
+
+	rule {
+		source_labels = ["__journal__hostname"]
+		target_label  = "host"
+	}
+
+	rule {
+		source_labels = ["__journal_service_name"]
+		target_label  = "service"
+	}
+
+	rule {
+		source_labels = ["__journal_event_action"]
+		target_label  = "event_action"
+	}
+}
+
+// ---- Optional processing: drop low-value session_closed noise ----
+//
+// Uncomment if your fleet generates so many sudo/su session_closed events
+// that they swamp the dashboard. Most operators want to keep them for
+// audit completeness, so this is OFF by default.
+loki.process "pamsignal" {
+	forward_to = [loki.write.default.receiver]
+
+	// stage.drop {
+	//   source = "event_action"
+	//   value  = "session_closed"
+	//   drop_counter_reason = "session_closed_noise"
+	// }
+}
