@@ -1,3 +1,60 @@
+pamsignal (0.6.0-1) unstable; urgency=medium
+
+  * Packaging: Ubuntu 20.04 LTS (Focal) is now an officially supported
+    install target via release-artifact .deb. New build-deb-focal /
+    test-deb-focal jobs in .github/workflows/release-packages.yml build
+    and smoke-test a Focal-targeted .deb inside an ubuntu:20.04
+    container on every release, attaching the result to the GitHub
+    release page as pamsignal_<version>-1_focal_amd64.deb with a
+    detached .asc signature. There is no gh-pages apt pocket for Focal
+    (rationale: ESM-only since 2025-04-30; per-distroseries repo
+    infrastructure does not pay off for the audience size). Operators
+    install with `curl + apt install ./<file>.deb`. Two systemd
+    directives (ProtectProc, ProcSubset, both added in v247) are
+    logged-and-ignored on Focal's systemd 245; everything else in the
+    hardening unit is honored. docs/distros.md and README.md updated
+    with the new tiering, the curl+install recipe, and the lifecycle
+    deadline (Focal exits ESM April 2030). Corrects the previous
+    Tier-3 misclassification.
+  * Documentation: pamsignal.conf(5) man page added. Documents every
+    config key, value range, mTLS and webhook_auth_header validation
+    rules, reload semantics, and security notes. Installed to
+    <mandir>/man5/ via meson configure_file. The forward references in
+    pamsignal.8 that pointed at "pamsignal.conf(5) — or, until that
+    page exists" have been cleaned up.
+  * Documentation: README quickstart "Configure Alerts" section now
+    surfaces the two tuning keys operators want on day one
+    (alert_cooldown_sec, enable_notification_type) with operator-facing
+    semantics (cooldown=0 fires on every threshold crossing;
+    enable_notification_type narrows which categories reach chat) and a
+    cross-link to the full notification-type-filter table in
+    docs/configuration.md.
+  * Documentation: Fail2ban integration guide
+    (examples/fail2ban/README.md) expanded from a 39-line stub into a
+    417-line walkthrough for first-time fail2ban users — install
+    commands for Ubuntu/Debian and CentOS Stream 9 / AlmaLinux 9 /
+    Rocky Linux 9 / Fedora, per-distro banaction selection, the
+    critical whitelist-yourself-first step, verification flow
+    (fail2ban-client status, fail2ban-regex, simulated brute-force from
+    a second machine), tuning (bantime, bantime.increment),
+    troubleshooting, an architecture diagram, and inline links to the
+    official fail2ban wiki.
+  * Internal: New include/ps_cleanup.h defines RAII-style
+    _cleanup_close_, _cleanup_fclose_, and _cleanup_free_ macros
+    (GCC/Clang __attribute__((cleanup))). Applied to the three
+    functions with multi-branch close/free ladders that handle
+    security-sensitive fds: build_secrets_memfd + fire_curl (notify.c,
+    the memfd carrying webhook secrets to curl), open_config_secure +
+    ps_config_load (config.c, the O_NOFOLLOW config opener), and
+    validate_tls_path (config.c). Also extracts
+    ps_pidfile_close_and_invalidate in init.c to dedupe four identical
+    close+invalidate blocks. No runtime behaviour change; defense in
+    depth against future-edit fd leaks. Project-wide
+    readability-identifier-naming exemption for _cleanup_*_ macros (the
+    systemd RAII naming convention) added to .clang-tidy.
+
+ -- Tuan Nguyen <anhtuank7c@hotmail.com>  Wed, 27 May 2026 11:54:00 +0000
+
 pamsignal (0.5.0-1) unstable; urgency=medium
 
   * Feature: new `enable_notification_type` config key — comma-separated
