@@ -1,24 +1,24 @@
 Architectures: amd64
 Codename: stable
 Components: main
-Date: Wed, 27 May 2026 13:21:57 +0000
+Date: Wed, 27 May 2026 13:44:27 +0000
 Description: pamsignal release apt repo
 Label: pamsignal
 Origin: pamsignal
 Suite: stable
 MD5Sum:
- 5afee0a00565940fa92147f692c7baa6              182 Release
+ 64b29f6bd3a6d934c6e3501e9bf2e7a9              182 Release
  226aea36b37e16f3d171be78634c7570            26001 main/binary-amd64/Packages
- 00204d980638902d116079e160e7b0eb             6054 main/binary-amd64/Packages.gz
+ 462a1fa53bffa616fb8575edd22fadc8             6054 main/binary-amd64/Packages.gz
 SHA1:
- 75ef5ba678d4a3488db895446d9a56a3c05514ad              182 Release
+ 4dc43197f06a6faaf4c4c34edb21c3a1ec5ee0b7              182 Release
  68ebb6b82847ee461ded08153bf0ec7158dfd820            26001 main/binary-amd64/Packages
- 4f420b47ccc2c282174cd28f02e11fd6b94b6d3a             6054 main/binary-amd64/Packages.gz
+ 5b5e9c61ec582e3b7922ac6d0c8ec8a026ba03c9             6054 main/binary-amd64/Packages.gz
 SHA256:
- f27d111b097db88635bf496e3819d868b30f059d5448a70e1ef071121c76407a              182 Release
+ 3085b402df1e538183ade174f4eb95d4c8a9554ff489a434e2a530d84bad39e6              182 Release
  061965d0a802be67a8cbea7c282cfe2b941e3a34442c61dae32007eec1c37de3            26001 main/binary-amd64/Packages
- 7578200e731505acf5679639d06bb0b98ce51274df9c5dda62d804b9c8564ae6             6054 main/binary-amd64/Packages.gz
+ aa59341619b37a77b54f6788a43abdec925341cb2c70bdca40447e7f0dac9103             6054 main/binary-amd64/Packages.gz
 SHA512:
- 6a733232f14e56c2810f2d12276f9e81651aaa680d07f6ad18058fd73a29b7e0f6ad355daffc8363afeb49c0e04fbab32a07925d2b2218cb2cee10f8ff713128              182 Release
+ d36d88d2ea1597eb5cd34fcb6a20c448dbedaa3ead6cb8daf9934df84da5b70f0b515e96c5c14d02849e88a68d981c77c75674888cc2393e0bc693f4ed25ed70              182 Release
  3c153320f2888b1d416832405386aa9e909887f87708f758249ecc1ab22bdd716bf8fea5fc55fa7f669f5857fc55e4146e4d0fd0e641cf90c638b7d4f5ff08e9            26001 main/binary-amd64/Packages
- 0a99c4ba655337398d3f1c60e9ac85f88d2d1c4da9027f73ed85a06ab531758a8a877a1aa8e8f2799cfc53f1057fdd30e61710d2cd69a27bbe0fe36b1046302f             6054 main/binary-amd64/Packages.gz
+ e5e6b1411a1c55cbbf5607a6c6b84a31afd7d08f1acfde3883acb95de0f4a5af3a649cfe7cc00d60b30a88ea56e6d866b5297827c8fdff176c2514bfd8dec3ef             6054 main/binary-amd64/Packages.gz
