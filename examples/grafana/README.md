@@ -10,7 +10,8 @@ Linux fleet and surface them in a single Grafana dashboard:
 - `alloy.river` — production [Grafana Alloy](https://grafana.com/docs/alloy/latest/)
   config. One install per host. Scrapes `SYSLOG_IDENTIFIER=pamsignal` from systemd
   journald and ships to Loki.
-- `dashboards/pamsignal-v1.json` — the dashboard. Import or provision.
+- `dashboards/pamsignal-v1.json` — the dashboard, provisioning-ready (datasource UID hardcoded to `loki`, matches the bundled provisioning file).
+- `dashboards/pamsignal-v1.grafana-com.json` — same dashboard, "shared externally" format with a `${DS_LOKI}` placeholder + `__inputs`/`__requires` blocks. Upload **this** file to grafana.com or use Grafana's UI Import, which prompts you to pick your own Loki datasource.
 - `alerts.yaml` — four Grafana-native alert rules.
 - `docker-compose.yml` — a single-command local stack so you can see the dashboard
   before you commit to deploying anything.
@@ -119,7 +120,8 @@ sudo systemctl restart grafana-server
 ```
 
 **Option B — import via UI**: Grafana → Dashboards → New → Import → upload
-`dashboards/pamsignal-v1.json`. Pick your Loki datasource when prompted.
+`dashboards/pamsignal-v1.grafana-com.json` (the version with `${DS_LOKI}`
+placeholders). Pick your Loki datasource when prompted.
 
 ### 5. Wire alerts
 
