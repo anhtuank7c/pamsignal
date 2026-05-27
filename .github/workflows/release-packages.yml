@@ -853,6 +853,18 @@ jobs:
 
       - name: Install pamsignal
         run: |
+          # The ubuntu:20.04 official docker image ships
+          # /etc/dpkg/dpkg.cfg.d/excludes with
+          #   path-exclude=/usr/share/man/*
+          #   path-exclude=/usr/share/doc/*
+          # to keep the image small. Real focal hosts have no such rule —
+          # so on a real install, /usr/share/man/man8/pamsignal.8.gz and
+          # /usr/share/man/man5/pamsignal.conf.5.gz both land on disk. We
+          # want the verify step below to exercise the real-host path, not
+          # the docker-strip path, so remove the excludes file before
+          # apt install runs.
+          rm -f /etc/dpkg/dpkg.cfg.d/excludes
+
           # `apt-get install ./<file>.deb` (not `dpkg -i`) resolves transitive
           # runtime deps (libsystemd0, libc6, etc.) from the host's configured
           # apt sources. This is the exact command operators will run.
