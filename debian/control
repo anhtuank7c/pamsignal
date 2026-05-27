@@ -2,7 +2,14 @@ Source: pamsignal
 Section: admin
 Priority: optional
 Maintainer: Tuan Nguyen <anhtuank7c@hotmail.com>
-Build-Depends: debhelper-compat (= 13),
+# Use the legacy `debhelper (>= 12~)` + `debian/compat` (file containing "13")
+# form rather than `debhelper-compat (= 13)`. The latter is a standalone
+# virtual package only published on Ubuntu 22.04+ (debhelper 13.x);
+# Ubuntu 20.04 ships debhelper 12.10 which supports compat 13 via the
+# legacy file but not the virtual build-dep. The two forms are
+# interchangeable on Jammy/Noble/Resolute, so this single declaration covers
+# Focal + everything newer.
+Build-Depends: debhelper (>= 12~),
                meson,
                ninja-build,
                pkg-config,

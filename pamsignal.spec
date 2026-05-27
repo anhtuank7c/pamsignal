@@ -94,6 +94,7 @@ fi
 # Trailing * matches the .gz suffix added by Fedora's brp-compress hook so
 # the file list is correct whether or not compression ran.
 %{_mandir}/man8/pamsignal.8*
+%{_mandir}/man5/pamsignal.conf.5*
 %dir %attr(0750,root,pamsignal) %{_sysconfdir}/pamsignal
 %config(noreplace) %attr(0640,root,pamsignal) %{_sysconfdir}/pamsignal/pamsignal.conf
 

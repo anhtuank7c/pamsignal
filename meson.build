@@ -235,7 +235,11 @@ endif
 # runs for as long as you let it; CI should call it with -max_total_time.
 
 fuzz_opt = get_option('fuzz')
-if fuzz_opt.allowed()
+# `not fuzz_opt.disabled()` is the pre-meson-0.59 equivalent of
+# `fuzz_opt.allowed()` — kept this form so the build still works on Ubuntu
+# 20.04 LTS (Focal), which ships meson 0.53. Both expressions are true
+# when the feature option is `auto` or `enabled`.
+if not fuzz_opt.disabled()
   if cc.get_id() == 'clang'
     fuzz_args = [
       '-fsanitize=fuzzer,address,undefined',

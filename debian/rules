@@ -8,15 +8,20 @@ export DEB_BUILD_MAINT_OPTIONS = hardening=+all
 override_dh_auto_configure:
 	meson setup obj-debian --prefix=/usr --sysconfdir=/etc --buildtype=release
 
+# Drive build/install through ninja (not `meson compile` / `meson install`).
+# The `meson compile -C` and `meson install -C` subcommands were added in
+# meson 0.54 (2020-05); Ubuntu 20.04 LTS (Focal) ships meson 0.53. The ninja
+# invocations below produce identical results on every distro from Focal
+# through Noble.
 override_dh_auto_build:
-	meson compile -C obj-debian
+	ninja -C obj-debian
 
 override_dh_auto_install:
 	# We override dh_auto_configure to use the literal build dir name
 	# `obj-debian`; the matching dh_auto_install override is required so
 	# debhelper installs from that dir rather than its default `obj-<arch>`
 	# (which never gets created and would produce an empty package).
-	DESTDIR=$(CURDIR)/debian/pamsignal meson install -C obj-debian --no-rebuild
+	DESTDIR=$(CURDIR)/debian/pamsignal ninja -C obj-debian install
 
 override_dh_auto_test:
 	meson test -C obj-debian
