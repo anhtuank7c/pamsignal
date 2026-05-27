@@ -154,14 +154,27 @@ step broke.
 
 ## Architecture
 
-```
-┌──────────┐    ┌──────────┐    ┌───────┐    ┌──────┐    ┌─────────┐
-│PAMSignal │──▶│ journald │──▶│ Alloy │──▶│ Loki │──▶│ Grafana │
-│ (per host)│    │ (per host) │  │(per host)│ │      │    │         │
-└──────────┘    └──────────┘    └───────┘    └──────┘    └─────────┘
-                                                                ▲
-                                                                │
-                                                            operator
+```mermaid
+graph LR
+    pamsignal["PAMSignal<br/>(per host)"]
+    journald[("systemd-journald<br/>(per host)")]
+    alloy["Grafana Alloy<br/>(per host)"]
+    loki[("Loki")]
+    grafana["Grafana"]
+    operator["🧑‍💻 Operator"]
+
+    pamsignal -- "sd_journal_send<br/>(ECS fields)" --> journald
+    journald -- "SYSLOG_IDENTIFIER=pamsignal" --> alloy
+    alloy -- "Loki push API<br/>(4 labels)" --> loki
+    loki -- "LogQL queries" --> grafana
+    grafana -- "fleet dashboard<br/>+ alerts" --> operator
+
+    style pamsignal fill:#2d6a4f,stroke:#1b4332,color:#fff
+    style journald fill:#264653,stroke:#1d3557,color:#fff
+    style alloy fill:#457b9d,stroke:#1d3557,color:#fff
+    style loki fill:#e9c46a,stroke:#f4a261,color:#000
+    style grafana fill:#e76f51,stroke:#d62828,color:#fff
+    style operator fill:#6c757d,stroke:#495057,color:#fff
 ```
 
 **Why this shape:**

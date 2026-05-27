@@ -15,32 +15,38 @@
 
 To understand how PAMSignal works, we need to understand the layered architecture of a Linux system:
 
-```
-┌─────────────────────────────────────────────────────┐
-│              User Space Applications                │
-│  (SSH clients, login, sudo, web apps, PAMSignal)    │
-└─────────────────────┬───────────────────────────────┘
-                      │ System Calls
-┌─────────────────────▼───────────────────────────────┐
-│            System Libraries & Services              │
-│  ┌──────────────┐  ┌──────────────┐  ┌───────────┐  │
-│  │     PAM      │  │   systemd    │  │  glibc    │  │
-│  │ (libpam.so)  │  │(libsystemd)  │  │           │  │
-│  └──────┬───────┘  └──────┬───────┘  └───────────┘  │
-└─────────┼──────────────────┼────────────────────────┘
-          │                  │
-┌─────────▼──────────────────▼──────────────────────────┐
-│                  Linux Kernel                         │
-│  ┌──────────────┐  ┌──────────────┐  ┌────────────┐   │
-│  │   Security   │  │   Process    │  │  Logging   │   │
-│  │  Subsystem   │  │  Management  │  │  (printk)  │   │
-│  └──────────────┘  └──────────────┘  └────────────┘   │
-└───────────────────────────────────────────────────────┘
-          │
-┌─────────▼─────────────────────────────────────────────┐
-│                    Hardware                           │
-│         (CPU, Memory, Disk, Network)                  │
-└───────────────────────────────────────────────────────┘
+```mermaid
+graph TD
+    subgraph userspace ["User Space Applications"]
+        apps["SSH clients · login · sudo · web apps · PAMSignal"]
+    end
+
+    subgraph libs ["System Libraries & Services"]
+        pam["PAM<br/>(libpam.so)"]
+        systemd["systemd<br/>(libsystemd)"]
+        glibc["glibc"]
+    end
+
+    subgraph kernel ["Linux Kernel"]
+        security["Security<br/>Subsystem"]
+        process["Process<br/>Management"]
+        logging["Logging<br/>(printk)"]
+    end
+
+    hardware["Hardware<br/>CPU · Memory · Disk · Network"]
+
+    apps -- "system calls" --> libs
+    libs --> kernel
+    kernel --> hardware
+
+    style apps fill:#6c757d,stroke:#495057,color:#fff
+    style pam fill:#577590,stroke:#1d3557,color:#fff
+    style systemd fill:#264653,stroke:#1d3557,color:#fff
+    style glibc fill:#577590,stroke:#1d3557,color:#fff
+    style security fill:#4a4e69,stroke:#22223b,color:#fff
+    style process fill:#4a4e69,stroke:#22223b,color:#fff
+    style logging fill:#4a4e69,stroke:#22223b,color:#fff
+    style hardware fill:#22223b,stroke:#000,color:#fff
 ```
 
 **Key Layers:**
@@ -54,32 +60,24 @@ To understand how PAMSignal works, we need to understand the layered architectur
 
 When a user attempts to log in (via SSH, console, or GUI), the following happens:
 
-```
-User Login Attempt
-       │
-       ▼
-┌──────────────┐
-│ Login App    │ (sshd, login, gdm)
-│ (User Space) │
-└──────┬───────┘
-       │ Calls PAM API
-       ▼
-┌──────────────┐
-│     PAM      │ Checks /etc/pam.d/ configuration
-│  (libpam)    │ Executes PAM modules in order
-└──────┬───────┘
-       │ Logs to syslog/journal
-       ▼
-┌──────────────┐
-│   systemd    │ Receives log entry
-│  journald    │ Stores in binary journal
-└──────┬───────┘
-       │ Event notification
-       ▼
-┌──────────────┐
-│  PAMSignal   │ Reads journal via libsystemd
-│ (Subscriber) │ Processes & sends alerts
-└──────────────┘
+```mermaid
+graph TD
+    login["User login attempt"]
+    app["Login App<br/>sshd · login · gdm"]
+    pam["PAM (libpam)<br/>checks /etc/pam.d/<br/>executes modules in order"]
+    journald[("systemd-journald<br/>receives log entry<br/>stores in binary journal")]
+    pamsignal["PAMSignal (subscriber)<br/>reads via libsystemd<br/>processes & sends alerts"]
+
+    login --> app
+    app -- "calls PAM API" --> pam
+    pam -- "logs to syslog/journal" --> journald
+    journald -- "event notification" --> pamsignal
+
+    style login fill:#6c757d,stroke:#495057,color:#fff
+    style app fill:#577590,stroke:#1d3557,color:#fff
+    style pam fill:#577590,stroke:#1d3557,color:#fff
+    style journald fill:#264653,stroke:#1d3557,color:#fff
+    style pamsignal fill:#2d6a4f,stroke:#1b4332,color:#fff
 ```
 
 ## 3. What is PAM (Pluggable Authentication Module)?
@@ -291,45 +289,24 @@ Feb 17 22:30:15 server sshd[12345]: pam_unix(sshd:session): session opened for u
 
 ### 5.1 High-Level Architecture
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                    User Login Event                         │
-│  (SSH, console, GUI, sudo, su, etc.)                        │
-└────────────────────────┬────────────────────────────────────┘
-                         │
-                         ▼
-┌─────────────────────────────────────────────────────────────┐
-│                  PAM Authentication                         │
-│  1. Verify credentials (password, key, 2FA)                 │
-│  2. Check account validity                                  │
-│  3. Setup session                                           │
-│  4. Log authentication event                                │
-└────────────────────────┬────────────────────────────────────┘
-                         │
-                         ▼
-┌─────────────────────────────────────────────────────────────┐
-│              systemd-journald (Log Collector)               │
-│  - Receives log from PAM                                    │
-│  - Adds metadata (_PID, _UID, _HOSTNAME, etc.)              │
-│  - Writes to binary journal (/var/log/journal/)             │
-│  - Notifies subscribers (PAMSignal)                         │
-└────────────────────────┬────────────────────────────────────┘
-                         │ Event notification
-                         ▼
-┌─────────────────────────────────────────────────────────────┐
-│                  PAMSignal Subscriber                       │
-│  1. Receive event via sd_journal_wait()                     │
-│  2. Extract authentication data                             │
-│  3. Determine login type (SSH, console, sudo, etc.)         │
-│  4. Gather context (IP, hostname, user, timestamp)          │
-│  5. Send notification (Telegram, email, webhook)            │
-└─────────────────────────────────────────────────────────────┘
-                         │
-                         ▼
-┌─────────────────────────────────────────────────────────────┐
-│                  User Notification                          │
-│  "🔐 SSH login: user@192.168.1.100 → server (22:30:15)"     │
-└─────────────────────────────────────────────────────────────┘
+```mermaid
+graph TD
+    login["User Login Event<br/>SSH · console · GUI · sudo · su"]
+    pam["PAM Authentication<br/>1. verify credentials (password / key / 2FA)<br/>2. check account validity<br/>3. setup session<br/>4. log auth event"]
+    journald[("systemd-journald (log collector)<br/>receives from PAM · adds metadata<br/>writes binary journal · notifies subscribers")]
+    pamsignal["PAMSignal subscriber<br/>1. sd_journal_wait()<br/>2. extract auth data<br/>3. determine login type<br/>4. gather context<br/>5. send notification"]
+    notify["User notification<br/>🔐 SSH login: user@192.168.1.100 → server"]
+
+    login --> pam
+    pam --> journald
+    journald -- "event notification" --> pamsignal
+    pamsignal -- "Telegram · Slack · Webhook · Email" --> notify
+
+    style login fill:#6c757d,stroke:#495057,color:#fff
+    style pam fill:#577590,stroke:#1d3557,color:#fff
+    style journald fill:#264653,stroke:#1d3557,color:#fff
+    style pamsignal fill:#2d6a4f,stroke:#1b4332,color:#fff
+    style notify fill:#e9c46a,stroke:#f4a261,color:#000
 ```
 
 ### 5.2 PAMSignal Internal Workflow
@@ -518,34 +495,40 @@ systemd provides a unified, modern approach to system management that addresses 
 
 **How it works:**
 
-```
-┌─────────────────────────────────────────────────────────┐
-│                    Log Sources                          │
-├─────────────┬──────────────┬──────────────┬─────────────┤
-│   Kernel    │   Services   │  Applications │   Syslog   │
-│   (kmsg)    │  (stdout)    │  (sd_journal) │  (legacy)  │
-└──────┬──────┴──────┬───────┴──────┬────────┴─────┬──────┘
-       │             │              │              │
-       └─────────────┴──────────────┴──────────────┘
-                         │
-                         ▼
-              ┌──────────────────────┐
-              │  systemd-journald    │
-              │  (Central Collector) │
-              └──────────┬───────────┘
-                         │
-                         ▼
-              ┌──────────────────────┐
-              │   Binary Journal     │
-              │   /var/log/journal/  │
-              │   (Indexed, Sealed)  │
-              └──────────┬───────────┘
-                         │
-         ┌───────────────┼───────────────┐
-         │               │               │
-         ▼               ▼               ▼
-    journalctl      libsystemd      rsyslog
-    (Query CLI)     (Event API)     (Forward)
+```mermaid
+graph TD
+    kernel["Kernel<br/>(kmsg)"]
+    services["Services<br/>(stdout)"]
+    apps["Applications<br/>(sd_journal)"]
+    syslog["Syslog<br/>(legacy)"]
+
+    journald[("systemd-journald<br/>(central collector)")]
+    binary[("Binary journal<br/>/var/log/journal/<br/>indexed · sealed")]
+
+    journalctl["journalctl<br/>(query CLI)"]
+    libsystemd["libsystemd<br/>(event API)"]
+    rsyslog["rsyslog<br/>(forward)"]
+
+    kernel --> journald
+    services --> journald
+    apps --> journald
+    syslog --> journald
+
+    journald --> binary
+
+    binary --> journalctl
+    binary --> libsystemd
+    binary --> rsyslog
+
+    style kernel fill:#4a4e69,stroke:#22223b,color:#fff
+    style services fill:#577590,stroke:#1d3557,color:#fff
+    style apps fill:#577590,stroke:#1d3557,color:#fff
+    style syslog fill:#6c757d,stroke:#495057,color:#fff
+    style journald fill:#264653,stroke:#1d3557,color:#fff
+    style binary fill:#1d3557,stroke:#22223b,color:#fff
+    style journalctl fill:#e9c46a,stroke:#f4a261,color:#000
+    style libsystemd fill:#2d6a4f,stroke:#1b4332,color:#fff
+    style rsyslog fill:#6c757d,stroke:#495057,color:#fff
 ```
 
 **Key Features:**

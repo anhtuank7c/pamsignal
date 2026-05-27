@@ -11,17 +11,21 @@ If you've never used Fail2ban before — that's fine. The guide explains every c
 
 ## What you'll have at the end
 
-```
-Attacker tries SSH login 5 times in 5 minutes
-              │
-              ▼
-PAMSignal writes BRUTE_FORCE_DETECTED to the systemd journal
-              │
-              ▼
-Fail2ban sees the journal entry and runs an iptables/firewalld rule
-              │
-              ▼
-Attacker's IP is dropped at the kernel — they can't reach SSH (or any port) for 24 hours
+```mermaid
+graph TD
+    attacker["Attacker tries SSH login<br/>5 times in 5 minutes"]
+    pamsignal["PAMSignal<br/>writes BRUTE_FORCE_DETECTED<br/>to the systemd journal"]
+    fail2ban["Fail2ban<br/>sees the journal entry<br/>runs iptables / firewalld rule"]
+    kernel["Attacker's IP dropped at the kernel<br/>can't reach SSH (or any port) for 24h"]
+
+    attacker --> pamsignal
+    pamsignal --> fail2ban
+    fail2ban --> kernel
+
+    style attacker fill:#6c757d,stroke:#495057,color:#fff
+    style pamsignal fill:#2d6a4f,stroke:#1b4332,color:#fff
+    style fail2ban fill:#e76f51,stroke:#d62828,color:#fff
+    style kernel fill:#4a4e69,stroke:#22223b,color:#fff
 ```
 
 No log-parsing regex to maintain, no thresholds to keep in sync between two tools. PAMSignal already did the math; Fail2ban just acts on its signal.
@@ -370,32 +374,25 @@ A reload preserves existing bans; a full `restart` clears them.
 
 ## How it works under the hood
 
-```
-┌──────────────────────────┐
-│  sshd, sudo, su, login   │  PAM-stack daemons emit auth events
-└────────────┬─────────────┘
-             │ journald
-             ▼
-┌──────────────────────────┐
-│  systemd journal         │  Structured, queryable, persistent
-└────────────┬─────────────┘
-             │ sd_journal_*  (reads)              ▲
-             ▼                                     │ sd_journal_send (writes)
-┌──────────────────────────┐                       │
-│  PAMSignal daemon        │  Parses, counts,      │
-│                          │  thresholds, alerts ──┘
-└──────────────────────────┘  Writes BRUTE_FORCE_DETECTED back to journal with SYSLOG_IDENTIFIER=pamsignal
-             │
-             ▼
-┌──────────────────────────┐
-│  Fail2ban (this guide)   │  Tails journal with journalmatch=SYSLOG_IDENTIFIER=pamsignal
-│                          │  On regex match, runs `iptables` / `firewall-cmd` / `ufw`
-└────────────┬─────────────┘
-             │
-             ▼
-┌──────────────────────────┐
-│  Kernel netfilter        │  Attacker's IP is dropped before it reaches sshd
-└──────────────────────────┘
+```mermaid
+graph TD
+    sshd["sshd · sudo · su · login<br/>PAM-stack daemons emit auth events"]
+    journal[("systemd journal<br/>structured · queryable · persistent")]
+    pamsignal["PAMSignal daemon<br/>parses · counts · thresholds · alerts"]
+    fail2ban["Fail2ban (this guide)<br/>journalmatch=SYSLOG_IDENTIFIER=pamsignal<br/>runs iptables / firewall-cmd / ufw"]
+    netfilter["Kernel netfilter<br/>attacker's IP dropped before reaching sshd"]
+
+    sshd -- "PAM auth events" --> journal
+    journal -- "sd_journal_* (reads)" --> pamsignal
+    pamsignal -- "sd_journal_send<br/>BRUTE_FORCE_DETECTED" --> journal
+    journal -- "tails for regex match" --> fail2ban
+    fail2ban -- "drop rule" --> netfilter
+
+    style sshd fill:#6c757d,stroke:#495057,color:#fff
+    style journal fill:#264653,stroke:#1d3557,color:#fff
+    style pamsignal fill:#2d6a4f,stroke:#1b4332,color:#fff
+    style fail2ban fill:#e76f51,stroke:#d62828,color:#fff
+    style netfilter fill:#4a4e69,stroke:#22223b,color:#fff
 ```
 
 The two daemons are completely decoupled: PAMSignal doesn't know Fail2ban exists, and Fail2ban doesn't know PAMSignal exists. They communicate through the structured journal, which is durable, multi-reader-safe, and the canonical event log on systemd Linux. If you uninstall Fail2ban tomorrow, PAMSignal keeps working unchanged.
