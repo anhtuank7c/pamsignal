@@ -103,6 +103,30 @@ sudo dnf install pamsignal
 ```
 </details>
 
+<details>
+<summary><strong>Ubuntu 20.04 LTS (Focal, ESM-only)</strong></summary>
+
+20.04 is ESM-only since April 2025 and there's no gh-pages apt pocket for it — but a Focal-targeted `.deb` is built and tested in CI on every release, then attached as a GitHub release asset. Download and install directly:
+
+```bash
+VERSION=0.5.0   # bump per release — see https://github.com/anhtuank7c/pamsignal/releases
+curl -fL -o pamsignal_focal.deb \
+  "https://github.com/anhtuank7c/pamsignal/releases/download/v${VERSION}/pamsignal_${VERSION}-1_focal_amd64.deb"
+
+# Optional: verify the detached signature (signing key fingerprint below)
+curl -fL -o pamsignal_focal.deb.asc \
+  "https://github.com/anhtuank7c/pamsignal/releases/download/v${VERSION}/pamsignal_${VERSION}-1_focal_amd64.deb.asc"
+gpg --verify pamsignal_focal.deb.asc pamsignal_focal.deb
+
+# Install — apt resolves libsystemd0 and other transitive deps from your host's apt sources
+sudo apt install ./pamsignal_focal.deb
+```
+
+To upgrade later, re-run the same recipe with the new `VERSION`. For a fleet, wrap it in a small Ansible / cron / shell script.
+
+> 🕒 **Lifecycle reminder.** Focal exits ESM in April 2030. Plan a migration to 22.04 LTS (Standard Support until April 2027) or 24.04 LTS in the next ~12 months. See [docs/distros.md](./docs/distros.md) for the full support matrix.
+</details>
+
 *Signing key fingerprint: `2D2C 828F A6F4 D019 E446  8FBB B106 2235 2862 2F69`*
 
 ### 2. Configure Alerts

@@ -2,8 +2,14 @@
 
 ## Unreleased
 
+### Packaging
+- [x] **Ubuntu 20.04 (Focal) is now a supported install target via release artifact.** A Focal-targeted `.deb` is built and smoke-tested in CI on every release (`build-deb-focal` + `test-deb-focal` jobs in the release-packages workflow) inside an `ubuntu:20.04` container, then attached to the GitHub release page as `pamsignal_<version>-1_focal_amd64.deb` with a detached `.asc` signature. Operators on 20.04 install with `curl + apt install ./<file>.deb` — no gh-pages apt pocket (rationale: ESM-only since 2025-04-30, per-distroseries repo overhead doesn't pay off for the audience size). Two systemd directives (`ProtectProc`, `ProcSubset`) are logged-and-ignored on Focal's systemd 245; everything else in the hardening unit is honored. `docs/distros.md` updated with the new tiering and the lifecycle deadline (Focal exits ESM April 2030). The previous "Tier 3 — won't work" classification was incorrect; corrected as part of this work.
+
 ### Documentation
 - [x] **`pamsignal.conf(5)` man page added.** Documents every config key, its value range, the mTLS and `webhook_auth_header` validation rules, reload semantics, and security notes. Installed to `<mandir>/man5/` via meson. The forward references in `pamsignal.8` that pointed at "this page when it exists" have been cleaned up.
+- [x] **README install section now includes Ubuntu 20.04.** New `<details>` block with the `curl + gpg --verify + apt install ./<file>.deb` recipe and a lifecycle reminder linking to `docs/distros.md`.
+- [x] **Fail2ban integration guide expanded** from a 3-step stub into a 417-line walkthrough for first-time fail2ban users — install commands for Ubuntu/Debian and CentOS/AlmaLinux/Rocky/Fedora, per-distro `banaction` selection, whitelist-yourself-first step, verification flow (`fail2ban-client status`, `fail2ban-regex`, simulated brute-force), tuning (`bantime`, `bantime.increment`), troubleshooting, and inline links to the official fail2ban wiki.
+- [x] **README quickstart surfaces the two tuning keys operators want on day one** (`alert_cooldown_sec`, `enable_notification_type`) with operator-facing semantics and a cross-link to the full notification-type-filter table in `docs/configuration.md`.
 
 ### Internal
 - [x] **RAII cleanup helpers (`__attribute__((cleanup))`).** New `include/ps_cleanup.h` defines `_cleanup_close_`, `_cleanup_fclose_`, and `_cleanup_free_`. Applied to the three functions with multi-branch close/free ladders: `build_secrets_memfd` and `fire_curl` (notify.c), `open_config_secure` + `ps_config_load` (config.c), and `validate_tls_path` (config.c). No behaviour change.

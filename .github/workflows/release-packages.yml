@@ -194,6 +194,131 @@ jobs:
             out/*.ddeb
             out/*.asc
 
+  # --- Debian / Ubuntu 20.04 LTS (Focal) — release artifact only ---
+  #
+  # Ubuntu 20.04 entered ESM-only support on 2025-04-30. We don't maintain a
+  # focal apt pocket on gh-pages (the per-distroseries repo infrastructure
+  # only pays off above ~30 hosts); instead we ship a Focal-targeted .deb as
+  # a GitHub Release asset so the dwindling set of 20.04 operators can
+  # `curl + apt install ./*.deb` per release. Built inside an ubuntu:20.04
+  # container on a noble runner because GitHub deprecated ubuntu-20.04
+  # runners on 2025-04-01. Note: actions/checkout@v6 and friends require
+  # Node 20 (glibc 2.28+); Focal ships glibc 2.31 so this is fine.
+  build-deb-focal:
+    name: Build .deb (Ubuntu 20.04 / Focal)
+    runs-on: ubuntu-24.04
+    container:
+      image: ubuntu:20.04
+    environment: release
+    needs: verify-versions
+    env:
+      DEBIAN_FRONTEND: noninteractive
+    steps:
+      - name: Install base tooling inside the focal container
+        # ubuntu:20.04 is minimal — git/curl/gnupg/ca-certificates aren't
+        # preinstalled. checkout, signing, and gh-release upload all need them.
+        run: |
+          apt-get update -qq
+          apt-get install -y --no-install-recommends \
+            ca-certificates curl git gnupg
+
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.inputs.ref || github.ref }}
+          fetch-depth: 0
+
+      - name: Install build dependencies
+        run: |
+          apt-get install -y --no-install-recommends \
+            build-essential debhelper meson ninja-build pkg-config \
+            libsystemd-dev libcmocka-dev
+
+      - name: Show toolchain
+        run: |
+          cat /etc/os-release | grep -E '^(NAME|VERSION)='
+          dpkg-buildpackage --version | head -1
+          meson --version
+          gcc --version | head -1
+          # Confirm we're linking against Focal's libsystemd (245), not Noble's
+          # (255). The shlibs:Depends generated for the .deb will pin against
+          # whatever version is in this column.
+          dpkg -s libsystemd-dev | grep -E '^(Package|Version):'
+
+      - name: Build .deb (runs `meson test` via dh_auto_test)
+        run: dpkg-buildpackage -us -uc -b
+
+      - name: Collect and rename artifacts with focal qualifier
+        run: |
+          mkdir -p out
+          # Rename pamsignal_<ver>-<rev>_amd64.deb →
+          #        pamsignal_<ver>-<rev>_focal_amd64.deb
+          # so the asset is distinguishable from the noble .deb on the GitHub
+          # release page. Package internals (control fields, version) are
+          # unchanged — only the asset filename gets the focal qualifier.
+          for f in ../pamsignal_*_amd64.deb ../pamsignal_*_amd64.ddeb; do
+            [ -f "$f" ] || continue
+            base=$(basename "$f")
+            new=${base/_amd64./_focal_amd64.}
+            mv "$f" "out/$new"
+          done
+          for f in ../pamsignal_*.changes ../pamsignal_*.buildinfo; do
+            [ -f "$f" ] || continue
+            base=$(basename "$f")
+            new=${base/_amd64./_focal_amd64.}
+            mv "$f" "out/$new"
+          done
+          ls -la out/
+
+      - name: Inspect package
+        run: |
+          deb=$(ls out/pamsignal_*_focal_amd64.deb | head -1)
+          echo "::group::dpkg-deb -I"
+          dpkg-deb -I "$deb"
+          echo "::endgroup::"
+          # Surface the libsystemd0 pin so the release log makes the focal
+          # vs noble distinction visible to anyone debugging install issues.
+          echo "::group::Runtime Depends"
+          dpkg-deb -f "$deb" Depends
+          echo "::endgroup::"
+
+      - name: Sign artifacts (detached .asc per file)
+        if: github.event_name == 'release' || inputs.attach_to_release == 'true'
+        env:
+          GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+          GPG_KEY_ID: ${{ secrets.GPG_KEY_ID }}
+        run: |
+          mkdir -p ~/.gnupg && chmod 700 ~/.gnupg
+          echo "allow-loopback-pinentry" >> ~/.gnupg/gpg-agent.conf
+          gpgconf --kill gpg-agent || true
+          printf '%s' "$GPG_PRIVATE_KEY" | gpg --batch --import
+          for f in out/*.deb out/*.ddeb; do
+            [ -f "$f" ] || continue
+            gpg --batch --pinentry-mode loopback \
+                --passphrase "$GPG_PASSPHRASE" \
+                --default-key "$GPG_KEY_ID" \
+                --detach-sign --armor -o "$f.asc" "$f"
+          done
+          ls -la out/*.asc
+
+      - name: Upload workflow artifact (90-day retention)
+        uses: actions/upload-artifact@v7
+        with:
+          name: pamsignal-deb-focal-${{ github.run_number }}
+          path: out/*
+          if-no-files-found: error
+
+      - name: Attach to GitHub release
+        if: github.event_name == 'release' || inputs.attach_to_release == 'true'
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ github.event_name == 'release' && github.ref_name || inputs.ref }}
+          files: |
+            out/*.deb
+            out/*.ddeb
+            out/*.asc
+
   # --- RPM builds (Fedora + EL9) ---
   #
   # Matrix produces:
@@ -396,8 +521,10 @@ jobs:
   # job into a strategy.matrix over runs-on: [ubuntu-22.04, ubuntu-24.04,
   # ubuntu-26.04 (when available)] and ensuring the deb's libsystemd
   # dependency string is satisfiable on each (which probably means
-  # building a separate .deb per target). Tracked in docs/distros.md
-  # under "Adding a distribution to Tier 1".
+  # building a separate .deb per target — see the build-deb-focal /
+  # test-deb-focal pair below for a working precedent that uses a
+  # container per distroseries on a single host runner). Tracked in
+  # docs/distros.md under "Adding a distribution to Tier 1".
   test-deb:
     name: Test .deb (install + functional + uninstall)
     runs-on: ubuntu-24.04
@@ -678,6 +805,87 @@ jobs:
           [ ! -f /usr/share/man/man8/pamsignal.8.gz ]
           # The pamsignal user is intentionally retained (it may own journal
           # entries written while the daemon was alive).
+          getent passwd pamsignal >/dev/null && \
+            echo "pamsignal user retained as expected"
+
+  # --- Test: install the Focal .deb in an ubuntu:20.04 container ---
+  #
+  # Light-weight install + file-layout + smoke-launch + purge check. We can't
+  # run the full e2e suite here because containers don't run systemd as PID 1
+  # (no `systemctl is-active`, no `systemd-analyze security`, no real sshd
+  # service to drive auth events through). The full daemon behavior is
+  # already verified by the test-deb job above on 24.04 — the source code
+  # is identical, only the libsystemd0 dependency pin differs. This job
+  # exists to catch packaging-level regressions specific to Focal (wrong
+  # paths, broken postinst, missing man page, dependency string that doesn't
+  # resolve on a real focal apt index).
+  test-deb-focal:
+    name: Test .deb on Ubuntu 20.04 (install + smoke + uninstall)
+    runs-on: ubuntu-24.04
+    needs: build-deb-focal
+    container:
+      image: ubuntu:20.04
+    env:
+      DEBIAN_FRONTEND: noninteractive
+    steps:
+      - name: Install base tooling
+        run: |
+          apt-get update -qq
+          apt-get install -y --no-install-recommends ca-certificates curl
+
+      - name: Download .deb artifact
+        uses: actions/download-artifact@v7
+        with:
+          name: pamsignal-deb-focal-${{ github.run_number }}
+          path: ./out
+
+      - name: Install pamsignal
+        run: |
+          # `apt-get install ./<file>.deb` (not `dpkg -i`) resolves transitive
+          # runtime deps (libsystemd0, libc6, etc.) from the host's configured
+          # apt sources. This is the exact command operators will run.
+          apt-get install -y --no-install-recommends \
+            ./out/pamsignal_*_focal_amd64.deb
+          which pamsignal
+          pamsignal --version
+
+      - name: Verify file layout and metadata
+        run: |
+          test -x /usr/bin/pamsignal
+          test -f /usr/lib/systemd/system/pamsignal.service
+          test -f /etc/pamsignal/pamsignal.conf
+          grep -q '^ExecStart=/usr/bin/pamsignal' \
+            /usr/lib/systemd/system/pamsignal.service
+          # Config perms set by postinst
+          perms=$(stat -c '%U:%G %a' /etc/pamsignal/pamsignal.conf)
+          echo "Config perms: $perms"
+          [ "$perms" = "root:pamsignal 640" ]
+          # Both man pages installed and compressed by dh_compress.
+          # The conf(5) page landed in 0.6.x — present on every release after.
+          test -f /usr/share/man/man8/pamsignal.8.gz
+          test -f /usr/share/man/man5/pamsignal.conf.5.gz
+          zcat /usr/share/man/man8/pamsignal.8.gz | head -3 | grep -q 'pamsignal '
+
+      - name: Smoke-launch the binary
+        run: |
+          # No systemd PID 1 in container → can't exercise the unit. Just
+          # confirm the binary starts and exits cleanly on its safe flag
+          # paths. `--foreground` would try to open the journal; in a
+          # container journald isn't running, so we expect a non-zero exit
+          # within ~2s, which is fine — the test is "doesn't crash before
+          # arg parsing".
+          pamsignal --version
+          timeout 2 pamsignal --foreground 2>&1 | head -5 || true
+          echo "binary launches and parses arguments on Focal"
+
+      - name: Purge pamsignal and verify cleanup
+        run: |
+          apt-get purge -y pamsignal
+          ! command -v pamsignal
+          [ ! -f /usr/lib/systemd/system/pamsignal.service ]
+          [ ! -d /etc/pamsignal ]
+          [ ! -f /usr/share/man/man8/pamsignal.8.gz ]
+          [ ! -f /usr/share/man/man5/pamsignal.conf.5.gz ]
           getent passwd pamsignal >/dev/null && \
             echo "pamsignal user retained as expected"
 
