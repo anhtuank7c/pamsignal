@@ -13,8 +13,9 @@
 
 Design rationale lives in `docs/grafana-integration.md` (schema, label cardinality plan, dashboard story, LogQL query patterns, deliverable layout, success criteria). No PAMSignal daemon changes — the integration consumes the ECS structured fields PAMSignal already emits via `sd_journal_send()`.
 
-- [ ] Submit `pamsignal-v1.json` to [grafana.com/grafana/dashboards](https://grafana.com/grafana/dashboards/) (manual, post-merge)
-- [ ] Launch posts: r/selfhosted, r/sysadmin, r/grafana, Show HN
+The repo ships the canonical dashboard JSON (`examples/grafana/dashboards/pamsignal-v1.grafana-com.json`), which powers Grafana's UI Import directly. Submitting to grafana.com and the social-launch push are deliberately deferred — the dashboard is daemon-coupled, so the primary distribution funnel is "install PAMSignal → dashboard ships in `examples/grafana/`", not marketplace discovery. Both remain a 5-minute step if an audience materializes.
+
+Also: all ASCII architecture diagrams across the docs (Grafana integration, Fail2ban guide, systemd-journal notes) converted to Mermaid with a unified colour palette matching the main README.
 
 ## 0.6.1 — 2026-05-27
 
