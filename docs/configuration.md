@@ -1,5 +1,7 @@
 # Configuration
 
+> 🌐 **English** · [Tiếng Việt](vi/configuration.md)
+
 `/etc/pamsignal/pamsignal.conf` — INI-style, zero dependencies. All values are optional; sane defaults apply if the file is missing or a key is absent.
 
 Since this file may contain alert credentials, it should have restricted permissions:

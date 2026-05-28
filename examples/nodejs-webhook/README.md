@@ -1,5 +1,7 @@
 # PAMSignal Node.js Webhook Receiver
 
+> 🌐 **English** · [Tiếng Việt](../../docs/vi/examples/nodejs-webhook.md)
+
 This is a ready-to-use example of a Custom Webhook receiver built with **TypeScript**, Node.js, and Express. It receives structured ECS JSON alerts from PAMSignal and processes them.
 
 This example incorporates Express best practices, including:

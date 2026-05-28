@@ -1,5 +1,7 @@
 # Deployment
 
+> 🌐 **English** · [Tiếng Việt](vi/deployment.md)
+
 ## Install
 
 The recommended path is the published `.deb` or `.rpm` from the project repo (the same one-liners in the [README quick start](../README.md#1-install)). The packages create the `pamsignal` system user, set the config-file permissions to `root:pamsignal 0640`, and arm the systemd unit for you — when you install via `apt` or `dnf` you can skip straight to [Configure](#configure).

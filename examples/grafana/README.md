@@ -1,5 +1,7 @@
 # PAMSignal — Grafana integration
 
+> 🌐 **English** · [Tiếng Việt](../../docs/vi/examples/grafana.md)
+
 Fleet-wide SSH/sudo/su/login monitoring for PAMSignal, in Grafana.
 
 ![PAMSignal dashboard](../../assets/grafana-dashboard.png)

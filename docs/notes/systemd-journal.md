@@ -1,5 +1,7 @@
 # Journal Subscriber
 
+> 🌐 **English** · [Tiếng Việt](../vi/notes/systemd-journal.md)
+
 - **Status**: Completed
 - **Start Date**: 27/12/2025
 - **Completion Date**: 17/02/2026

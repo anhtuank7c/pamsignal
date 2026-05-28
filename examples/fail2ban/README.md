@@ -1,5 +1,7 @@
 # Fail2ban Integration Guide
 
+> 🌐 **English** · [Tiếng Việt](../../docs/vi/examples/fail2ban.md)
+
 This guide walks you through setting up [Fail2ban](https://github.com/fail2ban/fail2ban) so that whenever PAMSignal detects a brute-force attack, the attacker's IP is automatically blocked at the firewall. Examples cover **Ubuntu 22.04+ / Debian 12+** and **CentOS Stream 9 / AlmaLinux 9 / Rocky Linux 9** (same commands work on Fedora 40+ too).
 
 If you've never used Fail2ban before — that's fine. The guide explains every concept as it introduces it.

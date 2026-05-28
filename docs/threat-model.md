@@ -1,5 +1,7 @@
 # Threat Model
 
+> 🌐 **English** · [Tiếng Việt](vi/threat-model.md)
+
 This document describes what PAMSignal defends against, what it deliberately does not, and the design choices that produce that posture. It is the reference for evaluating future contributions: a change that strengthens an in-scope mitigation is welcome; a change that pulls work into the daemon from an out-of-scope area is not, even if it would be technically possible.
 
 For private vulnerability reporting, see [`SECURITY.md`](../SECURITY.md). The two documents are complementary — `SECURITY.md` is operator-facing (how to report, what versions are supported); this document is contributor-facing (what the daemon's responsibilities are and what they aren't).

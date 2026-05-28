@@ -1,5 +1,7 @@
 # Alerts
 
+> 🌐 **English** · [Tiếng Việt](vi/alerts.md)
+
 PAMSignal sends best-effort alerts to messaging platforms when login events or brute-force patterns are detected. Alerts are sent via `fork()+exec(curl)` — a short-lived child process that cannot affect the core monitoring.
 
 If an alert fails (network down, API error, timeout), pamsignal logs a warning and continues. The event is always persisted in the journal first.

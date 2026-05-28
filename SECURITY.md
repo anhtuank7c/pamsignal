@@ -1,5 +1,7 @@
 # Security Policy
 
+> 🌐 **English** · [Tiếng Việt](docs/vi/SECURITY.md)
+
 PAMSignal is a security-monitoring daemon. A vulnerability in the daemon itself — bypass of the brute-force tracker, alert spoofing, log injection, privilege escalation, memory corruption — is treated as a high-priority defect. This document describes how to report one privately and what to expect once you do.
 
 ## Reporting a Vulnerability

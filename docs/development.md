@@ -1,5 +1,7 @@
 # Development Guide
 
+> 🌐 **English** · [Tiếng Việt](vi/development.md)
+
 ## Prerequisites
 
 ```bash

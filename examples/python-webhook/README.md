@@ -1,5 +1,7 @@
 # PAMSignal Python Webhook Receiver
 
+> 🌐 **English** · [Tiếng Việt](../../docs/vi/examples/python-webhook.md)
+
 This is a ready-to-use example of a Custom Webhook receiver built with **Python** and **Flask**. It receives structured ECS JSON alerts from PAMSignal and processes them. It is the Python counterpart to the `examples/nodejs-webhook/` example and exposes the same endpoint contract, env vars, and mTLS behavior.
 
 This example incorporates:

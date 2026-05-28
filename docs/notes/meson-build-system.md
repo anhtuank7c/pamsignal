@@ -1,5 +1,7 @@
 # Meson & Ninja: Build Tools
 
+> 🌐 **English** · [Tiếng Việt](../vi/notes/meson-build-system.md)
+
 - **Status**: Completed
 - **Start Date**: 20/02/2026
 - **Completion Date**: 20/02/2026
