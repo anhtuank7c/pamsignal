@@ -1,5 +1,7 @@
 # Grafana Integration — Design
 
+> 🌐 **English** · [Tiếng Việt](vi/grafana-integration.md)
+
 This document is the locked design for the PAMSignal Grafana integration, tracked in [issue #25](https://github.com/anhtuank7c/pamsignal/issues/25). Implementation artifacts live under `examples/grafana/`.
 
 The goal: an operator with 5+ Linux hosts and zero Loki experience can go from `apt install pamsignal` to a working fleet-wide auth dashboard in under 30 minutes.

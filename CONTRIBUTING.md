@@ -1,5 +1,7 @@
 # Contributing to PAMSignal
 
+> 🌐 **English** · [Tiếng Việt](docs/vi/CONTRIBUTING.md)
+
 Thanks for your interest. PAMSignal is a small C daemon with a tight focus on detecting PAM auth events and dispatching alerts; the deliberately narrow scope is part of the project's threat model. Please read [`docs/threat-model.md`](./docs/threat-model.md) before proposing a feature — it's the reference for whether a change strengthens an in-scope mitigation or pulls work into the daemon from an out-of-scope area.
 
 This document covers how to make code, doc, and packaging contributions. For:

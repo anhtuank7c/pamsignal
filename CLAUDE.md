@@ -36,6 +36,7 @@ journalctl -t pamsignal -f
 - `src/` — 6 C modules: main, config, init, journal_watch, notify, utils
 - `include/` — corresponding headers
 - `docs/` — architecture, configuration, alerts, development, deployment guides
+- `docs/vi/` — Vietnamese mirror of all user-facing docs (see Documentation rule)
 - `meson.build` — build configuration
 - `pamsignal.service` — systemd unit file
 - `pamsignal.conf.example` — config template
@@ -50,6 +51,24 @@ journalctl -t pamsignal -f
 - **Types:** `_t` suffix for structs and enums (e.g., `ps_pam_event_t`, `ps_event_type_t`)
 - **Error handling:** Return code enums (`PS_OK`, `PS_ERR_*`), early returns
 - **Logging:** `sd_journal_print()` / `sd_journal_send()` — not printf/syslog
+
+## Documentation (Bilingual EN/VI)
+
+Every user-facing Markdown doc exists in **both English and Vietnamese**. English is the source of truth; Vietnamese is a mirror under `docs/vi/`.
+
+**Rule: whenever you add or edit any English doc, update its Vietnamese counterpart in the same change.** The two must never drift. When you add a brand-new English doc, create the matching `docs/vi/` file and wire up the language switcher both ways.
+
+- **Layout** — the Vietnamese tree mirrors the English one under `docs/vi/`:
+  - `README.md` → `docs/vi/README.md`, `SECURITY.md` → `docs/vi/SECURITY.md`, `CONTRIBUTING.md` → `docs/vi/CONTRIBUTING.md`
+  - `docs/<name>.md` → `docs/vi/<name>.md`
+  - `docs/notes/<name>.md` → `docs/vi/notes/<name>.md`
+  - `examples/<name>/README.md` → `docs/vi/examples/<name>.md`
+- **Language switcher** — first line after the H1 of every doc (both EN and VI), as a blockquote:
+  - EN file: `> 🌐 **English** · [Tiếng Việt](<relative-path-to-vi>)`
+  - VI file: `> 🌐 [English](<relative-path-to-en>) · **Tiếng Việt**`
+- **Translation style** — natural Vietnamese for a sysadmin/developer audience, not stiff machine translation. Keep ALL technical terms, identifiers, config keys, CLI flags, file paths, code blocks, shell commands, URLs, and Mermaid/ASCII diagrams in English / verbatim. Translate only prose, heading text, and table prose. Structure stays 1:1 (same heading levels, section count, anchors).
+- **Links inside VI docs** — links to other translated docs point to their VI counterparts; links to non-translated files (source, `CHANGELOG.md`, `LICENSE`, `assets/`, `.claude/`) point to the real file with the relative depth recomputed for the deeper `docs/vi/` location. Cross-document anchor links must target the **translated heading's slug** (a Vietnamese heading produces a Vietnamese, diacritics-included slug).
+- **Not mirrored** — `CHANGELOG.md`, `LICENSE`, source code. `docs/launch-posts/` is already bilingual by design.
 
 ## Security Requirements
 

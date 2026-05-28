@@ -1,5 +1,7 @@
 # Supported Linux Distributions
 
+> 🌐 **English** · [Tiếng Việt](vi/distros.md)
+
 PAMSignal is designed for modern systemd-native Linux. Older releases either don't have the libc functions the daemon calls (`memfd_create`, used for credential isolation in the alert dispatch path), don't have the systemd unit directives the project's hardening relies on (`ProcSubset=pid`, `ProtectProc=invisible`, `ProtectClock=`, `ProtectHostname=`, `RestrictNamespaces=`, the `@system-service` syscall set), or don't have a recent enough debhelper to build the package. This document is the canonical reference for "will pamsignal run on my host?" and is referenced from [`SECURITY.md`](../SECURITY.md) and the [README](../README.md) docs index.
 
 The support tiers below have different meanings and different commitments:

@@ -1,5 +1,7 @@
 # PAMSignal Webhook Bruno Collection
 
+> 🌐 **English** · [Tiếng Việt](../../docs/vi/examples/bruno-collection.md)
+
 Ready-to-use [Bruno](https://www.usebruno.com/) requests for testing any PAMSignal webhook receiver — the [Node.js example](../nodejs-webhook/), the [Python example](../python-webhook/), or any other implementation of the same `POST /webhook/pamsignal` contract.
 
 Tested with **Bruno ≥ 3.3.0**.

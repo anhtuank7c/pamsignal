@@ -1,5 +1,7 @@
 # Step 1 - Initialize (Project Initialization)
 
+> 🌐 **English** · [Tiếng Việt](../vi/notes/project-initialization.md)
+
 - **Status**: Completed
 - **Start Date**: 26/12/2025
 - **Completion Date**: 26/12/2025

@@ -1,5 +1,7 @@
 # Shared mTLS Demo Certs
 
+> 🌐 **English** · [Tiếng Việt](../../docs/vi/examples/shared-certs.md)
+
 A single, self-contained CA + server cert + client cert used by all three example projects to demonstrate the PAMSignal webhook's mTLS path. **Local/demo only — never use these certs in production.**
 
 ## What's here

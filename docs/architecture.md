@@ -1,5 +1,7 @@
 # Architecture
 
+> 🌐 **English** · [Tiếng Việt](vi/architecture.md)
+
 PAMSignal is designed around one core principle: **do one thing well with minimal moving parts.**
 
 It subscribes to the systemd journal, filters for PAM-related messages from sshd, sudo, su, and login, parses each message to extract structured data (username, source IP, port, service, auth method), and writes structured events back to the journal with custom fields. It tracks failed login attempts per IP and detects brute-force patterns. Optionally, it sends best-effort alerts to messaging platforms without risking the core monitoring.
