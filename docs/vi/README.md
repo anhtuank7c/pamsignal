@@ -2,9 +2,12 @@
 
 > 🌐 [English](../../README.md) · **Tiếng Việt**
 
+[![CI](https://github.com/anhtuank7c/pamsignal/actions/workflows/ci.yml/badge.svg)](https://github.com/anhtuank7c/pamsignal/actions/workflows/ci.yml)
+![Release](https://img.shields.io/github/v/release/anhtuank7c/pamsignal)
 ![License](https://img.shields.io/github/license/anhtuank7c/pamsignal)
 ![Language](https://img.shields.io/badge/Language-C-orange)
 ![Platform](https://img.shields.io/badge/Platform-Linux-lightgrey)
+![Stars](https://img.shields.io/github/stars/anhtuank7c/pamsignal)
 
 PAMSignal là một login monitor nhẹ, zero-dependency cho Linux server. Nó theo dõi systemd journal để bắt các sự kiện PAM authentication và gửi cảnh báo real-time tới các nền tảng nhắn tin bạn yêu thích.
 
