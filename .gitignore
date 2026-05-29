@@ -2,6 +2,7 @@ archive/
 bin/
 build/
 build-*/
+obj-debian/
 .vscode/
 *.o
 *.log
