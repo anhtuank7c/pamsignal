@@ -1,0 +1,53 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024" role="img" aria-labelledby="title desc">
+  <title id="title">PAMSignal</title>
+  <desc id="desc">PAMSignal logo — auth-event signal peaks with wordmark</desc>
+
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#0A1628"/>
+      <stop offset="100%" stop-color="#050B17"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="1024" height="1024" rx="180" fill="url(#bg)"/>
+
+  <g transform="translate(0, -60)">
+    <!-- console baseline -->
+    <line x1="220" y1="500" x2="804" y2="500" stroke="#F59E0B" stroke-width="2" opacity="0.40"/>
+
+    <!-- broadcast arcs above the central spike (alert dispatch) -->
+    <g fill="none" stroke="#FBBF24" stroke-linecap="round">
+      <path d="M 452 200 A 70 70 0 0 1 572 200" stroke-width="3" opacity="0.55"/>
+      <path d="M 412 180 A 110 110 0 0 1 612 180" stroke-width="2.5" opacity="0.30"/>
+      <path d="M 372 160 A 150 150 0 0 1 652 160" stroke-width="2" opacity="0.16"/>
+    </g>
+
+    <!-- three signal-pulse peaks (auth events on the journal) -->
+    <polygon fill="#0E7490" points="260,500 340,320 420,500"/>
+    <polygon fill="#22D3EE" points="370,500 512,220 654,500"/>
+    <polygon fill="#0E7490" points="610,500 690,340 770,500"/>
+
+    <!-- apex markers — each detected PAM event -->
+    <circle cx="340" cy="320" r="6"  fill="#FBBF24"/>
+    <circle cx="512" cy="220" r="9"  fill="#FBBF24"/>
+    <circle cx="690" cy="340" r="6"  fill="#FBBF24"/>
+
+    <!-- mirror reflection — the journal stream beneath the surface -->
+    <g opacity="0.28">
+      <polygon fill="#0E7490" points="260,500 340,640 420,500"/>
+      <polygon fill="#22D3EE" points="370,500 512,700 654,500"/>
+      <polygon fill="#0E7490" points="610,500 690,620 770,500"/>
+    </g>
+  </g>
+
+  <!-- wordmark -->
+  <text x="512" y="780" text-anchor="middle"
+        font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif"
+        font-size="130" font-weight="600" fill="#F5F1EA" letter-spacing="-5">pamsignal</text>
+
+  <!-- category tag pill -->
+  <rect x="397" y="820" width="230" height="34" rx="17" fill="none" stroke="#FBBF24" stroke-width="2"/>
+  <text x="512" y="845" text-anchor="middle"
+        font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif"
+        font-size="20" font-weight="500" fill="#FBBF24" letter-spacing="5">AUTH MONITOR</text>
+</svg>

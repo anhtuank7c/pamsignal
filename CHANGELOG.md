@@ -17,6 +17,15 @@ The repo ships the canonical dashboard JSON (`examples/grafana/dashboards/pamsig
 
 Also: all ASCII architecture diagrams across the docs (Grafana integration, Fail2ban guide, systemd-journal notes) converted to Mermaid with a unified colour palette matching the main README.
 
+**Onboarding & visibility docs (EN + VI).** Reworked the README and added three reader-facing guides so PAMSignal is approachable for non-experts, not just sysadmins:
+
+- `README.md` — restructured the landing funnel: project logo, a plain-language "smoke detector for your servers' front door" framing, an "Is PAMSignal for you?" audience block (solo / small team / hosting providers), a "What you'll actually see" sample-alert showcase, and a "Where PAMSignal fits" four-layer defence-in-depth table that reinforces the Layer-3 detection scope. Acknowledgments moved below the documentation index so newcomers hit the value proposition and quick start first. Doc index split into **Guides** (start here) and **Reference**.
+- `docs/ssh-hardening.md` — "Secure SSH & Manage a Fleet": key-only auth + `sshd_config` drop-in hardening (the Layer-1 prevention PAMSignal watches but never modifies), managing 1–50 servers from one `~/.ssh/config` with `ProxyJump`/bastion, and a fleet rollout (loop + Ansible playbook with per-host `provider`/`service_name` context tags).
+- `docs/grafana-getting-started.md` — "Grafana from Zero" for operators who've never used Grafana: plain-language Grafana/Loki/Alloy intro, full Grafana Cloud **and** self-host setup paths, and a panel-by-panel "Reading your dashboard" section (what's normal / what's alarming / what to do) — the friendly companion to the existing `examples/grafana/` reference.
+- `docs/use-cases.md` — "Use Cases & Integrations": audience playbooks (solo, small team, and a full small-hosting-provider/MSP playbook — per-customer alert routing, multi-tenant Grafana, white-label webhook, value-add tiers, honest scope boundaries) plus an "if you already run X" integration map (SIEM via ECS webhook, Grafana/Loki, Fail2ban/CrowdSec, Ansible, PagerDuty, custom receiver).
+
+Every new doc has a 1:1 Vietnamese mirror under `docs/vi/` with the language switcher wired both ways, per the bilingual documentation rule. The README also gains a project logo (`assets/pamsignal-logo.png`, rasterised from the SVG source) shown above the title.
+
 ## 0.6.1 — 2026-05-27
 
 Patch release. Adds the long-missing `--help` / `-h` flag — pamsignal had `--version` since 0.4.1, but `--help` was an unfilled gap relative to GNU coding-standards baseline for Linux CLIs. The new flag prints a complete usage summary (every option, default config path, canonical files, pointers to `pamsignal(8)` and `pamsignal.conf(5)`), goes to stdout, exits 0, and runs before any privilege/journal-access check — so package post-install scripts, smoke tests, and plain-operator invocations all work regardless of context. The `pamsignal(8)` man page now also documents both `-V/--version` and `-h/--help` explicitly in the OPTIONS section (previously `--version` was only in SYNOPSIS).
