@@ -7,7 +7,7 @@ Hướng dẫn này trình bày từng bước cách cấu hình [Fail2ban](http
 Nếu bạn chưa từng dùng Fail2ban — không sao cả. Hướng dẫn này giải thích từng khái niệm ngay khi đề cập đến nó.
 
 > **Thời gian cần thiết:** ~10 phút.
-> **Điều kiện tiên quyết:** PAMSignal đã được cài đặt và bạn đã thấy ít nhất một dòng `pamsignal:` trong `journalctl -t pamsignal` (tức là daemon đang chạy). Nếu chưa, hãy hoàn tất phần [Quickstart](../README.md#bắt-đầu-nhanh) trước.
+> **Điều kiện tiên quyết:** PAMSignal đã được cài đặt và bạn đã thấy ít nhất một dòng `pamsignal:` trong `journalctl -t pamsignal` (tức là daemon đang chạy). Nếu chưa, hãy hoàn tất phần [Quickstart](../README.md#-bắt-đầu-nhanh) trước.
 
 ---
 
