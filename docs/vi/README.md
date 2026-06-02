@@ -267,4 +267,4 @@ Dự án này sẽ trông rất khác — hoặc không tồn tại — nếu th
 
 ## 🤖 Xây dựng với sự cộng tác của AI
 
-Dự án này được xây dựng với sự hỗ trợ của AI ([Claude Code](https://claude.ai/claude-code)). Mình công khai về quy trình này: AI bắt các edge case, dẫn dắt quyết định kiến trúc, và thậm chí đã thực hiện [đợt review bảo mật OWASP ASVS 5.0](../../.claude/skills/owasp-review/SKILL.md) giúp hardening dự án. Thư mục `.claude/` được commit vào repo này để bạn có thể kiểm tra chính xác cách AI được sử dụng. Con người test trên hệ thống thật và chịu trách nhiệm cho việc ship.
+Dự án này được xây dựng với sự hỗ trợ của AI ([Claude Code](https://claude.ai/claude-code)). Mình công khai về quy trình này: AI bắt các edge case, dẫn dắt quyết định kiến trúc, và thậm chí đã thực hiện [đợt review bảo mật OWASP ASVS 5.0](../../.claude/skills/owasp-asvs/SKILL.md) giúp hardening dự án. Thư mục `.claude/` được commit vào repo này để bạn có thể kiểm tra chính xác cách AI được sử dụng. Con người test trên hệ thống thật và chịu trách nhiệm cho việc ship.

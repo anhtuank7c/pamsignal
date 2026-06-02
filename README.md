@@ -267,4 +267,4 @@ Kept me reading and kept me building. He sent me books on Linux internals at exa
 
 ## 🤖 Built with AI Collaboration
 
-This project is built with AI assistance ([Claude Code](https://claude.ai/claude-code)). I am open about this workflow: AI catches edge cases, guides architectural decisions, and even performed the [OWASP ASVS 5.0 security review](.claude/skills/owasp-review/SKILL.md) that hardened this project. The `.claude/` directory is committed to this repo so you can inspect exactly how AI is utilized here. Humans test on real systems and take responsibility for shipping.
+This project is built with AI assistance ([Claude Code](https://claude.ai/claude-code)). I am open about this workflow: AI catches edge cases, guides architectural decisions, and even performed the [OWASP ASVS 5.0 security review](.claude/skills/owasp-asvs/SKILL.md) that hardened this project. The `.claude/` directory is committed to this repo so you can inspect exactly how AI is utilized here. Humans test on real systems and take responsibility for shipping.

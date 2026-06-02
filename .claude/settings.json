@@ -1,0 +1,81 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(meson setup:*)",
+      "Bash(meson compile:*)",
+      "Bash(meson install:*)",
+      "Bash(meson test:*)",
+      "Bash(ninja -C build)",
+      "Bash(command -v ninja)",
+      "Bash(pkg-config:*)",
+      "Bash(dpkg -L libsystemd-dev)",
+      "Bash(readelf -l build/pamsignal)",
+      "Bash(readelf -d build/pamsignal)",
+      "Bash(readelf -h build/pamsignal)",
+      "Bash(checksec --file=build/pamsignal)",
+
+      "Bash(clang-format:*)",
+      "Bash(clang-tidy:*)",
+
+      "Bash(./build/pamsignal --help)",
+      "Bash(systemctl is-active:*)",
+      "Bash(journalctl:*)",
+      "Bash(sudo useradd:*)",
+      "Bash(sudo usermod:*)",
+
+      "Bash(dpkg -l)",
+      "Bash(apt list:*)",
+      "Bash(sudo apt-get:*)",
+      "Bash(brew list *)",
+      "Bash(command -v docker)",
+      "Bash(docker info *)",
+      "Bash(docker run *)",
+
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(git pull:*)",
+      "Bash(git fetch *)",
+      "Bash(git merge *)",
+      "Bash(git checkout *)",
+      "Bash(git stash:*)",
+      "Bash(git remote:*)",
+      "Bash(git mv:*)",
+      "Bash(git check-ignore *)",
+      "Bash(gh auth:*)",
+      "Bash(gh api *)",
+      "Bash(gh pr *)",
+      "Bash(gh issue *)",
+      "Bash(gh release *)",
+      "Bash(gh run *)",
+      "Bash(gh workflow *)",
+
+      "Bash(pnpm --version)",
+      "Bash(pnpm install *)",
+      "Bash(pnpm update *)",
+      "Bash(pnpm test *)",
+      "Bash(pnpm config *)",
+      "Bash(npm view *)",
+
+      "Bash(wc:*)",
+      "Bash(head:*)",
+      "Bash(chmod:*)",
+      "Bash(python3 -m json.tool)",
+
+      "Read(//tmp/**)",
+      "Read(//opt/homebrew/**)",
+
+      "WebSearch",
+      "WebFetch(domain:wiki.archlinux.org)",
+      "WebFetch(domain:docs.flatpak.org)",
+      "WebFetch(domain:snapcraft.io)",
+      "WebFetch(domain:fedoraproject.org)",
+      "WebFetch(domain:rpm-packaging-guide.github.io)",
+      "WebFetch(domain:docs.appimage.org)",
+      "WebFetch(domain:documentation.ubuntu.com)",
+      "WebFetch(domain:openbuildservice.org)",
+
+      "Skill(senior-linux-developer)"
+    ]
+  }
+}

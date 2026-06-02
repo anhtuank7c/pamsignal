@@ -25,3 +25,10 @@ debian/pamsignal/
 debian/*.substvars
 debian/*.debhelper.log
 debian/*.debhelper
+
+# macOS Finder metadata
+.DS_Store
+
+# Claude Code: shared config lives in .claude/settings.json (tracked).
+# settings.local.json is per-developer/machine-local and stays out of the repo.
+.claude/settings.local.json
