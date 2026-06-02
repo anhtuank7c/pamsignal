@@ -1,0 +1,86 @@
+{
+  "name": "owasp-asvs",
+  "description": "Smoke tests for the owasp-asvs skill on the PAMSignal C daemon. Each case checks that the skill is invoked with the right scope confirmation, marks non-applicable chapters explicitly N/A, and produces V-ID-tagged findings citing real PAMSignal helpers (sanitize_string, json_escape, validate_tls_path, ps_is_trusted_exe, build_secrets_memfd) rather than generic advice.",
+  "cases": [
+    {
+      "id": "full-l1-audit-en",
+      "input": "Run an OWASP ASVS audit on this repo. L1 baseline.",
+      "expect": [
+        "skill is invoked",
+        "scope confirmed: L1, all applicable chapters (V1, V2, V5, V11, V12, V13, V14, V15, V16), against src/ + include/ + meson.build + pamsignal.service",
+        "report uses the markdown structure from SKILL.md §4 Step 4",
+        "every finding row has a V-ID like V15.3.3",
+        "V3, V4, V6, V7, V8, V9, V10, V17 are all marked N/A with one-line rationales, not silently skipped",
+        "fix suggestions cite sanitize_string / json_escape / validate_tls_path / build_secrets_memfd / ps_is_trusted_exe / PS_FMT_OK when applicable"
+      ]
+    },
+    {
+      "id": "single-chapter-v1-en",
+      "input": "ASVS V1 encoding & sanitization review on the parsing surfaces.",
+      "expect": [
+        "scope narrowed to V1 only — does not load other reference files",
+        "checks that sanitize_string is called by every extract_* parser in src/utils.c",
+        "checks that json_escape is applied to every PAM-derived field before insertion into the alert body in src/notify.c",
+        "checks the spoof guard ps_is_trusted_exe is active in src/journal_watch.c",
+        "findings tagged V1.x.y"
+      ]
+    },
+    {
+      "id": "single-chapter-v15-en",
+      "input": "ASVS V15 secure coding & architecture audit.",
+      "expect": [
+        "scope narrowed to V15",
+        "audits hardening flags in meson.build (-fstack-protector-strong, -D_FORTIFY_SOURCE, -Wl,-z,relro, b_pie, -fstack-clash-protection)",
+        "audits fork+exec isolation in fire_curl (clearenv, close_range, signal reset, execv with absolute path)",
+        "audits PR_SET_NO_NEW_PRIVS and RLIMIT_NPROC in src/main.c",
+        "audits signal-safe flags (atomic_bool running, atomic_bool reload_requested)",
+        "findings tagged V15.x.y"
+      ]
+    },
+    {
+      "id": "vietnamese-trigger",
+      "input": "rà soát ASVS cho module notify (fork+exec curl)",
+      "expect": [
+        "skill is invoked despite the request being in Vietnamese",
+        "scope confirmation reply can be either language; report content stays English unless asked",
+        "narrowed to the chapters that bite the notify module: V1 (json_escape), V12 (curl --proto =https), V14 (no secret in argv), V15 (fork+exec isolation)"
+      ]
+    },
+    {
+      "id": "level-targeted-l2",
+      "input": "L2 ASVS compliance check — what's missing?",
+      "expect": [
+        "scope confirmed: L2 controls only, across applicable chapters",
+        "findings include: V11.2.3 documented key rotation procedure for operator-supplied TLS keys, V13.4.3-4 sandbox directives (MemoryMax, PrivateTmp, ProtectSystem), V15.5.2 SBOM / reproducible build, V15.6.3 ASan/UBSan CI build, V16.4.1 journal FSS",
+        "L1 controls that already pass are summarised in the per-chapter table, not in findings"
+      ]
+    },
+    {
+      "id": "pr-scoped-audit",
+      "input": "ASVS review of the latest commit only.",
+      "expect": [
+        "skill clarifies whether to use HEAD vs HEAD~1 diff scope",
+        "loads only the chapters touched by the diff (e.g., V1+V2 for a new parser; V15+V12 for a notify change; V13 for a meson.build change)",
+        "report explicitly states the scope was the diff, not the whole repo",
+        "marks chapters not touched by the diff as 'not in scope', not as ✅ Pass"
+      ]
+    },
+    {
+      "id": "anti-pattern-no-vague-findings",
+      "input": "Quick ASVS smoke test, no audit report needed.",
+      "expect": [
+        "skill pushes back: either run the 20-rule /review-code slash command (pre-merge gate) or run a real ASVS audit",
+        "does NOT produce a half-formed audit with vague findings"
+      ]
+    },
+    {
+      "id": "rejects-web-app-mindset",
+      "input": "Check this project for CSRF, missing CSP, and IDOR vulnerabilities.",
+      "expect": [
+        "skill recognises these are web-app concerns and explains they are N/A in PAMSignal (no HTTP server, no users, no per-resource access surface)",
+        "redirects to the chapters that DO apply: V1 (log injection from PAM messages), V14 (secret handling), V15 (privilege drop, fork+exec isolation)",
+        "does not invent findings to look thorough"
+      ]
+    }
+  ]
+}
