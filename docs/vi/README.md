@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="../../assets/pamsignal-logo.png" alt="PAMSignal logo" width="150" />
+</p>
+
 # PAMSignal 🚨
 
 > 🌐 [English](../../README.md) · **Tiếng Việt**
@@ -13,36 +17,27 @@ PAMSignal là một login monitor nhẹ, zero-dependency cho Linux server. Nó t
 
 Nếu bạn quản lý vài server và muốn biết ngay lập tức khi có ai đó đăng nhập hoặc thử brute-force máy của bạn — mà không phải triển khai Wazuh, EDR, hay đọc 200 trang tài liệu — thì đây là thứ dành cho bạn.
 
-## 🙏 Lời cảm ơn
+Hãy hình dung nó như một **đầu báo khói cho cửa ngõ vào server của bạn**: nó không khóa cửa giúp bạn (hardening SSH vẫn là việc của bạn — [xem cách làm](ssh-hardening.md)), nhưng nó báo ngay khoảnh khắc có người mở cửa hay bắt đầu tìm cách cạy cửa.
 
-Dự án này sẽ trông rất khác — hoặc không tồn tại — nếu thiếu hai người bạn:
+## 👥 PAMSignal có dành cho bạn?
 
-<table>
-<tr>
-<td width="100" align="center" valign="top">
-<a href="https://github.com/hongquan"><img src="https://github.com/hongquan.png" width="72" alt="@hongquan" /></a><br/>
-<sub><b><a href="https://github.com/hongquan">Nguyen Hong&nbsp;Quan</a></b></sub><br/>
-<sub>@hongquan</sub>
-</td>
-<td valign="top">
+- **Dev cá nhân & self-hoster** — điện thoại rung lên ngay khi có người đăng nhập vào VPS của bạn, hoặc một con bot bắt đầu dò máy. Cài hai phút, không phải nuôi thêm nền tảng nào.
+- **Nhóm nhỏ & startup** — một kênh `#security-alerts` và một fleet dashboard cho mọi người trực on-call.
+- **Hosting provider & MSP** — cung cấp cảnh báo đăng nhập theo từng khách hàng như một giá trị gia tăng gần như không tốn chi phí cho các server bạn quản lý → [playbook cho hosting provider](use-cases.md#hosting-provider-nhỏ--msp).
 
-Đã đưa ra những góp ý thẳng thắn, không nể nang về các chuẩn Linux và kỳ vọng của operator — những điều đã định hình lại roadmap và kiến trúc của PAMSignal. Quyết định thiết kế lớn nhất trong codebase này — subscribe <code>systemd-journald</code> để lấy sự kiện PAM thay vì tail <code>/var/log/auth.log</code> — đến trực tiếp từ sự phản biện của anh. Việc anh nhấn mạnh tuân thủ Linux <a href="https://refspecs.linuxfoundation.org/FHS_3.0/fhs/index.html">FHS</a> cũng xuyên suốt mọi lựa chọn đường dẫn file trong dự án: binary nằm dưới <code>/usr/bin</code>, config dưới <code>/etc/pamsignal/</code>, runtime state dưới <code>/run/pamsignal/</code>, systemd vendor unit dưới <code>/usr/lib/systemd/system/</code>, và apt repository keyring tại <code>/etc/apt/keyrings/pamsignal.gpg</code> (<a href="https://github.com/anhtuank7c/pamsignal/issues/14">#14</a>). Kết quả là một daemon hòa hợp với hệ sinh thái Linux hiện đại thay vì phải lách qua nó. 🙇
+Playbook đầy đủ cho từng nhóm nằm trong **[Use Cases & Tích hợp](use-cases.md)**.
 
-</td>
-</tr>
-<tr>
-<td width="100" align="center" valign="top">
-<a href="https://github.com/lehiep1994"><img src="https://github.com/lehiep1994.png" width="72" alt="@lehiep1994" /></a><br/>
-<sub><b><a href="https://github.com/lehiep1994">Samuel&nbsp;Le</a></b></sub><br/>
-<sub>@lehiep1994</sub>
-</td>
-<td valign="top">
+## 👀 Bạn sẽ thực sự thấy gì
 
-Đã giữ cho mình tiếp tục đọc và tiếp tục xây dựng. Anh gửi cho mình những cuốn sách về Linux internals đúng vào lúc mình cần nhất, và sự động viên bền bỉ để *không* bỏ dở dự án — qua mọi giai đoạn "liệu cái này có đáng ship không?" — là một phần thật sự khiến PAMSignal đi được tới một bản release. 🙇
+Chỉ vài giây sau một sự kiện, một dòng như thế này hiện ra trong Telegram, Slack, Teams, Discord, hay WhatsApp của bạn:
 
-</td>
-</tr>
-</table>
+```text
+[NOTICE] auth.login_success user=admin src=192.168.1.100:52341 host=web-01 service=sshd auth=publickey
+[WARN]   auth.login_failure user=root  src=203.0.113.50:39182 host=web-01 service=sshd auth=password
+[ALERT]  auth.brute_force_detected     src=203.0.113.50 attempts=12 window=300s user=root host=web-01
+```
+
+Muốn một màn hình cho cả fleet thay vì ping lẻ từng host? PAMSignal cũng cấp dữ liệu cho một **[Grafana dashboard](grafana-getting-started.md)** dựng sẵn (xem trước ở [phần dưới](#-góc-nhìn-toàn-fleet-trong-grafana)).
 
 ## ✨ Tại sao chọn PAMSignal?
 
@@ -50,6 +45,20 @@ Dự án này sẽ trông rất khác — hoặc không tồn tại — nếu th
 - **Bảo vệ chống brute-force**: Tự động đếm số lần thất bại và tích hợp mượt mà với [Fail2ban](examples/fail2ban.md) để chặn kẻ tấn công.
 - **Cực kỳ nhẹ**: Một C binary duy nhất với một file config duy nhất. Dependency duy nhất là `libsystemd`.
 - **Chịu lỗi tốt**: Việc gửi cảnh báo được cô lập qua `fork+exec`. Network timeout hay API lỗi sẽ không bao giờ làm crash tiến trình monitoring lõi.
+- **Hợp với stack của bạn**: Nói [ECS JSON](alerts.md#custom-webhook-ecs-json) với bất kỳ SIEM hay webhook nào, và đi kèm sẵn một [Grafana fleet dashboard](grafana-getting-started.md) — cấp dữ liệu cho công cụ bạn đang dùng thay vì bắt bạn nuôi thêm một console nữa.
+
+## 🧱 PAMSignal nằm ở đâu
+
+PAMSignal là tầng **phát hiện (detection)** trong mô hình phòng thủ bốn lớp. Nó làm đúng một việc đó thật tốt và để phần còn lại cho đúng công cụ — nó không bao giờ sửa `sshd` hay tự chặn gì cả.
+
+| Tầng | Nhiệm vụ | Công cụ của bạn |
+|---|---|---|
+| Phòng ngừa | làm cánh cửa khó mở | SSH key-only auth → **[Hướng dẫn bảo mật SSH](ssh-hardening.md)** |
+| Toàn vẹn | phát hiện hệ thống bị can thiệp | AIDE / `debsums` / `rpm -V` |
+| **Phát hiện / Cảnh báo** | **báo cho bạn chuyện gì đang xảy ra, ngay lúc này** | **PAMSignal** |
+| Điều tra | dựng lại sự việc sau đó | `auditd` + journald retention |
+
+Bổ trợ tự nhiên cho nó là **phản ứng**: [Fail2ban](examples/fail2ban.md) dựa vào tín hiệu brute-force của PAMSignal để chặn IP kẻ tấn công tại firewall. Còn chính xác PAMSignal thấy và không thấy gì thì **[Threat Model](threat-model.md)** nói rõ.
 
 ## 🏗️ Kiến trúc
 
@@ -181,6 +190,8 @@ PAMSignal tính sẵn ngưỡng brute-force cho bạn. Bạn có thể tiến th
 
 👉 **[Đọc hướng dẫn tích hợp Fail2ban](examples/fail2ban.md)**
 
+*Lần đầu bảo mật chính SSH? Hãy đọc kèm **[Bảo mật SSH & Quản lý Fleet](ssh-hardening.md)** — PAMSignal canh chừng cánh cửa, còn hướng dẫn đó làm cánh cửa vững chắc và chỉ bạn cách quản lý nhiều server từ một nơi.*
+
 ## 📊 Góc nhìn toàn fleet trong Grafana
 
 `journalctl` theo từng host và chat alert real-time chỉ bao quát một host. Để có fleet-wide auth visibility — một góc nhìn queryable trên mọi server — có sẵn một integration Loki/Alloy/Grafana đi kèm PAMSignal: sự kiện theo schema ECS chảy vào Loki qua Alloy, và một dashboard duy nhất trả lời "đang có gì xảy ra với auth trên cả fleet của tôi ngay lúc này?" chỉ trong một cái liếc.
@@ -194,20 +205,63 @@ cd examples/grafana && docker compose up -d
 # → http://localhost:3000 (anonymous Admin, dashboard có sẵn)
 ```
 
-👉 **[Đọc hướng dẫn tích hợp Grafana](examples/grafana.md)** — deploy đầy đủ + cài Alloy + 4 alert rule
+👉 **Mới với Grafana?** Hãy bắt đầu với **[Grafana từ con số 0](grafana-getting-started.md)** — Grafana/Loki/Alloy rốt cuộc là gì, cài đặt cả hai cách (cloud hoặc tự host), và cách đọc từng panel.
+
+👉 **[Đọc hướng dẫn tích hợp Grafana](examples/grafana.md)** — bản tham chiếu production: deploy đầy đủ + cài Alloy + 4 alert rule
 
 ## 📚 Tài liệu
+
+**Hướng dẫn — bắt đầu từ đây**
+
+- 🧭 **[Use Cases & Tích hợp](use-cases.md)** — dành cho ai (cá nhân · nhóm · hosting provider) và cách tích hợp PAMSignal vào stack sẵn có của bạn
+- 🔐 **[Bảo mật SSH & Quản lý Fleet](ssh-hardening.md)** — hardening cánh cửa mà PAMSignal canh chừng, và quản lý 1–50 server từ một `~/.ssh/config`
+- 📊 **[Grafana từ con số 0](grafana-getting-started.md)** — dựng một dashboard toàn fleet và học cách đọc từng panel, kể cả khi bạn chưa từng dùng Grafana
+
+**Tham chiếu**
 
 - 🏛️ **[Kiến trúc](architecture.md)** — Sơ đồ C4, mô hình cô lập, và các quyết định thiết kế
 - ⚙️ **[Cấu hình](configuration.md)** — Tham chiếu config, CLI flag, và tuning
 - 🔔 **[Cảnh báo](alerts.md)** — Webhook payload và cài đặt kênh
 - 🔒 **[Triển khai](deployment.md)** — Hardening bảo mật và cấu hình systemd
 - 🎯 **[Threat Model](threat-model.md)** — pamsignal phòng thủ trước cái gì, cố tình không làm gì, và lý do thiết kế đằng sau sự phân tách
-- 📊 **[Tích hợp Grafana](grafana-integration.md)** — Thiết kế dashboard auth toàn fleet (schema, label cardinality, bố cục panel)
+- 📐 **[Tích hợp Grafana — Thiết kế](grafana-integration.md)** — Schema, label cardinality, và lý do chọn panel (bản chuyên sâu phía sau hướng dẫn ở trên)
 - 🐧 **[Distro được hỗ trợ](distros.md)** — Ma trận ba mức (CI-tested / kỳ vọng chạy được / không hỗ trợ) kèm lý do từng dòng
 - 🛠️ **[Phát triển](development.md)** — Build từ source và testing
 - 🔐 **[Chính sách bảo mật](SECURITY.md)** — Kênh báo lỗi có trách nhiệm và các phiên bản được hỗ trợ
 - 📝 **[Changelog](../../CHANGELOG.md)** — Trạng thái, theo dõi công việc, và cập nhật
+
+---
+
+## 🙏 Lời cảm ơn
+
+Dự án này sẽ trông rất khác — hoặc không tồn tại — nếu thiếu hai người bạn:
+
+<table>
+<tr>
+<td width="100" align="center" valign="top">
+<a href="https://github.com/hongquan"><img src="https://github.com/hongquan.png" width="72" alt="@hongquan" /></a><br/>
+<sub><b><a href="https://github.com/hongquan">Nguyen Hong&nbsp;Quan</a></b></sub><br/>
+<sub>@hongquan</sub>
+</td>
+<td valign="top">
+
+Đã đưa ra những góp ý thẳng thắn, không nể nang về các chuẩn Linux và kỳ vọng của operator — những điều đã định hình lại roadmap và kiến trúc của PAMSignal. Quyết định thiết kế lớn nhất trong codebase này — subscribe <code>systemd-journald</code> để lấy sự kiện PAM thay vì tail <code>/var/log/auth.log</code> — đến trực tiếp từ sự phản biện của anh. Việc anh nhấn mạnh tuân thủ Linux <a href="https://refspecs.linuxfoundation.org/FHS_3.0/fhs/index.html">FHS</a> cũng xuyên suốt mọi lựa chọn đường dẫn file trong dự án: binary nằm dưới <code>/usr/bin</code>, config dưới <code>/etc/pamsignal/</code>, runtime state dưới <code>/run/pamsignal/</code>, systemd vendor unit dưới <code>/usr/lib/systemd/system/</code>, và apt repository keyring tại <code>/etc/apt/keyrings/pamsignal.gpg</code> (<a href="https://github.com/anhtuank7c/pamsignal/issues/14">#14</a>). Kết quả là một daemon hòa hợp với hệ sinh thái Linux hiện đại thay vì phải lách qua nó. 🙇
+
+</td>
+</tr>
+<tr>
+<td width="100" align="center" valign="top">
+<a href="https://github.com/lehiep1994"><img src="https://github.com/lehiep1994.png" width="72" alt="@lehiep1994" /></a><br/>
+<sub><b><a href="https://github.com/lehiep1994">Samuel&nbsp;Le</a></b></sub><br/>
+<sub>@lehiep1994</sub>
+</td>
+<td valign="top">
+
+Đã giữ cho mình tiếp tục đọc và tiếp tục xây dựng. Anh gửi cho mình những cuốn sách về Linux internals đúng vào lúc mình cần nhất, và sự động viên bền bỉ để *không* bỏ dở dự án — qua mọi giai đoạn "liệu cái này có đáng ship không?" — là một phần thật sự khiến PAMSignal đi được tới một bản release. 🙇
+
+</td>
+</tr>
+</table>
 
 ---
 

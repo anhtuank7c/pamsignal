@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/pamsignal-logo.png" alt="PAMSignal logo" width="150" />
+</p>
+
 # PAMSignal 🚨
 
 > 🌐 **English** · [Tiếng Việt](docs/vi/README.md)
@@ -13,36 +17,27 @@ PAMSignal is a lightweight, zero-dependency login monitor for Linux servers. It 
 
 If you manage a handful of servers and want to know instantly when someone logs in or tries to brute-force your machine—without deploying Wazuh, EDR, or reading 200 pages of documentation—this is for you.
 
-## 🙏 Acknowledgments
+Think of it as a **smoke detector for your servers' front door**: it doesn't lock the door (hardening SSH is still your job — [here's how](./docs/ssh-hardening.md)), but it tells you the instant someone opens it or starts trying to force it.
 
-This project would look very different — or wouldn't exist at all — without two friends:
+## 👥 Is PAMSignal for you?
 
-<table>
-<tr>
-<td width="100" align="center" valign="top">
-<a href="https://github.com/hongquan"><img src="https://github.com/hongquan.png" width="72" alt="@hongquan" /></a><br/>
-<sub><b><a href="https://github.com/hongquan">Nguyen Hong&nbsp;Quan</a></b></sub><br/>
-<sub>@hongquan</sub>
-</td>
-<td valign="top">
+- **Solo devs & self-hosters** — get a phone buzz the moment anyone logs into your VPS, or a bot starts hammering it. Two-minute setup, no platform to babysit.
+- **Small teams & startups** — one `#security-alerts` channel and one fleet dashboard for everyone on call.
+- **Hosting providers & MSPs** — offer per-customer login alerting as a near-zero-cost value-add for the servers you manage → [hosting-provider playbook](./docs/use-cases.md#small-hosting-provider--msp).
 
-Gave the kind of honest, no-punches-pulled feedback on Linux standards and operator expectations that reshaped PAMSignal's roadmap and architecture. The single biggest design decision in this codebase — subscribing to <code>systemd-journald</code> for PAM events instead of tailing <code>/var/log/auth.log</code> — came directly from his pushback. His strong emphasis on Linux <a href="https://refspecs.linuxfoundation.org/FHS_3.0/fhs/index.html">FHS</a> compliance also threads through every file-path choice in the project: the binary under <code>/usr/bin</code>, config under <code>/etc/pamsignal/</code>, runtime state under <code>/run/pamsignal/</code>, the systemd vendor unit under <code>/usr/lib/systemd/system/</code>, and the apt repository keyring at <code>/etc/apt/keyrings/pamsignal.gpg</code> (<a href="https://github.com/anhtuank7c/pamsignal/issues/14">#14</a>). The result is a daemon that fits the modern Linux stack instead of working around it. 🙇
+Full playbooks for each in **[Use Cases & Integrations](./docs/use-cases.md)**.
 
-</td>
-</tr>
-<tr>
-<td width="100" align="center" valign="top">
-<a href="https://github.com/lehiep1994"><img src="https://github.com/lehiep1994.png" width="72" alt="@lehiep1994" /></a><br/>
-<sub><b><a href="https://github.com/lehiep1994">Samuel&nbsp;Le</a></b></sub><br/>
-<sub>@lehiep1994</sub>
-</td>
-<td valign="top">
+## 👀 What you'll actually see
 
-Kept me reading and kept me building. He sent me books on Linux internals at exactly the moments I needed them, and the steady encouragement to *not* abandon this project — through every "is this even worth shipping?" stretch — is a real part of why PAMSignal made it to a release. 🙇
+Seconds after an event, a line like this lands in your Telegram, Slack, Teams, Discord, or WhatsApp:
 
-</td>
-</tr>
-</table>
+```text
+[NOTICE] auth.login_success user=admin src=192.168.1.100:52341 host=web-01 service=sshd auth=publickey
+[WARN]   auth.login_failure user=root  src=203.0.113.50:39182 host=web-01 service=sshd auth=password
+[ALERT]  auth.brute_force_detected     src=203.0.113.50 attempts=12 window=300s user=root host=web-01
+```
+
+Prefer one screen for the whole fleet instead of per-host pings? PAMSignal also feeds a ready-made **[Grafana dashboard](./docs/grafana-getting-started.md)** (preview [below](#-fleet-view-in-grafana)).
 
 ## ✨ Why PAMSignal?
 
@@ -50,6 +45,20 @@ Kept me reading and kept me building. He sent me books on Linux internals at exa
 - **Brute-Force Protection**: Natively tracks failed attempts and seamlessly integrates with [Fail2ban](./examples/fail2ban/README.md) to block attackers.
 - **Ultra Lightweight**: A single C binary with a single config file. The only dependency is `libsystemd`.
 - **Fault-Tolerant**: Alert dispatching is isolated via `fork+exec`. Network timeouts or API failures will never crash the core monitoring process.
+- **Fits your stack**: Speaks [ECS JSON](./docs/alerts.md#custom-webhook-ecs-json) to any SIEM or webhook and ships a [Grafana fleet dashboard](./docs/grafana-getting-started.md) — it feeds the tools you already run instead of being one more console.
+
+## 🧱 Where PAMSignal fits
+
+PAMSignal is the **detection** layer of a four-layer defence-in-depth stack. It does that one job well and leaves the others to the right tool — it never modifies `sshd` or blocks anything itself.
+
+| Layer | Job | Your tool |
+|---|---|---|
+| Prevention | make the door hard to open | SSH key-only auth → **[Secure SSH guide](./docs/ssh-hardening.md)** |
+| Integrity | detect tampering with the system | AIDE / `debsums` / `rpm -V` |
+| **Detection / Alerting** | **tell you what's happening, now** | **PAMSignal** |
+| Forensics | reconstruct events after the fact | `auditd` + journald retention |
+
+The natural companion is **response**: [Fail2ban](./examples/fail2ban/README.md) acts on PAMSignal's brute-force signal to block attacker IPs at the firewall. Exactly what PAMSignal can and can't observe is spelled out in the **[Threat Model](./docs/threat-model.md)**.
 
 ## 🏗️ Architecture
 
@@ -181,6 +190,8 @@ PAMSignal calculates brute-force thresholds for you. You can take this a step fu
 
 👉 **[Read the Fail2ban Integration Guide](./examples/fail2ban/README.md)**
 
+*First time securing SSH itself? Pair this with **[Secure SSH & Manage a Fleet](./docs/ssh-hardening.md)** — PAMSignal watches the door; that guide makes the door strong, and shows you how to drive many servers from one place.*
+
 ## 📊 Fleet view in Grafana
 
 Per-host `journalctl` and real-time chat alerts cover one host. For fleet-wide auth visibility — one queryable view across every server — there's a Loki/Alloy/Grafana integration that ships with PAMSignal: ECS-schema events flow into Loki via Alloy, and a single dashboard answers "what's happening with auth across my fleet right now?" at a glance.
@@ -194,20 +205,63 @@ cd examples/grafana && docker compose up -d
 # → http://localhost:3000 (anonymous Admin, dashboard preloaded)
 ```
 
-👉 **[Read the Grafana Integration Guide](./examples/grafana/README.md)** — full deploy + Alloy install + 4 alert rules
+👉 **New to Grafana?** Start with **[Grafana from Zero](./docs/grafana-getting-started.md)** — what Grafana/Loki/Alloy even are, setup both ways (cloud or self-host), and how to read every panel.
+
+👉 **[Read the Grafana Integration Guide](./examples/grafana/README.md)** — the production reference: full deploy + Alloy install + 4 alert rules
 
 ## 📚 Documentation
+
+**Guides — start here**
+
+- 🧭 **[Use Cases & Integrations](./docs/use-cases.md)** — who it's for (solo · team · hosting provider) and how to plug PAMSignal into your existing stack
+- 🔐 **[Secure SSH & Manage a Fleet](./docs/ssh-hardening.md)** — harden the door PAMSignal watches, and drive 1–50 servers from one `~/.ssh/config`
+- 📊 **[Grafana from Zero](./docs/grafana-getting-started.md)** — stand up a fleet-wide dashboard and learn to read every panel, even if you've never used Grafana
+
+**Reference**
 
 - 🏛️ **[Architecture](./docs/architecture.md)** — C4 diagrams, isolation models, and design decisions
 - ⚙️ **[Configuration](./docs/configuration.md)** — Config reference, CLI flags, and tuning
 - 🔔 **[Alerts](./docs/alerts.md)** — Webhook payloads and channel setup
 - 🔒 **[Deployment](./docs/deployment.md)** — Security hardening and systemd setup
 - 🎯 **[Threat Model](./docs/threat-model.md)** — What pamsignal defends against, what it deliberately does not, and the design rationale behind the split
-- 📊 **[Grafana Integration](./docs/grafana-integration.md)** — Fleet-wide auth dashboard design (schema, label cardinality, panel layout)
+- 📐 **[Grafana Integration — Design](./docs/grafana-integration.md)** — Schema, label cardinality, and panel rationale (the deep dive behind the guide above)
 - 🐧 **[Supported Distributions](./docs/distros.md)** — Three-tier matrix (CI-tested / expected to work / unsupported) with reasoning per row
 - 🛠️ **[Development](./docs/development.md)** — Building from source and testing
 - 🔐 **[Security Policy](./SECURITY.md)** — Responsible-disclosure channel and supported versions
 - 📝 **[Changelog](./CHANGELOG.md)** — Status, task tracking, and updates
+
+---
+
+## 🙏 Acknowledgments
+
+This project would look very different — or wouldn't exist at all — without two friends:
+
+<table>
+<tr>
+<td width="100" align="center" valign="top">
+<a href="https://github.com/hongquan"><img src="https://github.com/hongquan.png" width="72" alt="@hongquan" /></a><br/>
+<sub><b><a href="https://github.com/hongquan">Nguyen Hong&nbsp;Quan</a></b></sub><br/>
+<sub>@hongquan</sub>
+</td>
+<td valign="top">
+
+Gave the kind of honest, no-punches-pulled feedback on Linux standards and operator expectations that reshaped PAMSignal's roadmap and architecture. The single biggest design decision in this codebase — subscribing to <code>systemd-journald</code> for PAM events instead of tailing <code>/var/log/auth.log</code> — came directly from his pushback. His strong emphasis on Linux <a href="https://refspecs.linuxfoundation.org/FHS_3.0/fhs/index.html">FHS</a> compliance also threads through every file-path choice in the project: the binary under <code>/usr/bin</code>, config under <code>/etc/pamsignal/</code>, runtime state under <code>/run/pamsignal/</code>, the systemd vendor unit under <code>/usr/lib/systemd/system/</code>, and the apt repository keyring at <code>/etc/apt/keyrings/pamsignal.gpg</code> (<a href="https://github.com/anhtuank7c/pamsignal/issues/14">#14</a>). The result is a daemon that fits the modern Linux stack instead of working around it. 🙇
+
+</td>
+</tr>
+<tr>
+<td width="100" align="center" valign="top">
+<a href="https://github.com/lehiep1994"><img src="https://github.com/lehiep1994.png" width="72" alt="@lehiep1994" /></a><br/>
+<sub><b><a href="https://github.com/lehiep1994">Samuel&nbsp;Le</a></b></sub><br/>
+<sub>@lehiep1994</sub>
+</td>
+<td valign="top">
+
+Kept me reading and kept me building. He sent me books on Linux internals at exactly the moments I needed them, and the steady encouragement to *not* abandon this project — through every "is this even worth shipping?" stretch — is a real part of why PAMSignal made it to a release. 🙇
+
+</td>
+</tr>
+</table>
 
 ---
 
