@@ -1,0 +1,63 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 320" width="1280" height="320" role="img" aria-labelledby="t d">
+  <title id="t">PAMSignal</title>
+  <desc id="d">PAMSignal — real-time login and brute-force alerts for Linux servers</desc>
+
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0A1628"/>
+      <stop offset="100%" stop-color="#050B17"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.16" cy="0.46" r="0.42">
+      <stop offset="0%" stop-color="#22D3EE" stop-opacity="0.14"/>
+      <stop offset="100%" stop-color="#22D3EE" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <rect width="1280" height="320" fill="url(#bg)"/>
+  <rect width="1280" height="320" fill="url(#glow)"/>
+
+  <!-- ===== signal mark (left) ===== -->
+  <g>
+    <!-- console baseline -->
+    <line x1="64" y1="198" x2="322" y2="198" stroke="#F59E0B" stroke-width="1.5" opacity="0.35"/>
+
+    <!-- broadcast arcs above the central spike (alert dispatch) -->
+    <g fill="none" stroke="#FBBF24" stroke-linecap="round">
+      <path d="M 150 40 A 42 42 0 0 1 222 40" stroke-width="3" opacity="0.55"/>
+      <path d="M 128 24 A 78 78 0 0 1 244 24" stroke-width="2.5" opacity="0.28"/>
+      <path d="M 104 8 A 116 116 0 0 1 268 8" stroke-width="2" opacity="0.14"/>
+    </g>
+
+    <!-- reflection — the journal stream beneath the surface -->
+    <g opacity="0.22">
+      <polygon fill="#0E7490" points="80,198 134,272 188,198"/>
+      <polygon fill="#0E7490" points="198,198 252,276 306,198"/>
+      <polygon fill="#22D3EE" points="112,198 186,292 260,198"/>
+    </g>
+
+    <!-- three signal-pulse peaks (auth events on the journal) -->
+    <polygon fill="#0E7490" points="80,198 134,92 188,198"/>
+    <polygon fill="#0E7490" points="198,198 252,96 306,198"/>
+    <polygon fill="#22D3EE" points="112,198 186,46 260,198"/>
+
+    <!-- apex markers — each detected PAM event -->
+    <circle cx="134" cy="92" r="5"   fill="#FBBF24"/>
+    <circle cx="252" cy="96" r="5"   fill="#FBBF24"/>
+    <circle cx="186" cy="46" r="7.5" fill="#FBBF24"/>
+  </g>
+
+  <!-- ===== wordmark + tagline (right) ===== -->
+  <text x="372" y="150"
+        font-family="'Segoe UI', Roboto, 'DejaVu Sans', 'Helvetica Neue', Arial, sans-serif"
+        font-size="96" font-weight="700" letter-spacing="-3" fill="#F5F1EA">PAMSignal</text>
+
+  <rect x="376" y="173" width="130" height="4" rx="2" fill="#FBBF24"/>
+
+  <text x="378" y="218"
+        font-family="'Segoe UI', Roboto, 'DejaVu Sans', 'Helvetica Neue', Arial, sans-serif"
+        font-size="28" font-weight="400" fill="#9FB3C8">Real-time login &amp; brute-force alerts for your Linux servers</text>
+
+  <text x="380" y="257"
+        font-family="'Segoe UI', Roboto, 'DejaVu Sans', 'Helvetica Neue', Arial, sans-serif"
+        font-size="17" font-weight="600" letter-spacing="2" fill="#56738C">TELEGRAM · SLACK · TEAMS · DISCORD · WHATSAPP · WEBHOOKS</text>
+</svg>
