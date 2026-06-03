@@ -1,0 +1,10 @@
+version=4
+
+# Track upstream releases from GitHub tags (v0.6.1, v0.7.0, ...).
+# git mode is used because it is robust against GitHub's periodic changes to
+# the HTML tags page; uscan produces a tarball named pamsignal-<version>.tar.gz
+# with the leading "v" stripped from the tag.
+opts="mode=git, gitmode=shallow, pgpmode=none, \
+filenamemangle=s%.*%pamsignal-$1.tar.gz%" \
+  https://github.com/anhtuank7c/pamsignal.git \
+  refs/tags/v@ANY_VERSION@ debian uupdate

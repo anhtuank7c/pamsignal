@@ -15,7 +15,7 @@ Build-Depends: debhelper (>= 12~),
                pkg-config,
                libsystemd-dev,
                libcmocka-dev
-Standards-Version: 4.6.2
+Standards-Version: 4.7.0
 Homepage: https://github.com/anhtuank7c/pamsignal
 Vcs-Git: https://github.com/anhtuank7c/pamsignal.git
 Vcs-Browser: https://github.com/anhtuank7c/pamsignal
