@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+**Debian packaging hygiene.** Added `debian/watch` (uscan tracks upstream releases from GitHub tags) and `debian/upstream/metadata` (DEP-12 bug-database / repository links), and bumped `Standards-Version` to 4.7.0. These make the existing `.deb` lintian-cleaner and "adoption-ready" so a Debian/Ubuntu maintainer — or a future archive submission — can pick it up with minimal extra work. The self-hosted apt repo stays the primary channel; official Debian-archive inclusion is deferred until the project has more traction.
+
 **Grafana integration** ([#25](https://github.com/anhtuank7c/pamsignal/issues/25)). New `examples/grafana/` directory ships everything an operator with a Linux fleet needs to surface PAMSignal events in a single Grafana dashboard:
 
 - `alloy.river` — production [Grafana Alloy](https://grafana.com/docs/alloy/latest/) config. Reads systemd journald filtered to `SYSLOG_IDENTIFIER=pamsignal`, promotes four low-cardinality fields (`app`, `host`, `service`, `event_action`) to Loki labels, and keeps everything else (`SOURCE_IP`, `USER_NAME`, ...) in the JSON line body for query-time parsing. Total streams stay at ~30 × fleet_size — safe to thousands of hosts.
