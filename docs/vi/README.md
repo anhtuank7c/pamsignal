@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="../../assets/pamsignal-logo.png" alt="PAMSignal logo" width="150" />
+  <img src="../../assets/pamsignal-banner.png" alt="PAMSignal — real-time login &amp; brute-force alerts for Linux servers" width="100%" />
 </p>
 
 # PAMSignal 🚨
