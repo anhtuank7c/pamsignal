@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## 0.6.2 — 2026-06-03
+
+Patch release — **no daemon code changes** (the binary is byte-identical to 0.6.1). Ships the Grafana fleet-dashboard integration, a from-scratch documentation & onboarding overhaul (EN + VI), and Debian packaging hygiene. Details below.
 
 **Debian packaging hygiene.** Added `debian/watch` (uscan tracks upstream releases from GitHub tags) and `debian/upstream/metadata` (DEP-12 bug-database / repository links), and bumped `Standards-Version` to 4.7.0. These make the existing `.deb` lintian-cleaner and "adoption-ready" so a Debian/Ubuntu maintainer — or a future archive submission — can pick it up with minimal extra work. The self-hosted apt repo stays the primary channel; official Debian-archive inclusion is deferred until the project has more traction.
 

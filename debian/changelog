@@ -1,3 +1,17 @@
+pamsignal (0.6.2-1) unstable; urgency=medium
+
+  * No daemon code changes; documentation, integration, and packaging only.
+  * Grafana integration under examples/grafana/ (Alloy config, 12-panel
+    fleet dashboard, 4 Grafana-native alert rules, docker-compose try-it
+    stack, verify.sh) plus the docs/grafana-integration.md design doc.
+  * Documentation overhaul: restructured README and three new guides
+    (Secure SSH & fleet management, Grafana from zero, Use Cases &
+    Integrations), each mirrored in Vietnamese under docs/vi/.
+  * Packaging: add debian/watch (uscan tracks upstream GitHub tags) and
+    debian/upstream/metadata (DEP-12); bump Standards-Version to 4.7.0.
+
+ -- Tuan Nguyen <anhtuank7c@hotmail.com>  Wed, 03 Jun 2026 06:49:52 +0000
+
 pamsignal (0.6.1-1) unstable; urgency=medium
 
   * Feature: --help / -h flag. Prints a usage summary covering every
