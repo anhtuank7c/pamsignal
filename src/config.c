@@ -84,9 +84,9 @@ static int parse_notification_mask(const char *val, unsigned int *out) {
         return -1;
 
     unsigned int mask = 0;
-    int matched_any = 0;
     char *p = buf;
-    while (1) {
+
+    do {
         char *comma = strchr(p, ',');
         if (comma)
             *comma = '\0';
@@ -94,6 +94,7 @@ static int parse_notification_mask(const char *val, unsigned int *out) {
         char *t = trim(p);
         if (*t == '\0')
             return -1;
+
         for (char *q = t; *q; q++)
             *q = (char)tolower((unsigned char)*q);
 
@@ -102,19 +103,17 @@ static int parse_notification_mask(const char *val, unsigned int *out) {
             if (strcmp(t, tokens[i].name) == 0) {
                 mask |= tokens[i].flag;
                 found = 1;
-                matched_any = 1;
                 break;
             }
         }
         if (!found)
             return -1;
 
-        if (!comma)
-            break;
-        p = comma + 1;
-    }
-    if (!matched_any)
-        return -1;
+        p = comma? comma + 1 : NULL;
+    } while ( p != NULL);
+
+    // mask != 0 is guaranteed here: the loop ran at least once,
+    // every iteration either found a token or returned -1.
     *out = mask;
     return 0;
 }
@@ -187,6 +186,8 @@ static int has_only_chars(const char *s, int (*pred)(int)) {
     return 1;
 }
 
+// isdigit() is a macro; it cannot retrieve an address.
+// The `is_digit_int()` function exists to contain the address to it.
 static int is_digit_int(int c) {
     return isdigit(c);
 }
