@@ -6,6 +6,7 @@
 #include <string.h>
 #include <sys/prctl.h>
 #include <sys/resource.h>
+#include <sys/stat.h>
 #include <syslog.h>
 #include <systemd/sd-daemon.h>
 #include <systemd/sd-journal.h>
@@ -49,6 +50,20 @@ static void print_help(void) {
         PS_DEFAULT_CONFIG_PATH, PS_DEFAULT_CONFIG_PATH);
 }
 
+// Check that the path to the file actually exists.
+static int path_exists_and_readable(const char *path) {
+    struct stat st;
+    if (stat(path, &st) != 0) {
+        fprintf(stderr, "pamsignal: '%s': %s\n", path, strerror(errno));
+        return 1;
+    }
+    if (access(path, R_OK) != 0) {
+        fprintf(stderr, "pamsignal: '%s': %s\n", path, strerror(errno));
+        return 1;
+    }
+    return 0;
+}
+
 static void parse_args(int argc, char *argv[], int *foreground,
                        const char **config_path) {
     *foreground = 0;
@@ -74,6 +89,10 @@ static void parse_args(int argc, char *argv[], int *foreground,
         } else if ((strcmp(argv[i], "--config") == 0 ||
                     strcmp(argv[i], "-c") == 0) &&
                    i + 1 < argc) {
+            // Check path
+            if(path_exists_and_readable(argv[i+1]) != 0) {
+                exit(0);
+            }
             *config_path = argv[++i];
         }
     }
@@ -102,9 +121,10 @@ static int has_journal_access(void) {
         return 1;
 
     // Supplementary groups
-    enum { PS_GROUPS_BUF_LEN = 256 };
+#define PS_GROUPS_BUF_LEN 256
     gid_t groups[PS_GROUPS_BUF_LEN];
     int ngroups = getgroups(PS_GROUPS_BUF_LEN, groups);
+#undef PS_GROUPS_BUF_LEN
     if (ngroups < 0)
         return 0;
 
