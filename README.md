@@ -97,7 +97,10 @@ graph LR
 sudo install -d -m 0755 /etc/apt/keyrings
 curl -fsSL https://anhtuank7c.github.io/pamsignal/key.asc | sudo gpg --dearmor -o /etc/apt/keyrings/pamsignal.gpg
 echo "deb [signed-by=/etc/apt/keyrings/pamsignal.gpg] https://anhtuank7c.github.io/pamsignal stable main" | sudo tee /etc/apt/sources.list.d/pamsignal.list
-sudo apt update && sudo apt install pamsignal
+# Refresh only the PamSignal repo, so an unrelated broken repo can't block the install
+sudo apt update -o Dir::Etc::sourcelist="sources.list.d/pamsignal.list" \
+  -o Dir::Etc::sourceparts="-" -o APT::Get::List-Cleanup="0"
+sudo apt install pamsignal
 ```
 </details>
 

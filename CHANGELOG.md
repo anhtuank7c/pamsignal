@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- [x] docs: scope the apt-repo `apt update` in the install instructions to `pamsignal.list` only (`-o Dir::Etc::sourcelist=… -o Dir::Etc::sourceparts="-" -o APT::Get::List-Cleanup="0"`). The old `apt update && apt install pamsignal` one-liner exited non-zero — and never reached the install — whenever an unrelated third-party repo on the host was broken (e.g. an expired `NO_PUBKEY`), even though PamSignal's own index downloaded fine. Updated README + `docs/deployment.md` and their VI mirrors.
+
 ## 0.6.2 — 2026-06-03
 
 Patch release — **no daemon code changes** (the binary is byte-identical to 0.6.1). Ships the Grafana fleet-dashboard integration, a from-scratch documentation & onboarding overhaul (EN + VI), and Debian packaging hygiene. Details below.

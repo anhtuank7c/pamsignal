@@ -16,8 +16,13 @@ curl -fsSL https://anhtuank7c.github.io/pamsignal/key.asc \
   | sudo gpg --dearmor -o /etc/apt/keyrings/pamsignal.gpg
 echo "deb [signed-by=/etc/apt/keyrings/pamsignal.gpg] https://anhtuank7c.github.io/pamsignal stable main" \
   | sudo tee /etc/apt/sources.list.d/pamsignal.list
-sudo apt update && sudo apt install pamsignal
+# Refresh only the PamSignal repo, so an unrelated broken repo can't block the install
+sudo apt update -o Dir::Etc::sourcelist="sources.list.d/pamsignal.list" \
+  -o Dir::Etc::sourceparts="-" -o APT::Get::List-Cleanup="0"
+sudo apt install pamsignal
 ```
+
+The scoped `apt update` refreshes only `pamsignal.list`. If an unrelated third-party repo on the box is broken (e.g. an expired `NO_PUBKEY`), a plain `apt update && apt install` would exit non-zero and never reach the install — the `-o Dir::Etc::*` flags sidestep that by reading only PamSignal's source. Drop the flags if you'd rather run a full `apt update`.
 
 `/etc/apt/keyrings` is the standard location for system-administrator-installed APT signing keys (per `sources.list(5)`); the `install -d` line is idempotent and safe to re-run on systems where the directory already exists.
 

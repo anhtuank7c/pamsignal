@@ -16,8 +16,13 @@ curl -fsSL https://anhtuank7c.github.io/pamsignal/key.asc \
   | sudo gpg --dearmor -o /etc/apt/keyrings/pamsignal.gpg
 echo "deb [signed-by=/etc/apt/keyrings/pamsignal.gpg] https://anhtuank7c.github.io/pamsignal stable main" \
   | sudo tee /etc/apt/sources.list.d/pamsignal.list
-sudo apt update && sudo apt install pamsignal
+# Chỉ refresh repo PamSignal, để một repo bên thứ ba bị lỗi không chặn được quá trình cài đặt
+sudo apt update -o Dir::Etc::sourcelist="sources.list.d/pamsignal.list" \
+  -o Dir::Etc::sourceparts="-" -o APT::Get::List-Cleanup="0"
+sudo apt install pamsignal
 ```
+
+Lệnh `apt update` được giới hạn ở đây chỉ refresh `pamsignal.list`. Nếu một repo bên thứ ba khác trên máy bị lỗi (ví dụ `NO_PUBKEY` hết hạn), lệnh `apt update && apt install` thông thường sẽ thoát với mã lỗi khác 0 và không bao giờ chạy tới bước cài đặt — các cờ `-o Dir::Etc::*` né vấn đề này bằng cách chỉ đọc đúng source của PamSignal. Bỏ các cờ này nếu bạn muốn chạy `apt update` đầy đủ.
 
 `/etc/apt/keyrings` là vị trí tiêu chuẩn cho các APT signing key được cài bởi system administrator (theo `sources.list(5)`); dòng `install -d` là idempotent và an toàn để chạy lại trên các hệ thống đã có thư mục này.
 
