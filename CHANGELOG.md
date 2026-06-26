@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+### Security
+- [x] **`examples/nodejs-webhook/`: bump `form-data` 4.0.5 → 4.0.6 in `pnpm-lock.yaml`** (Dependabot alert #3, [CVE-2026-12143](https://github.com/advisories/GHSA-hmw2-7cc7-3qxx) / GHSA-hmw2-7cc7-3qxx, CWE-93, GHSA-rated high; impact is integrity-only and precondition-dependent — CVSS v3.1 7.5 `I:H`, the advisory itself notes a Moderate ≈5.3 `I:L` is defensible). `form-data < 4.0.6` (4.x line) concatenates the `field` name and `filename` option straight into the `Content-Disposition` multipart header without escaping CR/LF/`"`, so an app that passes **untrusted input as a field name or filename** can let an attacker terminate the header line and inject headers or smuggle extra multipart parts (e.g. a forged `is_admin` field). PAMSignal itself is C and unaffected; the alert fires only on the example receiver's **dev/test-scope** transitive `form-data` — pulled in by `supertest` → `superagent` (and `@types/superagent`), never on the running webhook server, and never with attacker-controlled field names. Pinned via pnpm `overrides` in `pnpm-workspace.yaml` (`form-data: ^4.0.6`, same mechanism as the earlier `qs` pin) so both 4.0.5 resolutions collapse to the patched 4.0.6; `package.json` direct deps unchanged. All 64 jest tests still pass.
+
 - [x] docs: scope the apt-repo `apt update` in the install instructions to `pamsignal.list` only (`-o Dir::Etc::sourcelist=… -o Dir::Etc::sourceparts="-" -o APT::Get::List-Cleanup="0"`). The old `apt update && apt install pamsignal` one-liner exited non-zero — and never reached the install — whenever an unrelated third-party repo on the host was broken (e.g. an expired `NO_PUBKEY`), even though PamSignal's own index downloaded fine. Updated README + `docs/deployment.md` and their VI mirrors.
 
 ## 0.6.2 — 2026-06-03
