@@ -1,3 +1,5 @@
+
+
 <p align="center">
   <img src="assets/pamsignal-banner.png" alt="PAMSignal — real-time login &amp; brute-force alerts for Linux servers" width="100%" />
 </p>
@@ -176,7 +178,7 @@ enable_notification_type = login_success,brute_force
 Need to send alerts to a provider we don't support natively? Or want to build your own auto-banning logic? 
 PAMSignal sends structured ECS JSON to any custom webhook. 
 
-👉 **[Check out the Node.js Custom Webhook Example](./examples/nodejs-webhook/README.md)** to see how easy it is to build your own receiver!
+👉 **[Check out the Node.js Custom Webhook Example](./examples/nodejs-webhook/README.md)** or **[Python Webhook Example](./examples/python-webhook/README.md)** to see how easy it is to build your own receiver!
 
 ### 4. Reload & Monitor
 
