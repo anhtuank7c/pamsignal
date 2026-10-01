@@ -17,16 +17,6 @@ PAMSignal là một login monitor nhẹ, zero-dependency cho Linux server. Nó t
 
 Nếu bạn quản lý vài server và muốn biết ngay lập tức khi có ai đó đăng nhập hoặc thử brute-force máy của bạn — mà không phải triển khai Wazuh, EDR, hay đọc 200 trang tài liệu — thì đây là thứ dành cho bạn.
 
-Hãy hình dung nó như một **đầu báo khói cho cửa ngõ vào server của bạn**: nó không khóa cửa giúp bạn (hardening SSH vẫn là việc của bạn — [xem cách làm](ssh-hardening.md)), nhưng nó báo ngay khoảnh khắc có người mở cửa hay bắt đầu tìm cách cạy cửa.
-
-## 👥 PAMSignal có dành cho bạn?
-
-- **Dev cá nhân & self-hoster** — điện thoại rung lên ngay khi có người đăng nhập vào VPS của bạn, hoặc một con bot bắt đầu dò máy. Cài hai phút, không phải nuôi thêm nền tảng nào.
-- **Nhóm nhỏ & startup** — một kênh `#security-alerts` và một fleet dashboard cho mọi người trực on-call.
-- **Hosting provider & MSP** — cung cấp cảnh báo đăng nhập theo từng khách hàng như một giá trị gia tăng gần như không tốn chi phí cho các server bạn quản lý → [playbook cho hosting provider](use-cases.md#hosting-provider-nhỏ--msp).
-
-Playbook đầy đủ cho từng nhóm nằm trong **[Use Cases & Tích hợp](use-cases.md)**.
-
 ## 👀 Bạn sẽ thực sự thấy gì
 
 Chỉ vài giây sau một sự kiện, một dòng như thế này hiện ra trong Telegram, Slack, Teams, Discord, hay WhatsApp của bạn:
@@ -39,58 +29,11 @@ Chỉ vài giây sau một sự kiện, một dòng như thế này hiện ra tr
 
 Muốn một màn hình cho cả fleet thay vì ping lẻ từng host? PAMSignal cũng cấp dữ liệu cho một **[Grafana dashboard](grafana-getting-started.md)** dựng sẵn (xem trước ở [phần dưới](#-góc-nhìn-toàn-fleet-trong-grafana)).
 
-## ✨ Tại sao chọn PAMSignal?
-
-- **Cảnh báo real-time**: Tích hợp sẵn cho Telegram, Slack, Teams, WhatsApp, Discord, và Custom Webhook.
-- **Bảo vệ chống brute-force**: Tự động đếm số lần thất bại và tích hợp mượt mà với [Fail2ban](examples/fail2ban.md) để chặn kẻ tấn công.
-- **Cực kỳ nhẹ**: Một C binary duy nhất với một file config duy nhất. Dependency duy nhất là `libsystemd`.
-- **Chịu lỗi tốt**: Việc gửi cảnh báo được cô lập qua `fork+exec`. Network timeout hay API lỗi sẽ không bao giờ làm crash tiến trình monitoring lõi.
-- **Hợp với stack của bạn**: Nói [ECS JSON](alerts.md#custom-webhook-ecs-json) với bất kỳ SIEM hay webhook nào, và đi kèm sẵn một [Grafana fleet dashboard](grafana-getting-started.md) — cấp dữ liệu cho công cụ bạn đang dùng thay vì bắt bạn nuôi thêm một console nữa.
-
-## 🧱 PAMSignal nằm ở đâu
-
-PAMSignal là tầng **phát hiện (detection)** trong mô hình phòng thủ bốn lớp. Nó làm đúng một việc đó thật tốt và để phần còn lại cho đúng công cụ — nó không bao giờ sửa `sshd` hay tự chặn gì cả.
-
-| Tầng | Nhiệm vụ | Công cụ của bạn |
-|---|---|---|
-| Phòng ngừa | làm cánh cửa khó mở | SSH key-only auth → **[Hướng dẫn bảo mật SSH](ssh-hardening.md)** |
-| Toàn vẹn | phát hiện hệ thống bị can thiệp | AIDE / `debsums` / `rpm -V` |
-| **Phát hiện / Cảnh báo** | **báo cho bạn chuyện gì đang xảy ra, ngay lúc này** | **PAMSignal** |
-| Điều tra | dựng lại sự việc sau đó | `auditd` + journald retention |
-
-Bổ trợ tự nhiên cho nó là **phản ứng**: [Fail2ban](examples/fail2ban.md) dựa vào tín hiệu brute-force của PAMSignal để chặn IP kẻ tấn công tại firewall. Còn chính xác PAMSignal thấy và không thấy gì thì **[Threat Model](threat-model.md)** nói rõ.
-
-## 🏗️ Kiến trúc
-
-```mermaid
-graph LR
-    sshd["sshd / sudo / su"]
-    journald[("systemd-journald")]
-    pamsignal["PAMSignal"]
-    admin["🧑‍💻 Admin"]
-    platforms["Telegram / Slack<br/>Teams / WhatsApp / Discord<br/>Custom webhook"]
-    fail2ban["Fail2ban<br/>(iptables / ufw)"]
-
-    sshd -- "PAM auth events" --> journald
-    pamsignal -- "reads & writes<br/>structured events" --> journald
-    admin -- "journalctl -t pamsignal" --> journald
-    pamsignal -. "fork+exec curl<br/>(best-effort)" .-> platforms
-    platforms -. "alerts" .-> admin
-    fail2ban -. "watches pamsignal BRUTE_FORCE_DETECTED events<br/>& blocks attacker IP" .-> journald
-
-    style pamsignal fill:#2d6a4f,stroke:#1b4332,color:#fff
-    style journald fill:#264653,stroke:#1d3557,color:#fff
-    style sshd fill:#6c757d,stroke:#495057,color:#fff
-    style platforms fill:#6c757d,stroke:#495057,color:#fff,stroke-dasharray: 5 5
-    style fail2ban fill:#e76f51,stroke:#d62828,color:#fff,stroke-dasharray: 5 5
-    style admin fill:#e9c46a,stroke:#f4a261,color:#000
-```
-
 ## 🚀 Bắt đầu nhanh
 
 ### 1. Cài đặt
 
-<details>
+<details open>
 <summary><strong>Debian / Ubuntu</strong></summary>
 
 ```bash
@@ -171,14 +114,7 @@ enable_notification_type = login_success,brute_force
 ```
 *Cả sáu token loại sự kiện (`login_success`, `login_failed`, `session_open`, `session_close`, `brute_force`, `all`) được tài liệu hoá tại [Configuration → Notification-type filter](configuration.md#bộ-lọc-loại-thông-báo). `journalctl -t pamsignal` vẫn giữ toàn bộ dấu vết forensic bất kể bạn lọc bỏ gì khỏi chat.*
 
-### 3. Tích hợp Custom Webhook (Tuỳ chọn)
-
-Cần gửi cảnh báo tới một provider mà chúng tôi không hỗ trợ sẵn? Hay muốn tự xây logic auto-ban của riêng bạn?
-PAMSignal gửi structured ECS JSON tới bất kỳ custom webhook nào.
-
-👉 **[Xem ví dụ Node.js Custom Webhook](examples/nodejs-webhook.md)** để thấy xây một receiver của riêng bạn dễ thế nào!
-
-### 4. Reload & Theo dõi
+### 3. Reload & Theo dõi
 
 Áp dụng cấu hình và xem sự kiện trực tiếp:
 
@@ -186,6 +122,70 @@ PAMSignal gửi structured ECS JSON tới bất kỳ custom webhook nào.
 sudo systemctl reload pamsignal
 journalctl -t pamsignal -f
 ```
+
+## ✨ Tại sao chọn PAMSignal?
+
+- **Cảnh báo real-time**: Tích hợp sẵn cho Telegram, Slack, Teams, WhatsApp, Discord, và Custom Webhook.
+- **Bảo vệ chống brute-force**: Tự động đếm số lần thất bại và tích hợp mượt mà với [Fail2ban](examples/fail2ban.md) để chặn kẻ tấn công.
+- **Cực kỳ nhẹ**: Một C binary duy nhất với một file config duy nhất. Dependency duy nhất là `libsystemd`.
+- **Chịu lỗi tốt**: Việc gửi cảnh báo được cô lập qua `fork+exec`. Network timeout hay API lỗi sẽ không bao giờ làm crash tiến trình monitoring lõi.
+- **Hợp với stack của bạn**: Nói [ECS JSON](alerts.md#custom-webhook-ecs-json) với bất kỳ SIEM hay webhook nào, và đi kèm sẵn một [Grafana fleet dashboard](grafana-getting-started.md) — cấp dữ liệu cho công cụ bạn đang dùng thay vì bắt bạn nuôi thêm một console nữa.
+
+## 👥 PAMSignal có dành cho bạn?
+
+- **Dev cá nhân & self-hoster** — điện thoại rung lên ngay khi có người đăng nhập vào VPS của bạn, hoặc một con bot bắt đầu dò máy. Cài hai phút, không phải nuôi thêm nền tảng nào.
+- **Nhóm nhỏ & startup** — một kênh `#security-alerts` và một fleet dashboard cho mọi người trực on-call.
+- **Hosting provider & MSP** — cung cấp cảnh báo đăng nhập theo từng khách hàng như một giá trị gia tăng gần như không tốn chi phí cho các server bạn quản lý → [playbook cho hosting provider](use-cases.md#hosting-provider-nhỏ--msp).
+
+Playbook đầy đủ cho từng nhóm nằm trong **[Use Cases & Tích hợp](use-cases.md)**.
+
+## 🧱 PAMSignal nằm ở đâu
+
+Hãy hình dung nó như một **đầu báo khói cho cửa ngõ vào server của bạn**: nó không khóa cửa giúp bạn (hardening SSH vẫn là việc của bạn — [xem cách làm](ssh-hardening.md)), nhưng nó báo ngay khoảnh khắc có người mở cửa hay bắt đầu tìm cách cạy cửa.
+
+PAMSignal là tầng **phát hiện (detection)** trong mô hình phòng thủ bốn lớp. Nó làm đúng một việc đó thật tốt và để phần còn lại cho đúng công cụ — nó không bao giờ sửa `sshd` hay tự chặn gì cả.
+
+| Tầng | Nhiệm vụ | Công cụ của bạn |
+|---|---|---|
+| Phòng ngừa | làm cánh cửa khó mở | SSH key-only auth → **[Hướng dẫn bảo mật SSH](ssh-hardening.md)** |
+| Toàn vẹn | phát hiện hệ thống bị can thiệp | AIDE / `debsums` / `rpm -V` |
+| **Phát hiện / Cảnh báo** | **báo cho bạn chuyện gì đang xảy ra, ngay lúc này** | **PAMSignal** |
+| Điều tra | dựng lại sự việc sau đó | `auditd` + journald retention |
+
+Bổ trợ tự nhiên cho nó là **phản ứng**: [Fail2ban](examples/fail2ban.md) dựa vào tín hiệu brute-force của PAMSignal để chặn IP kẻ tấn công tại firewall. Còn chính xác PAMSignal thấy và không thấy gì thì **[Threat Model](threat-model.md)** nói rõ.
+
+## 🏗️ Kiến trúc
+
+```mermaid
+graph LR
+    sshd["sshd / sudo / su"]
+    journald[("systemd-journald")]
+    pamsignal["PAMSignal"]
+    admin["🧑‍💻 Admin"]
+    platforms["Telegram / Slack<br/>Teams / WhatsApp / Discord<br/>Custom webhook"]
+    fail2ban["Fail2ban<br/>(iptables / ufw)"]
+
+    sshd -- "PAM auth events" --> journald
+    pamsignal -- "reads & writes<br/>structured events" --> journald
+    admin -- "journalctl -t pamsignal" --> journald
+    pamsignal -. "fork+exec curl<br/>(best-effort)" .-> platforms
+    platforms -. "alerts" .-> admin
+    fail2ban -. "watches pamsignal BRUTE_FORCE_DETECTED events<br/>& blocks attacker IP" .-> journald
+
+    style pamsignal fill:#2d6a4f,stroke:#1b4332,color:#fff
+    style journald fill:#264653,stroke:#1d3557,color:#fff
+    style sshd fill:#6c757d,stroke:#495057,color:#fff
+    style platforms fill:#6c757d,stroke:#495057,color:#fff,stroke-dasharray: 5 5
+    style fail2ban fill:#e76f51,stroke:#d62828,color:#fff,stroke-dasharray: 5 5
+    style admin fill:#e9c46a,stroke:#f4a261,color:#000
+```
+
+## 🔌 Tích hợp Custom Webhook (Tuỳ chọn)
+
+Cần gửi cảnh báo tới một provider mà chúng tôi không hỗ trợ sẵn? Hay muốn tự xây logic auto-ban của riêng bạn?
+PAMSignal gửi structured ECS JSON tới bất kỳ custom webhook nào.
+
+👉 **[Xem ví dụ Node.js Custom Webhook](examples/nodejs-webhook.md)** hoặc **[ví dụ Python Webhook](examples/python-webhook.md)** để thấy xây một receiver của riêng bạn dễ thế nào!
 
 ## 🛡️ Tăng cường với Fail2ban (Bảo vệ nâng cao, tuỳ chọn)
 

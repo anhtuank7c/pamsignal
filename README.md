@@ -1,5 +1,3 @@
-
-
 <p align="center">
   <img src="assets/pamsignal-banner.png" alt="PAMSignal — real-time login &amp; brute-force alerts for Linux servers" width="100%" />
 </p>
@@ -19,16 +17,6 @@ PAMSignal is a lightweight, zero-dependency login monitor for Linux servers. It 
 
 If you manage a handful of servers and want to know instantly when someone logs in or tries to brute-force your machine—without deploying Wazuh, EDR, or reading 200 pages of documentation—this is for you.
 
-Think of it as a **smoke detector for your servers' front door**: it doesn't lock the door (hardening SSH is still your job — [here's how](./docs/ssh-hardening.md)), but it tells you the instant someone opens it or starts trying to force it.
-
-## 👥 Is PAMSignal for you?
-
-- **Solo devs & self-hosters** — get a phone buzz the moment anyone logs into your VPS, or a bot starts hammering it. Two-minute setup, no platform to babysit.
-- **Small teams & startups** — one `#security-alerts` channel and one fleet dashboard for everyone on call.
-- **Hosting providers & MSPs** — offer per-customer login alerting as a near-zero-cost value-add for the servers you manage → [hosting-provider playbook](./docs/use-cases.md#small-hosting-provider--msp).
-
-Full playbooks for each in **[Use Cases & Integrations](./docs/use-cases.md)**.
-
 ## 👀 What you'll actually see
 
 Seconds after an event, a line like this lands in your Telegram, Slack, Teams, Discord, or WhatsApp:
@@ -41,58 +29,11 @@ Seconds after an event, a line like this lands in your Telegram, Slack, Teams, D
 
 Prefer one screen for the whole fleet instead of per-host pings? PAMSignal also feeds a ready-made **[Grafana dashboard](./docs/grafana-getting-started.md)** (preview [below](#-fleet-view-in-grafana)).
 
-## ✨ Why PAMSignal?
-
-- **Real-time Alerts**: Native integration for Telegram, Slack, Teams, WhatsApp, Discord, and Custom Webhooks.
-- **Brute-Force Protection**: Natively tracks failed attempts and seamlessly integrates with [Fail2ban](./examples/fail2ban/README.md) to block attackers.
-- **Ultra Lightweight**: A single C binary with a single config file. The only dependency is `libsystemd`.
-- **Fault-Tolerant**: Alert dispatching is isolated via `fork+exec`. Network timeouts or API failures will never crash the core monitoring process.
-- **Fits your stack**: Speaks [ECS JSON](./docs/alerts.md#custom-webhook-ecs-json) to any SIEM or webhook and ships a [Grafana fleet dashboard](./docs/grafana-getting-started.md) — it feeds the tools you already run instead of being one more console.
-
-## 🧱 Where PAMSignal fits
-
-PAMSignal is the **detection** layer of a four-layer defence-in-depth stack. It does that one job well and leaves the others to the right tool — it never modifies `sshd` or blocks anything itself.
-
-| Layer | Job | Your tool |
-|---|---|---|
-| Prevention | make the door hard to open | SSH key-only auth → **[Secure SSH guide](./docs/ssh-hardening.md)** |
-| Integrity | detect tampering with the system | AIDE / `debsums` / `rpm -V` |
-| **Detection / Alerting** | **tell you what's happening, now** | **PAMSignal** |
-| Forensics | reconstruct events after the fact | `auditd` + journald retention |
-
-The natural companion is **response**: [Fail2ban](./examples/fail2ban/README.md) acts on PAMSignal's brute-force signal to block attacker IPs at the firewall. Exactly what PAMSignal can and can't observe is spelled out in the **[Threat Model](./docs/threat-model.md)**.
-
-## 🏗️ Architecture
-
-```mermaid
-graph LR
-    sshd["sshd / sudo / su"]
-    journald[("systemd-journald")]
-    pamsignal["PAMSignal"]
-    admin["🧑‍💻 Admin"]
-    platforms["Telegram / Slack<br/>Teams / WhatsApp / Discord<br/>Custom webhook"]
-    fail2ban["Fail2ban<br/>(iptables / ufw)"]
-
-    sshd -- "PAM auth events" --> journald
-    pamsignal -- "reads & writes<br/>structured events" --> journald
-    admin -- "journalctl -t pamsignal" --> journald
-    pamsignal -. "fork+exec curl<br/>(best-effort)" .-> platforms
-    platforms -. "alerts" .-> admin
-    fail2ban -. "watches pamsignal BRUTE_FORCE_DETECTED events<br/>& blocks attacker IP" .-> journald
-
-    style pamsignal fill:#2d6a4f,stroke:#1b4332,color:#fff
-    style journald fill:#264653,stroke:#1d3557,color:#fff
-    style sshd fill:#6c757d,stroke:#495057,color:#fff
-    style platforms fill:#6c757d,stroke:#495057,color:#fff,stroke-dasharray: 5 5
-    style fail2ban fill:#e76f51,stroke:#d62828,color:#fff,stroke-dasharray: 5 5
-    style admin fill:#e9c46a,stroke:#f4a261,color:#000
-```
-
 ## 🚀 Quick Start
 
 ### 1. Install
 
-<details>
+<details open>
 <summary><strong>Debian / Ubuntu</strong></summary>
 
 ```bash
@@ -173,14 +114,7 @@ enable_notification_type = login_success,brute_force
 ```
 *All six event-type tokens (`login_success`, `login_failed`, `session_open`, `session_close`, `brute_force`, `all`) are documented in [Configuration → Notification-type filter](./docs/configuration.md#notification-type-filter). `journalctl -t pamsignal` keeps the full forensic trail regardless of what you filter out of chat.*
 
-### 3. Custom Webhook Integrations (Optional)
-
-Need to send alerts to a provider we don't support natively? Or want to build your own auto-banning logic? 
-PAMSignal sends structured ECS JSON to any custom webhook. 
-
-👉 **[Check out the Node.js Custom Webhook Example](./examples/nodejs-webhook/README.md)** or **[Python Webhook Example](./examples/python-webhook/README.md)** to see how easy it is to build your own receiver!
-
-### 4. Reload & Monitor
+### 3. Reload & Monitor
 
 Apply your configuration and watch the live events:
 
@@ -188,6 +122,70 @@ Apply your configuration and watch the live events:
 sudo systemctl reload pamsignal
 journalctl -t pamsignal -f
 ```
+
+## ✨ Why PAMSignal?
+
+- **Real-time Alerts**: Native integration for Telegram, Slack, Teams, WhatsApp, Discord, and Custom Webhooks.
+- **Brute-Force Protection**: Natively tracks failed attempts and seamlessly integrates with [Fail2ban](./examples/fail2ban/README.md) to block attackers.
+- **Ultra Lightweight**: A single C binary with a single config file. The only dependency is `libsystemd`.
+- **Fault-Tolerant**: Alert dispatching is isolated via `fork+exec`. Network timeouts or API failures will never crash the core monitoring process.
+- **Fits your stack**: Speaks [ECS JSON](./docs/alerts.md#custom-webhook-ecs-json) to any SIEM or webhook and ships a [Grafana fleet dashboard](./docs/grafana-getting-started.md) — it feeds the tools you already run instead of being one more console.
+
+## 👥 Is PAMSignal for you?
+
+- **Solo devs & self-hosters** — get a phone buzz the moment anyone logs into your VPS, or a bot starts hammering it. Two-minute setup, no platform to babysit.
+- **Small teams & startups** — one `#security-alerts` channel and one fleet dashboard for everyone on call.
+- **Hosting providers & MSPs** — offer per-customer login alerting as a near-zero-cost value-add for the servers you manage → [hosting-provider playbook](./docs/use-cases.md#small-hosting-provider--msp).
+
+Full playbooks for each in **[Use Cases & Integrations](./docs/use-cases.md)**.
+
+## 🧱 Where PAMSignal fits
+
+Think of it as a **smoke detector for your servers' front door**: it doesn't lock the door (hardening SSH is still your job — [here's how](./docs/ssh-hardening.md)), but it tells you the instant someone opens it or starts trying to force it.
+
+PAMSignal is the **detection** layer of a four-layer defence-in-depth stack. It does that one job well and leaves the others to the right tool — it never modifies `sshd` or blocks anything itself.
+
+| Layer | Job | Your tool |
+|---|---|---|
+| Prevention | make the door hard to open | SSH key-only auth → **[Secure SSH guide](./docs/ssh-hardening.md)** |
+| Integrity | detect tampering with the system | AIDE / `debsums` / `rpm -V` |
+| **Detection / Alerting** | **tell you what's happening, now** | **PAMSignal** |
+| Forensics | reconstruct events after the fact | `auditd` + journald retention |
+
+The natural companion is **response**: [Fail2ban](./examples/fail2ban/README.md) acts on PAMSignal's brute-force signal to block attacker IPs at the firewall. Exactly what PAMSignal can and can't observe is spelled out in the **[Threat Model](./docs/threat-model.md)**.
+
+## 🏗️ Architecture
+
+```mermaid
+graph LR
+    sshd["sshd / sudo / su"]
+    journald[("systemd-journald")]
+    pamsignal["PAMSignal"]
+    admin["🧑‍💻 Admin"]
+    platforms["Telegram / Slack<br/>Teams / WhatsApp / Discord<br/>Custom webhook"]
+    fail2ban["Fail2ban<br/>(iptables / ufw)"]
+
+    sshd -- "PAM auth events" --> journald
+    pamsignal -- "reads & writes<br/>structured events" --> journald
+    admin -- "journalctl -t pamsignal" --> journald
+    pamsignal -. "fork+exec curl<br/>(best-effort)" .-> platforms
+    platforms -. "alerts" .-> admin
+    fail2ban -. "watches pamsignal BRUTE_FORCE_DETECTED events<br/>& blocks attacker IP" .-> journald
+
+    style pamsignal fill:#2d6a4f,stroke:#1b4332,color:#fff
+    style journald fill:#264653,stroke:#1d3557,color:#fff
+    style sshd fill:#6c757d,stroke:#495057,color:#fff
+    style platforms fill:#6c757d,stroke:#495057,color:#fff,stroke-dasharray: 5 5
+    style fail2ban fill:#e76f51,stroke:#d62828,color:#fff,stroke-dasharray: 5 5
+    style admin fill:#e9c46a,stroke:#f4a261,color:#000
+```
+
+## 🔌 Custom Webhook Integrations (Optional)
+
+Need to send alerts to a provider we don't support natively? Or want to build your own auto-banning logic? 
+PAMSignal sends structured ECS JSON to any custom webhook. 
+
+👉 **[Check out the Node.js Custom Webhook Example](./examples/nodejs-webhook/README.md)** or **[Python Webhook Example](./examples/python-webhook/README.md)** to see how easy it is to build your own receiver!
 
 ## 🛡️ Hardening with Fail2ban (Optional Advanced Protection)
 
