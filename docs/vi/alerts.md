@@ -50,9 +50,66 @@ Dòng `[CRIT]` là cảnh báo login-after-failures: một lần đăng nhập �
 
 *(Lưu ý: Các tag context tùy chỉnh như `provider=aws service_name=web-api` sẽ tự động được thêm vào nếu được cấu hình trong `pamsignal.conf`)*
 
+### Định dạng pretty
+
+Đặt `message_style = pretty` để thay dòng đơn ở trên bằng một tin nhắn nhiều dòng: một dòng tiêu đề, rồi mỗi trường một dòng với nhãn in đậm và giá trị dạng monospace. Các trường vẫn như cũ; chỉ cách trình bày thay đổi. Những gì từng nền tảng nhận được:
+
+```text
+Telegram (HTML parse mode)
+🚨 <b>Brute force detected</b>
+<b>Host:</b> <code>web-01</code>
+<b>Source:</b> <code>203.0.113.50</code>
+<b>User:</b> <code>root</code>
+<b>Attempts:</b> <code>12 in 300s</code>
+<b>Time:</b> <code>2026-03-29 14:23:01 +0000</code>
+
+Slack / WhatsApp
+🚨 *Brute force detected*
+*Host:* `web-01`
+*Source:* `203.0.113.50`
+
+Discord / Teams
+🚨 **Brute force detected**
+**Host:** `web-01`
+**Source:** `203.0.113.50`
+```
+
+| Tiêu đề | Sự kiện | Các dòng |
+|---|---|---|
+| ✅ Login success / ❌ Login failed | `login_success`, `login_failure` | Host, User, Source, Auth, PID, Time |
+| 🔓 Session opened / 🔒 Session closed | `session_opened`, `session_closed` | Host, User, Service, PID, Time |
+| 🚨 Brute force detected | `brute_force_detected` (từ xa) | Host, Source, User, Attempts, Time |
+| 🚨 Brute force detected (local) | `brute_force_detected` (sudo/su) | Host, Actor, Target, Service, Attempts, Time |
+| 🔥 Login after failed attempts | `login_after_failures` | Host, User, Source, Failures, Auth, PID, Time |
+| 🔔 PAMSignal test alert | `pamsignal --test-alert` | Host, Time |
+
+Các dòng `Provider` và `Service name` được thêm vào khi các tag đó được cấu hình. Teams ngăn cách các dòng bằng một dòng trống, vì markdown của nó gộp các dấu xuống dòng đơn.
+
+### Cách vô hiệu hoá văn bản không đáng tin
+
+Tên user và tên host đến từ journal, và tên user do chính người đang cố đăng nhập chọn. Không có gì bắt nguồn từ chúng được gửi đi như văn bản tin nhắn thông thường, ở cả hai kiểu:
+
+- **Pretty:** mọi giá trị là nội dung của một code span.
+- **Compact:** cả dòng được gửi như một code span duy nhất (`<code>…</code>` trên Telegram, backtick ở các nền tảng khác), nên nó cũng hiển thị dạng monospace, đúng với cách bố cục độ rộng cố định của nó được thiết kế.
+
+Bên trong một code span, không nền tảng nào phân tích markup, resolve mention hay biến văn bản thành link. Trước khi văn bản được đưa vào:
+
+| Đầu vào | Trở thành | Lý do |
+|---|---|---|
+| Dấu backtick | `'` | Đây là ký tự duy nhất có thể đóng một code span |
+| `&` `<` `>` | `&amp;` `&lt;` `&gt;` trên Telegram, Slack, Teams | Ở đó chúng là cú pháp (HTML tag, `<!channel>`, `<url\|text>`) |
+| Ký tự điều khiển, gồm cả CR / LF / TAB | `?` | Một dấu xuống dòng sẽ mở ra một dòng giả mạo |
+| Ký tự phân tách dòng và đoạn của Unicode (U+2028, U+2029), C1 control | `?` | Tương tự, với các client coi chúng là dấu xuống dòng |
+| Bidirectional override và isolate (U+202A–202E, U+2066–2069), ký tự zero-width và các ký tự định dạng vô hình khác | `?` | Chúng đảo thứ tự hoặc che giấu văn bản hiển thị |
+| Byte không phải UTF-8 hợp lệ | `?` | Nếu không, API chat sẽ từ chối cả request, khiến cảnh báo bị chặn |
+
+Vì vậy một lần thử đăng nhập với tên `[reset-password](https://evil.example)`, `https://evil.example`, `@everyone`, `<!channel>` hay `/start` sẽ đến nơi đúng như chuỗi văn bản đó và không gì hơn. Cảnh báo gửi tới Discord còn kèm `"allowed_mentions":{"parse":[]}`. Một tin nhắn vượt quá 2000 byte sẽ được gửi ở dạng compact, và nếu vẫn không vừa thì cảnh báo bị bỏ kèm một dòng warning trong journal thay vì bị cắt giữa chừng markup.
+
+Kiểm tra UTF-8 này cũng áp dụng cho JSON của custom webhook: một byte không hợp lệ trong một trường sẽ thành `?` để body luôn parse được.
+
 ### Telegram
 
-Gửi dưới dạng plain text qua [Bot API `sendMessage`](https://core.telegram.org/bots/api#sendmessage). Cùng định dạng văn bản chat một dòng như trên.
+Gửi qua [Bot API `sendMessage`](https://core.telegram.org/bots/api#sendmessage). Plain text với kiểu compact; HTML parse mode với kiểu pretty.
 
 **Cài đặt:**
 1. Tạo bot với [@BotFather](https://t.me/BotFather) và sao chép token

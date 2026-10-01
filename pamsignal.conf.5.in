@@ -131,6 +131,30 @@ Example:
 .EX
 enable_notification_type = login_success,brute_force
 .EE
+.SH MESSAGE STYLE
+.TP
+.B message_style
+Layout of the alerts sent to chat channels. One of:
+.RS
+.TP
+.B compact
+One line of key=value text. This is the default.
+.TP
+.B pretty
+A multi-line message: a headline, then one row per field with a bold
+label and a monospace value, written in each platform's own markup
+(Telegram HTML, Slack mrkdwn, Teams and Discord markdown, WhatsApp
+formatting).
+.RE
+.IP
+In both styles, text taken from the journal (user names, host names) is
+only ever sent inside a code span: the compact line as a whole, each
+pretty value on its own. Backticks, markup characters, control characters,
+invisible or direction-changing Unicode and malformed UTF-8 are neutralised
+first, so such text cannot inject formatting, links or mentions. A pretty
+message that would be too long is sent in the compact form instead. The custom webhook's JSON payload is the same in both styles.
+Any other value is a hard error.
+
 .SH ALERT CHANNELS
 Only the channels for which credentials are present are used. Multiple
 channels may be configured simultaneously; each receives an independent

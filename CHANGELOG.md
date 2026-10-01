@@ -2,7 +2,17 @@
 
 ## Unreleased
 
+### Features
+- [x] **`message_style = pretty`** — an optional multi-line layout for chat alerts (default stays `compact`, the existing one-line text). A headline with an emoji, then one row per field with a bold label and a monospace value, rendered in each platform's own markup: Telegram HTML (`parse_mode=HTML`), Slack mrkdwn, Teams and Discord markdown, WhatsApp formatting. Covers every alert type and the `--test-alert` message, which now previews the configured style. Every journal-derived value is emitted inside a code span with control characters replaced, backticks neutralised, and `&` `<` `>` entity-escaped where they are syntax; a message over 2000 bytes falls back to compact rather than being cut mid-markup. The custom webhook's ECS JSON is unchanged. `--check-config` reports the active style.
+
+### Security
+- [x] **Crafted usernames could inject mentions and links into chat alerts.** The alert text embeds the SSH username, which the unauthenticated client chooses, and it was sent as ordinary message text. A login attempt as `@everyone` (Discord) or `<!channel>` (Slack) pinged the whole channel; `[reset-password](https://evil.example)` rendered as a masked link on Discord and Teams; a bare URL was auto-linked everywhere; `/command` and `@name` were linkified on Telegram. Chat text is now produced only by two renderers that place untrusted text inside a code span — each value in the pretty style, the whole line in the compact style (which therefore renders monospace) — after replacing backticks, entity-escaping `&` `<` `>` where they are syntax, and turning control characters, Unicode line/paragraph separators, bidirectional overrides and isolates, zero-width characters and malformed UTF-8 into `?`. Telegram messages are sent with `parse_mode=HTML`; Discord payloads carry `"allowed_mentions":{"parse":[]}`. Affects all earlier releases.
+- [x] **Malformed UTF-8 in a field could suppress an alert.** `json_escape` copied bytes ≥ 0x80 verbatim, so one invalid byte in a hostname or tag produced a body that chat APIs and strict JSON parsers reject. Invalid sequences now become `?`, for chat channels and the custom webhook alike.
+- [x] **Senders drop an alert whose JSON-escaped text was truncated** instead of sending the cut-off string; previously only truncation of the outer body was detected.
+- [x] Verified by a randomised property test (20,000 hostile usernames/hostnames/tags × 5 platforms × both styles, asserting that no output contains an unpaired tag, an extra backtick, a stray `<`/`>`/`&`, a layout-changing code point, or invalid UTF-8) and by mutation testing: disabling any one of the four defences makes the suite fail.
+
 ### Fixed
+- [x] **Chat sender buffers enlarged** (JSON-escaped text 2048 → 4096 bytes, body 2560 → 4608) so a pretty message with many characters that need JSON escaping is never truncated into an invalid request.
 - [x] **Tests: bounds-check the `snprintf` appends in `tests/test_config.c`** (CodeQL `cpp/overflowing-snprintf`, alerts #1 and #2). Two `trusted_sources` tests advanced a buffer offset by the `snprintf` return value without checking it against the space left; the strings always fit, so nothing overflowed, but the pattern is unsafe. Both now use one helper that asserts every append fits. Test code only — the daemon is unchanged.
 
 ## 0.7.0 — 2026-10-01

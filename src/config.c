@@ -8,6 +8,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include <sys/stat.h>
 #include <syslog.h>
 #include <systemd/sd-journal.h>
@@ -151,6 +152,19 @@ static int parse_notification_mask(const char *val, unsigned int *out) {
     return 0;
 }
 
+// Parse message_style ("compact" or "pretty", case-insensitive).
+static int parse_message_style(const char *val, ps_message_style_t *out) {
+    if (strcasecmp(val, "compact") == 0) {
+        *out = PS_MESSAGE_STYLE_COMPACT;
+        return 0;
+    }
+    if (strcasecmp(val, "pretty") == 0) {
+        *out = PS_MESSAGE_STYLE_PRETTY;
+        return 0;
+    }
+    return -1;
+}
+
 // --- Trusted sources (CIDR list) ---
 
 // Parse one "addr" or "addr/prefix" element. A bare address is a host route
@@ -275,7 +289,13 @@ int ps_config_ip_trusted(const ps_config_t *cfg, const char *ip) {
 
 // --- Config key mapping table ---
 
-typedef enum { CFG_STRING, CFG_INT, CFG_NOTIFY_MASK, CFG_CIDR_LIST } cfg_type_t;
+typedef enum {
+    CFG_STRING,
+    CFG_INT,
+    CFG_NOTIFY_MASK,
+    CFG_CIDR_LIST,
+    CFG_MESSAGE_STYLE
+} cfg_type_t;
 
 typedef struct {
     const char *key;
@@ -286,19 +306,20 @@ typedef struct {
     int max;
 } cfg_entry_t;
 
-#define CFG_STR(name)                  \
-    {#name,                            \
-     CFG_STRING,                       \
-     offsetof(ps_config_t, name),      \
-     sizeof(((ps_config_t *)0)->name), \
-     0,                                \
-     0}
+#define CFG_STR(name)                                   \
+    {                                                   \
+        #name, CFG_STRING, offsetof(ps_config_t, name), \
+            sizeof(((ps_config_t *)0)->name), 0, 0      \
+    }
 #define CFG_INT(name, lo, hi) \
-    {#name, CFG_INT, offsetof(ps_config_t, name), 0, lo, hi}
+    { #name, CFG_INT, offsetof(ps_config_t, name), 0, lo, hi }
 #define CFG_NOTIFY(name) \
-    {#name, CFG_NOTIFY_MASK, offsetof(ps_config_t, name), 0, 0, 0}
+    { #name, CFG_NOTIFY_MASK, offsetof(ps_config_t, name), 0, 0, 0 }
 // Parsed straight into cfg->trusted_sources[]; offset and size are unused.
-#define CFG_CIDRS(name) {#name, CFG_CIDR_LIST, 0, 0, 0, 0}
+#define CFG_CIDRS(name) \
+    { #name, CFG_CIDR_LIST, 0, 0, 0, 0 }
+#define CFG_STYLE(name) \
+    { #name, CFG_MESSAGE_STYLE, offsetof(ps_config_t, name), 0, 0, 0 }
 
 static const cfg_entry_t config_keys[] = {
     CFG_STR(telegram_bot_token),
@@ -323,6 +344,7 @@ static const cfg_entry_t config_keys[] = {
     CFG_INT(success_after_fail_threshold, 0, 10000),
     CFG_NOTIFY(enable_notification_type),
     CFG_CIDRS(trusted_sources),
+    CFG_STYLE(message_style),
 };
 
 static const size_t config_keys_count =
@@ -733,6 +755,16 @@ int ps_config_load(const char *path, ps_config_t *cfg) {
                             config_keys[i].max);
                     errors++;
                 }
+            } else if (config_keys[i].type == CFG_MESSAGE_STYLE) {
+                ps_message_style_t *dst =
+                    (ps_message_style_t *)((char *)cfg + config_keys[i].offset);
+                if (parse_message_style(val, dst) < 0) {
+                    cfg_log(LOG_ERR,
+                            "pamsignal: config:%d: %s must be 'compact' or "
+                            "'pretty'",
+                            lineno, key);
+                    errors++;
+                }
             } else if (config_keys[i].type == CFG_CIDR_LIST) {
                 if (parse_trusted_sources(val, cfg) < 0) {
                     cfg_log(LOG_ERR,
@@ -779,7 +811,7 @@ int ps_config_load(const char *path, ps_config_t *cfg) {
             "webhook_mtls=%s fail_threshold=%d fail_window_sec=%d "
             "max_tracked_ips=%d alert_cooldown_sec=%d "
             "success_after_fail_threshold=%d trusted_sources=%d "
-            "enable_notification_type=0x%02x "
+            "enable_notification_type=0x%02x message_style=%s "
             "provider=%s service_name=%s",
             cfg->telegram_bot_token[0] ? "on" : "off",
             cfg->slack_webhook_url[0] ? "on" : "off",
@@ -792,6 +824,8 @@ int ps_config_load(const char *path, ps_config_t *cfg) {
             cfg->fail_window_sec, cfg->max_tracked_ips, cfg->alert_cooldown_sec,
             cfg->success_after_fail_threshold, cfg->trusted_sources_count,
             cfg->enable_notification_type,
+            cfg->message_style == PS_MESSAGE_STYLE_PRETTY ? "pretty"
+                                                          : "compact",
             cfg->provider[0] ? cfg->provider : "none",
             cfg->service_name[0] ? cfg->service_name : "none");
     return PS_OK;

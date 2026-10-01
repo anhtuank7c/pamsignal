@@ -50,9 +50,66 @@ The `[CRIT]` line is the login-after-failures alert: a login **succeeded** from 
 
 *(Note: Custom context tags like `provider=aws service_name=web-api` will be appended automatically if configured in `pamsignal.conf`)*
 
+### Pretty format
+
+Set `message_style = pretty` to replace the single line above with a multi-line message: a headline, then one row per field with a bold label and a monospace value. The fields are the same; only the layout changes. What each platform receives:
+
+```text
+Telegram (HTML parse mode)
+🚨 <b>Brute force detected</b>
+<b>Host:</b> <code>web-01</code>
+<b>Source:</b> <code>203.0.113.50</code>
+<b>User:</b> <code>root</code>
+<b>Attempts:</b> <code>12 in 300s</code>
+<b>Time:</b> <code>2026-03-29 14:23:01 +0000</code>
+
+Slack / WhatsApp
+🚨 *Brute force detected*
+*Host:* `web-01`
+*Source:* `203.0.113.50`
+
+Discord / Teams
+🚨 **Brute force detected**
+**Host:** `web-01`
+**Source:** `203.0.113.50`
+```
+
+| Headline | Event | Rows |
+|---|---|---|
+| ✅ Login success / ❌ Login failed | `login_success`, `login_failure` | Host, User, Source, Auth, PID, Time |
+| 🔓 Session opened / 🔒 Session closed | `session_opened`, `session_closed` | Host, User, Service, PID, Time |
+| 🚨 Brute force detected | `brute_force_detected` (remote) | Host, Source, User, Attempts, Time |
+| 🚨 Brute force detected (local) | `brute_force_detected` (sudo/su) | Host, Actor, Target, Service, Attempts, Time |
+| 🔥 Login after failed attempts | `login_after_failures` | Host, User, Source, Failures, Auth, PID, Time |
+| 🔔 PAMSignal test alert | `pamsignal --test-alert` | Host, Time |
+
+`Provider` and `Service name` rows are appended when those tags are configured. Teams separates rows with a blank line, because its markdown folds single line breaks.
+
+### How untrusted text is neutralised
+
+User names and host names come from the journal, and a user name is chosen by whoever is trying to log in. Nothing derived from them is ever sent as ordinary message text, in either style:
+
+- **Pretty:** every value is the content of a code span.
+- **Compact:** the whole line is sent as one code span (`<code>…</code>` on Telegram, backticks elsewhere), so it also renders monospace, which is what its fixed-width layout was designed for.
+
+Inside a code span no platform parses markup, resolves mentions, or turns text into links. Before the text goes in:
+
+| Input | Becomes | Why |
+|---|---|---|
+| A backtick | `'` | It is the only character that can close a code span |
+| `&` `<` `>` | `&amp;` `&lt;` `&gt;` on Telegram, Slack, Teams | They are syntax there (HTML tags, `<!channel>`, `<url\|text>`) |
+| Control characters, including CR / LF / TAB | `?` | A line break would start a forged row |
+| Unicode line and paragraph separators (U+2028, U+2029), C1 controls | `?` | Same, for clients that treat them as line breaks |
+| Bidirectional overrides and isolates (U+202A–202E, U+2066–2069), zero-width and other invisible format characters | `?` | They reorder or hide the visible text |
+| Bytes that are not well-formed UTF-8 | `?` | The chat APIs reject the whole request otherwise, which would suppress the alert |
+
+So a login attempt as `[reset-password](https://evil.example)`, `https://evil.example`, `@everyone`, `<!channel>` or `/start` arrives as that literal text and nothing more. Discord alerts additionally carry `"allowed_mentions":{"parse":[]}`. A message that would exceed 2000 bytes is sent in the compact form, and if that does not fit either the alert is dropped with a journal warning rather than cut in the middle of its markup.
+
+The same UTF-8 check applies to the custom webhook's JSON: an invalid byte in a field becomes `?` so the body always parses.
+
 ### Telegram
 
-Sent as plain text via the [Bot API `sendMessage`](https://core.telegram.org/bots/api#sendmessage). The same single-line chat text shown above.
+Sent via the [Bot API `sendMessage`](https://core.telegram.org/bots/api#sendmessage). Plain text for the compact style; HTML parse mode for the pretty style.
 
 **Setup:**
 1. Create a bot with [@BotFather](https://t.me/BotFather) and copy the token

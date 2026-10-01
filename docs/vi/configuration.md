@@ -29,6 +29,9 @@ trusted_sources = 10.0.0.0/8, 203.0.113.7
 # Chat-dispatch filter (default: all)
 enable_notification_type = all
 
+# Chat message layout: compact (default) or pretty
+message_style = compact
+
 # Telegram
 telegram_bot_token = <bot_token>
 telegram_chat_id = <chat_id>
@@ -132,6 +135,35 @@ enable_notification_type = brute_force
 # Tất cả (mặc định)
 enable_notification_type = all
 ```
+
+## Kiểu hiển thị tin nhắn
+
+| Key | Mặc định | Giá trị | Mô tả |
+|-----|---------|--------|-------------|
+| `message_style` | `compact` | `compact`, `pretty` | Cách trình bày cảnh báo gửi tới các kênh chat |
+
+`compact` là dòng văn bản `key=value` mà PAMSignal vẫn gửi từ trước đến nay. `pretty` dễ đọc hơn trên điện thoại: một dòng tiêu đề, rồi mỗi trường một dòng với nhãn in đậm và giá trị dạng monospace.
+
+```ini
+message_style = pretty
+```
+
+```text
+🚨 Brute force detected
+Host: web-01
+Source: 203.0.113.50
+User: root
+Attempts: 12 in 300s
+Time: 2026-03-29 14:23:01 +0000
+```
+
+- **Markup theo từng nền tảng.** Mỗi kênh nhận đúng cú pháp của nó (Telegram HTML, Slack mrkdwn, markdown của Teams và Discord, định dạng của WhatsApp), nên nhãn luôn hiển thị đậm và giá trị luôn ở dạng monospace. Xem [Alerts → Định dạng pretty](./alerts.md#định-dạng-pretty).
+- **An toàn với dữ liệu thù địch.** Tên user và tên host đến từ journal và có thể bị kẻ tấn công chi phối. Ở cả hai kiểu, chúng chỉ được gửi bên trong một code span, sau khi backtick, ký tự markup, ký tự điều khiển và Unicode vô hình đã bị vô hiệu hoá, nên một lần thử đăng nhập với tên `<!channel>`, `@everyone` hay `[click](https://evil.example)` không thể ping ai hay trở thành link. Xem [Alerts → Cách vô hiệu hoá văn bản không đáng tin](./alerts.md#cách-vô-hiệu-hoá-văn-bản-không-đáng-tin).
+- **Tự lùi về compact khi quá dài.** Một tin nhắn pretty không vừa giới hạn sẽ được gửi ở dạng compact thay vì bị cắt cụt.
+- **Compact hiển thị monospace.** Bản thân dòng compact cũng được gửi như một code span, nên nó hiển thị bằng font độ rộng cố định trên mọi nền tảng.
+- **Webhook không bị ảnh hưởng.** ECS JSON của custom webhook giống hệt nhau ở cả hai kiểu.
+
+Chạy `sudo -u pamsignal pamsignal --test-alert` để xem kiểu đã chọn ngay trong kênh của bạn trước khi reload.
 
 ## Các kênh cảnh báo
 

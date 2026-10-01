@@ -46,6 +46,14 @@
 #   enable_notification_type = all
 # enable_notification_type = all
 
+# Chat message layout.
+#   compact  one line of key=value text (default)
+#   pretty   multi-line, with bold labels and monospace values in each
+#            platform's own markup (Telegram, Slack, Teams, WhatsApp, Discord)
+# The custom webhook's JSON payload is the same in both styles.
+# Preview either style with:  sudo -u pamsignal pamsignal --test-alert
+# message_style = compact
+
 # --- Alert channels (optional, best-effort) ---
 # Only configure the channels you use.
 # Alerts are fire-and-forget — failures won't break monitoring.

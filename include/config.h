@@ -36,6 +36,14 @@
      PS_NOTIFY_SESSION_OPEN | PS_NOTIFY_SESSION_CLOSE | \
      PS_NOTIFY_BRUTE_FORCE | PS_NOTIFY_LOGIN_AFTER_FAILURES)
 
+// How chat alerts are laid out. Compact is the one-line key=value text;
+// pretty is a multi-line message with bold labels and monospace values in
+// each platform's own markup. The custom webhook's JSON is unaffected.
+typedef enum {
+    PS_MESSAGE_STYLE_COMPACT,
+    PS_MESSAGE_STYLE_PRETTY
+} ps_message_style_t;
+
 // One trusted_sources entry: an IPv4 or IPv6 network in CIDR form. addr holds
 // the network-order address bytes (4 used for AF_INET, 16 for AF_INET6).
 typedef struct {
@@ -83,6 +91,9 @@ typedef struct {
 
     // Chat-dispatch filter (bitmask of PS_NOTIFY_*). Default PS_NOTIFY_ALL.
     unsigned int enable_notification_type;
+
+    // Chat message layout. Default PS_MESSAGE_STYLE_COMPACT.
+    ps_message_style_t message_style;
 } ps_config_t;
 
 // Fill cfg with compiled defaults

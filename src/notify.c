@@ -4,6 +4,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <signal.h>
+#include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -26,11 +27,83 @@
 // escape them defensively here too: a sanitization regression must not be
 // able to inject raw control characters into an alert payload.
 
-static size_t json_escape(const char *src, char *dst, size_t dst_len) {
+// Decode the UTF-8 sequence at p. Returns its length (1-4) and stores the
+// code point, or returns 0 if the bytes are not well-formed UTF-8 (stray
+// continuation byte, truncated or overlong sequence, surrogate, or a value
+// above U+10FFFF). Never reads past a NUL: a NUL is not a continuation byte.
+static int utf8_decode(const unsigned char *p, uint32_t *cp) {
+    unsigned char c = p[0];
+    int n;
+    uint32_t v;
+    uint32_t min;
+
+    if (c < 0x80) {
+        *cp = c;
+        return 1;
+    }
+    if ((c & 0xE0) == 0xC0) {
+        n = 2;
+        v = c & 0x1Fu;
+        min = 0x80;
+    } else if ((c & 0xF0) == 0xE0) {
+        n = 3;
+        v = c & 0x0Fu;
+        min = 0x800;
+    } else if ((c & 0xF8) == 0xF0) {
+        n = 4;
+        v = c & 0x07u;
+        min = 0x10000;
+    } else {
+        return 0;
+    }
+    for (int k = 1; k < n; k++) {
+        if ((p[k] & 0xC0) != 0x80)
+            return 0;
+        v = (v << 6) | (p[k] & 0x3Fu);
+    }
+    if (v < min || v > 0x10FFFF || (v >= 0xD800 && v <= 0xDFFF))
+        return 0;
+    *cp = v;
+    return n;
+}
+
+// Escape src as the content of a JSON string. Bytes that are not well-formed
+// UTF-8 become '?': a body with invalid UTF-8 is rejected outright by the
+// chat APIs and by strict JSON parsers, which would let one crafted field
+// suppress the whole alert. If truncated is non-NULL it is set to 1 when src
+// did not fit; the output is always a valid, terminated (shorter) string.
+static size_t json_escape_ex(const char *src, char *dst, size_t dst_len,
+                             int *truncated) {
     static const char hex[] = "0123456789abcdef";
+    size_t i = 0;
     size_t j = 0;
-    for (size_t i = 0; src[i] && j + 6 < dst_len; i++) {
+    if (truncated)
+        *truncated = 0;
+    if (dst_len == 0) {
+        if (truncated)
+            *truncated = 1;
+        return 0;
+    }
+    while (src[i]) {
+        if (j + 6 >= dst_len) {
+            if (truncated)
+                *truncated = 1;
+            break;
+        }
         unsigned char c = (unsigned char)src[i];
+        if (c >= 0x80) {
+            uint32_t cp;
+            int n = utf8_decode((const unsigned char *)src + i, &cp);
+            if (n == 0) {
+                dst[j++] = '?';
+                i++;
+            } else {
+                memcpy(dst + j, src + i, (size_t)n);
+                j += (size_t)n;
+                i += (size_t)n;
+            }
+            continue;
+        }
         switch (c) {
         case '"':
             dst[j++] = '\\';
@@ -73,9 +146,14 @@ static size_t json_escape(const char *src, char *dst, size_t dst_len) {
             }
             break;
         }
+        i++;
     }
     dst[j] = '\0';
     return j;
+}
+
+static size_t json_escape(const char *src, char *dst, size_t dst_len) {
+    return json_escape_ex(src, dst, dst_len, NULL);
 }
 
 // --- Truncation-safe snprintf ---
@@ -703,8 +781,361 @@ static void format_test_json(const ps_config_t *cfg, const char *host,
              timebuf, esc_host, labels_json);
 }
 
+// --- Pretty messages (message_style = pretty) ---
+//
+// A pretty message is a headline plus label/value rows, rendered in each chat
+// platform's own markup: bold labels, monospace values. The structure is
+// built once per alert and rendered once per channel.
+//
+// Every value is untrusted (usernames and hostnames come from the journal)
+// and is only ever emitted inside a code span, with the characters that
+// could close that span or open markup of its own neutralised for the target
+// platform. That is what stops a login attempt as "<!channel>" or
+// "</code><a href=...>" from pinging a channel or injecting a link.
+
+typedef enum {
+    PS_MARKUP_TELEGRAM, // HTML parse mode: <b>, <code>
+    PS_MARKUP_SLACK,    // mrkdwn: *bold*, `code`
+    PS_MARKUP_TEAMS,    // markdown: **bold**, `code`, blank line = break
+    PS_MARKUP_WHATSAPP, // *bold*, `code`
+    PS_MARKUP_DISCORD   // markdown: **bold**, `code`
+} ps_markup_t;
+
+#define PS_PRETTY_MAX_ROWS 10
+
+typedef struct {
+    const char *label; // string literal
+    char value[192];
+} ps_pretty_row_t;
+
+typedef struct {
+    const char *emoji; // string literal
+    const char *title; // string literal
+    const char *note;  // optional string literal shown under the headline
+    ps_pretty_row_t rows[PS_PRETTY_MAX_ROWS];
+    int row_count;
+} ps_pretty_msg_t;
+
+__attribute__((format(printf, 3, 4))) static void
+pretty_add(ps_pretty_msg_t *m, const char *label, const char *fmt, ...) {
+    va_list ap;
+    if (m->row_count >= PS_PRETTY_MAX_ROWS)
+        return;
+    ps_pretty_row_t *row = &m->rows[m->row_count++];
+    row->label = label;
+    va_start(ap, fmt);
+    // Truncation is acceptable here: a value is display text, and a clipped
+    // hostname is still a valid row.
+    //
+    // ap is initialised by the va_start directly above; the analyzer loses
+    // track of it across the early return and reports a false positive.
+    // NOLINTNEXTLINE(clang-analyzer-valist.Uninitialized)
+    vsnprintf(row->value, sizeof(row->value), fmt, ap);
+    va_end(ap);
+}
+
+// Rows shared by every message: when it happened and the operator's tags.
+static void pretty_add_common(ps_pretty_msg_t *m, const ps_config_t *cfg,
+                              uint64_t ts) {
+    char timebuf[32];
+    ps_format_timestamp(ts, timebuf, sizeof(timebuf));
+    // "2026-03-29T14:23:01+0000" -> "2026-03-29 14:23:01 +0000"
+    if (strlen(timebuf) == 24 && timebuf[10] == 'T')
+        pretty_add(m, "Time", "%.10s %.8s %s", timebuf, timebuf + 11,
+                   timebuf + 19);
+    else
+        pretty_add(m, "Time", "%s", timebuf);
+
+    if (cfg->provider[0])
+        pretty_add(m, "Provider", "%s", cfg->provider);
+    if (cfg->service_name[0])
+        pretty_add(m, "Service name", "%s", cfg->service_name);
+}
+
+static void build_pretty_event(const ps_config_t *cfg,
+                               const ps_pam_event_t *event,
+                               ps_pretty_msg_t *m) {
+    memset(m, 0, sizeof(*m));
+    switch (event->type) {
+    case PS_EVENT_LOGIN_SUCCESS:
+        m->emoji = "\xE2\x9C\x85"; // check mark
+        m->title = "Login success";
+        break;
+    case PS_EVENT_LOGIN_FAILED:
+        m->emoji = "\xE2\x9D\x8C"; // cross mark
+        m->title = "Login failed";
+        break;
+    case PS_EVENT_SESSION_OPEN:
+        m->emoji = "\xF0\x9F\x94\x93"; // open lock
+        m->title = "Session opened";
+        break;
+    case PS_EVENT_SESSION_CLOSE:
+        m->emoji = "\xF0\x9F\x94\x92"; // closed lock
+        m->title = "Session closed";
+        break;
+    case PS_EVENT_UNKNOWN:
+        m->emoji = "\xE2\x84\xB9"; // information
+        m->title = "Authentication event";
+        break;
+    }
+
+    pretty_add(m, "Host", "%s", event->hostname);
+    pretty_add(m, "User", "%s", event->username);
+    if (event->type == PS_EVENT_LOGIN_SUCCESS ||
+        event->type == PS_EVENT_LOGIN_FAILED) {
+        // A local sudo/su failure has no remote endpoint.
+        if (event->source_ip[0])
+            pretty_add(m, "Source", "%s:%d", event->source_ip, event->port);
+        pretty_add(m, "Auth", "%s (%s)", ps_auth_method_str(event->auth_method),
+                   ps_service_str(event->service));
+    } else {
+        pretty_add(m, "Service", "%s", ps_service_str(event->service));
+    }
+    pretty_add(m, "PID", "%d", (int)event->pid);
+    pretty_add_common(m, cfg, event->timestamp_usec);
+}
+
+static void build_pretty_brute(const ps_config_t *cfg, const char *ip,
+                               int attempts, int window, const char *user,
+                               const char *host, uint64_t ts,
+                               ps_pretty_msg_t *m) {
+    memset(m, 0, sizeof(*m));
+    m->emoji = "\xF0\x9F\x9A\xA8"; // rotating light
+    m->title = "Brute force detected";
+    pretty_add(m, "Host", "%s", host);
+    pretty_add(m, "Source", "%s", ip);
+    pretty_add(m, "User", "%s", user);
+    pretty_add(m, "Attempts", "%d in %ds", attempts, window);
+    pretty_add_common(m, cfg, ts);
+}
+
+static void build_pretty_local_brute(const ps_config_t *cfg,
+                                     ps_service_t service, const char *actor,
+                                     const char *target, int attempts,
+                                     int window, const char *host, uint64_t ts,
+                                     ps_pretty_msg_t *m) {
+    memset(m, 0, sizeof(*m));
+    m->emoji = "\xF0\x9F\x9A\xA8"; // rotating light
+    m->title = "Brute force detected (local)";
+    pretty_add(m, "Host", "%s", host);
+    pretty_add(m, "Actor", "%s", actor);
+    pretty_add(m, "Target", "%s", target);
+    pretty_add(m, "Service", "%s", ps_service_str(service));
+    pretty_add(m, "Attempts", "%d in %ds", attempts, window);
+    pretty_add_common(m, cfg, ts);
+}
+
+static void build_pretty_login_after_failures(const ps_config_t *cfg,
+                                              const ps_pam_event_t *event,
+                                              int failures, int window,
+                                              ps_pretty_msg_t *m) {
+    memset(m, 0, sizeof(*m));
+    m->emoji = "\xF0\x9F\x94\xA5"; // fire
+    m->title = "Login after failed attempts";
+    m->note = "Possible guessed password";
+    pretty_add(m, "Host", "%s", event->hostname);
+    pretty_add(m, "User", "%s", event->username);
+    pretty_add(m, "Source", "%s:%d", event->source_ip, event->port);
+    pretty_add(m, "Failures", "%d in %ds", failures, window);
+    pretty_add(m, "Auth", "%s (%s)", ps_auth_method_str(event->auth_method),
+               ps_service_str(event->service));
+    pretty_add(m, "PID", "%d", (int)event->pid);
+    pretty_add_common(m, cfg, event->timestamp_usec);
+}
+
+static void build_pretty_test(const ps_config_t *cfg, const char *host,
+                              uint64_t ts, ps_pretty_msg_t *m) {
+    memset(m, 0, sizeof(*m));
+    m->emoji = "\xF0\x9F\x94\x94"; // bell
+    m->title = "PAMSignal test alert";
+    m->note = "This channel is working";
+    pretty_add(m, "Host", "%s", host);
+    pretty_add_common(m, cfg, ts);
+}
+
+// Bounded string builder. Once an append does not fit, overflow latches and
+// the buffer stays a valid (shorter) string; the caller checks overflow and
+// discards the result.
+typedef struct {
+    char *buf;
+    size_t size;
+    size_t len;
+    int overflow;
+} ps_strbuf_t;
+
+static void sb_put(ps_strbuf_t *sb, const char *s) {
+    size_t n = strlen(s);
+    if (sb->overflow || n >= sb->size - sb->len) {
+        sb->overflow = 1;
+        return;
+    }
+    memcpy(sb->buf + sb->len, s, n);
+    sb->len += n;
+    sb->buf[sb->len] = '\0';
+}
+
+// Copy text into sb with &, < and > as HTML entities. Used for values in the
+// markups where those characters are syntax (Telegram HTML, Slack, Teams) and
+// for whole compact messages sent to Slack and Teams.
+static void sb_put_entity_escaped(ps_strbuf_t *sb, const char *s) {
+    for (; *s; s++) {
+        switch (*s) {
+        case '&':
+            sb_put(sb, "&amp;");
+            break;
+        case '<':
+            sb_put(sb, "&lt;");
+            break;
+        case '>':
+            sb_put(sb, "&gt;");
+            break;
+        default: {
+            char one[2] = {*s, '\0'};
+            sb_put(sb, one);
+            break;
+        }
+        }
+    }
+}
+
+// Code points that must never reach a chat client from an untrusted field,
+// because they change how the surrounding text is laid out rather than what
+// it says: control characters, line and paragraph separators (which would
+// start a forged row), bidirectional overrides and isolates (which reorder
+// the visible text), zero-width and other invisible format characters, and
+// the tag block.
+static int is_unsafe_display_codepoint(uint32_t cp) {
+    return cp < 0x20 || (cp >= 0x7F && cp <= 0x9F) || cp == 0x061C ||
+           cp == 0x180E || (cp >= 0x200B && cp <= 0x200F) ||
+           (cp >= 0x2028 && cp <= 0x202E) || (cp >= 0x2060 && cp <= 0x206F) ||
+           cp == 0xFEFF || (cp >= 0xFFF9 && cp <= 0xFFFB) ||
+           (cp >= 0xE0000 && cp <= 0xE007F);
+}
+
+// Emit untrusted text as the content of a code span. Everything a chat
+// client could act on is neutralised here, in one place:
+//   - malformed UTF-8 and unsafe code points become '?'
+//   - a backtick, the only character that can close a code span, becomes '
+//   - &, < and > become entities where the platform treats them as syntax
+// What is left is inert text: inside a code span no platform parses markup,
+// resolves mentions, or turns URLs and [text](url) into links.
+static void sb_put_value(ps_strbuf_t *sb, ps_markup_t markup,
+                         const char *value) {
+    if (value[0] == '\0') {
+        sb_put(sb, "-");
+        return;
+    }
+    int entities = markup == PS_MARKUP_TELEGRAM || markup == PS_MARKUP_SLACK ||
+                   markup == PS_MARKUP_TEAMS;
+    const unsigned char *p = (const unsigned char *)value;
+    while (*p) {
+        uint32_t cp;
+        int n = utf8_decode(p, &cp);
+        if (n == 0) {
+            sb_put(sb, "?");
+            p++;
+            continue;
+        }
+        if (is_unsafe_display_codepoint(cp)) {
+            sb_put(sb, "?");
+        } else if (n == 1) {
+            // n == 1 means cp is plain ASCII (0x20..0x7E here).
+            char ch = (char)*p;
+            if (ch == '`')
+                ch = '\'';
+            char one[2] = {ch, '\0'};
+            if (entities)
+                sb_put_entity_escaped(sb, one);
+            else
+                sb_put(sb, one);
+        } else {
+            char seq[5] = {0};
+            memcpy(seq, p, (size_t)n);
+            sb_put(sb, seq);
+        }
+        p += n;
+    }
+}
+
+// Render the one-line compact text for one platform: the whole line as a
+// single code span. The line embeds usernames and hostnames, so sending it
+// as ordinary message text would let a crafted name become a clickable link
+// ([text](url) on Discord and Teams, a bare URL anywhere), a mention, or a
+// bot command. Returns 0 on success, -1 if it does not fit.
+static int render_compact(const char *compact, ps_markup_t markup, char *buf,
+                          size_t size) {
+    if (size == 0)
+        return -1;
+    buf[0] = '\0';
+    ps_strbuf_t sb = {.buf = buf, .size = size, .len = 0, .overflow = 0};
+    sb_put(&sb, markup == PS_MARKUP_TELEGRAM ? "<code>" : "`");
+    sb_put_value(&sb, markup, compact);
+    sb_put(&sb, markup == PS_MARKUP_TELEGRAM ? "</code>" : "`");
+    return sb.overflow ? -1 : 0;
+}
+
+// Render m for one platform. Returns 0 on success, -1 if the message does
+// not fit in buf (the caller then falls back to render_compact).
+static int render_pretty(const ps_pretty_msg_t *m, ps_markup_t markup,
+                         char *buf, size_t size) {
+    const char *bold_on = "**";
+    const char *bold_off = "**";
+    const char *code_on = "`";
+    const char *code_off = "`";
+    const char *newline = "\n";
+
+    switch (markup) {
+    case PS_MARKUP_TELEGRAM:
+        bold_on = "<b>";
+        bold_off = "</b>";
+        code_on = "<code>";
+        code_off = "</code>";
+        break;
+    case PS_MARKUP_SLACK:
+    case PS_MARKUP_WHATSAPP:
+        bold_on = "*";
+        bold_off = "*";
+        break;
+    case PS_MARKUP_TEAMS:
+        // Teams markdown folds a single newline into a space.
+        newline = "\n\n";
+        break;
+    case PS_MARKUP_DISCORD:
+        break;
+    }
+
+    if (size == 0)
+        return -1;
+    buf[0] = '\0';
+    ps_strbuf_t sb = {.buf = buf, .size = size, .len = 0, .overflow = 0};
+
+    sb_put(&sb, m->emoji);
+    sb_put(&sb, " ");
+    sb_put(&sb, bold_on);
+    sb_put(&sb, m->title);
+    sb_put(&sb, bold_off);
+    if (m->note) {
+        sb_put(&sb, newline);
+        sb_put(&sb, m->note);
+    }
+    for (int i = 0; i < m->row_count; i++) {
+        sb_put(&sb, newline);
+        sb_put(&sb, bold_on);
+        sb_put(&sb, m->rows[i].label);
+        sb_put(&sb, ":");
+        sb_put(&sb, bold_off);
+        sb_put(&sb, " ");
+        sb_put(&sb, code_on);
+        sb_put_value(&sb, markup, m->rows[i].value);
+        sb_put(&sb, code_off);
+    }
+    return sb.overflow ? -1 : 0;
+}
+
 // --- Per-channel senders ---
 
+// text is always HTML produced by render_pretty / render_compact, so every
+// Telegram message is sent with parse_mode=HTML.
 static void send_telegram(const ps_config_t *cfg, const char *text) {
     if (!cfg->telegram_bot_token[0] || !cfg->telegram_chat_id[0])
         return;
@@ -717,12 +1148,15 @@ static void send_telegram(const ps_config_t *cfg, const char *text) {
         return;
     }
 
-    char esc_text[2048];
-    json_escape(text, esc_text, sizeof(esc_text));
+    char esc_text[4096];
+    int truncated;
+    json_escape_ex(text, esc_text, sizeof(esc_text), &truncated);
 
-    char body[2560];
-    if (!PS_FMT_OK(body, "{\"chat_id\":\"%s\",\"text\":\"%s\"}",
-                   cfg->telegram_chat_id, esc_text)) {
+    char body[4608];
+    if (truncated || !PS_FMT_OK(body,
+                                "{\"chat_id\":\"%s\",\"text\":\"%s\","
+                                "\"parse_mode\":\"HTML\"}",
+                                cfg->telegram_chat_id, esc_text)) {
         sd_journal_print(LOG_WARNING,
                          "pamsignal: telegram body truncated, dropping alert");
         return;
@@ -731,13 +1165,17 @@ static void send_telegram(const ps_config_t *cfg, const char *text) {
     post_alert(&(curl_config_t){.url = url}, body);
 }
 
+// extra_json is an optional literal of further members for the payload
+// object, starting with a comma (e.g. Discord's allowed_mentions).
 static void send_simple_webhook(const char *url, const char *text_key,
-                                const char *text) {
-    char esc_text[2048];
-    json_escape(text, esc_text, sizeof(esc_text));
+                                const char *text, const char *extra_json) {
+    char esc_text[4096];
+    int truncated;
+    json_escape_ex(text, esc_text, sizeof(esc_text), &truncated);
 
-    char body[2560];
-    if (!PS_FMT_OK(body, "{\"%s\":\"%s\"}", text_key, esc_text)) {
+    char body[4608];
+    if (truncated || !PS_FMT_OK(body, "{\"%s\":\"%s\"%s}", text_key, esc_text,
+                                extra_json ? extra_json : "")) {
         sd_journal_print(LOG_WARNING,
                          "pamsignal: webhook body truncated, dropping alert");
         return;
@@ -767,11 +1205,13 @@ static void send_whatsapp(const ps_config_t *cfg, const char *text) {
         return;
     }
 
-    char esc_text[2048];
-    json_escape(text, esc_text, sizeof(esc_text));
+    char esc_text[4096];
+    int truncated;
+    json_escape_ex(text, esc_text, sizeof(esc_text), &truncated);
 
-    char body[2560];
-    if (!PS_FMT_OK(body,
+    char body[4608];
+    if (truncated ||
+        !PS_FMT_OK(body,
                    "{\"messaging_product\":\"whatsapp\",\"to\":\"%s\","
                    "\"type\":\"text\",\"text\":{\"body\":\"%s\"}}",
                    cfg->whatsapp_recipient, esc_text)) {
@@ -781,6 +1221,134 @@ static void send_whatsapp(const ps_config_t *cfg, const char *text) {
     }
 
     post_alert(&(curl_config_t){.url = url, .auth_header = auth}, body);
+}
+
+// --- Chat dispatch ---
+
+typedef enum {
+    PS_CHANNEL_TELEGRAM,
+    PS_CHANNEL_SLACK,
+    PS_CHANNEL_TEAMS,
+    PS_CHANNEL_WHATSAPP,
+    PS_CHANNEL_DISCORD,
+    PS_CHANNEL_COUNT
+} ps_channel_t;
+
+static const char *channel_name(ps_channel_t ch) {
+    switch (ch) {
+    case PS_CHANNEL_TELEGRAM:
+        return "telegram";
+    case PS_CHANNEL_SLACK:
+        return "slack";
+    case PS_CHANNEL_TEAMS:
+        return "teams";
+    case PS_CHANNEL_WHATSAPP:
+        return "whatsapp";
+    case PS_CHANNEL_DISCORD:
+        return "discord";
+    case PS_CHANNEL_COUNT:
+        break;
+    }
+    return "unknown";
+}
+
+static int channel_configured(const ps_config_t *cfg, ps_channel_t ch) {
+    switch (ch) {
+    case PS_CHANNEL_TELEGRAM:
+        return cfg->telegram_bot_token[0] != '\0';
+    case PS_CHANNEL_SLACK:
+        return cfg->slack_webhook_url[0] != '\0';
+    case PS_CHANNEL_TEAMS:
+        return cfg->teams_webhook_url[0] != '\0';
+    case PS_CHANNEL_WHATSAPP:
+        return cfg->whatsapp_access_token[0] != '\0';
+    case PS_CHANNEL_DISCORD:
+        return cfg->discord_webhook_url[0] != '\0';
+    case PS_CHANNEL_COUNT:
+        break;
+    }
+    return 0;
+}
+
+// Longest chat message we will send. Inside every platform's limit, and
+// small enough that its JSON-escaped form (at most two bytes per byte, since
+// control characters never survive rendering) always fits the senders'
+// 4096-byte buffers.
+#define PS_CHAT_TEXT_MAX 2000
+
+// Discord resolves @everyone / @here / role and user mentions found in
+// message content. Usernames are attacker-chosen, so mentions are disabled
+// for every alert, in both styles.
+#define PS_DISCORD_NO_MENTIONS ",\"allowed_mentions\":{\"parse\":[]}"
+
+static ps_markup_t channel_markup(ps_channel_t ch) {
+    switch (ch) {
+    case PS_CHANNEL_TELEGRAM:
+        return PS_MARKUP_TELEGRAM;
+    case PS_CHANNEL_SLACK:
+        return PS_MARKUP_SLACK;
+    case PS_CHANNEL_TEAMS:
+        return PS_MARKUP_TEAMS;
+    case PS_CHANNEL_WHATSAPP:
+        return PS_MARKUP_WHATSAPP;
+    case PS_CHANNEL_DISCORD:
+    case PS_CHANNEL_COUNT:
+        break;
+    }
+    return PS_MARKUP_DISCORD;
+}
+
+// Send one alert to one chat channel. compact is the one-line text; pretty is
+// NULL unless message_style = pretty. Nothing reaches a sender except the
+// output of render_pretty or render_compact, so no untrusted byte is ever
+// sent outside a code span.
+static void dispatch_channel(const ps_config_t *cfg, ps_channel_t ch,
+                             const char *compact,
+                             const ps_pretty_msg_t *pretty) {
+    char text[PS_CHAT_TEXT_MAX];
+    ps_markup_t markup = channel_markup(ch);
+
+    if (!pretty || render_pretty(pretty, markup, text, sizeof(text)) != 0) {
+        if (render_compact(compact, markup, text, sizeof(text)) != 0) {
+            sd_journal_print(LOG_WARNING,
+                             "pamsignal: %s text truncated, dropping alert",
+                             channel_name(ch));
+            return;
+        }
+    }
+
+    switch (ch) {
+    case PS_CHANNEL_TELEGRAM:
+        send_telegram(cfg, text);
+        break;
+    case PS_CHANNEL_SLACK:
+        send_simple_webhook(cfg->slack_webhook_url, "text", text, NULL);
+        break;
+    case PS_CHANNEL_TEAMS:
+        send_simple_webhook(cfg->teams_webhook_url, "text", text, NULL);
+        break;
+    case PS_CHANNEL_WHATSAPP:
+        send_whatsapp(cfg, text);
+        break;
+    case PS_CHANNEL_DISCORD:
+        send_simple_webhook(cfg->discord_webhook_url, "content", text,
+                            PS_DISCORD_NO_MENTIONS);
+        break;
+    case PS_CHANNEL_COUNT:
+        break;
+    }
+}
+
+static void dispatch_chat(const ps_config_t *cfg, const char *compact,
+                          const ps_pretty_msg_t *pretty) {
+    for (int ch = 0; ch < PS_CHANNEL_COUNT; ch++) {
+        if (channel_configured(cfg, (ps_channel_t)ch))
+            dispatch_channel(cfg, (ps_channel_t)ch, compact, pretty);
+    }
+}
+
+static int use_pretty(const ps_config_t *cfg) {
+    return cfg->message_style == PS_MESSAGE_STYLE_PRETTY;
 }
 
 // --- Cooldown ---
@@ -832,14 +1400,13 @@ void ps_notify_event(const ps_config_t *cfg, const ps_pam_event_t *event) {
     char text[1024];
     format_event_text(cfg, event, text, sizeof(text));
 
-    send_telegram(cfg, text);
-    if (cfg->slack_webhook_url[0])
-        send_simple_webhook(cfg->slack_webhook_url, "text", text);
-    if (cfg->teams_webhook_url[0])
-        send_simple_webhook(cfg->teams_webhook_url, "text", text);
-    send_whatsapp(cfg, text);
-    if (cfg->discord_webhook_url[0])
-        send_simple_webhook(cfg->discord_webhook_url, "content", text);
+    ps_pretty_msg_t pretty;
+    const ps_pretty_msg_t *pretty_ptr = NULL;
+    if (use_pretty(cfg)) {
+        build_pretty_event(cfg, event, &pretty);
+        pretty_ptr = &pretty;
+    }
+    dispatch_chat(cfg, text, pretty_ptr);
 
     if (cfg->webhook_url[0]) {
         char json[2048];
@@ -862,14 +1429,14 @@ void ps_notify_brute_force(const ps_config_t *cfg, const char *source_ip,
     format_brute_text(cfg, source_ip, attempts, window_sec, last_username,
                       hostname, timestamp_usec, last_pid, text, sizeof(text));
 
-    send_telegram(cfg, text);
-    if (cfg->slack_webhook_url[0])
-        send_simple_webhook(cfg->slack_webhook_url, "text", text);
-    if (cfg->teams_webhook_url[0])
-        send_simple_webhook(cfg->teams_webhook_url, "text", text);
-    send_whatsapp(cfg, text);
-    if (cfg->discord_webhook_url[0])
-        send_simple_webhook(cfg->discord_webhook_url, "content", text);
+    ps_pretty_msg_t pretty;
+    const ps_pretty_msg_t *pretty_ptr = NULL;
+    if (use_pretty(cfg)) {
+        build_pretty_brute(cfg, source_ip, attempts, window_sec, last_username,
+                           hostname, timestamp_usec, &pretty);
+        pretty_ptr = &pretty;
+    }
+    dispatch_chat(cfg, text, pretty_ptr);
 
     if (cfg->webhook_url[0]) {
         char json[2048];
@@ -895,14 +1462,15 @@ void ps_notify_local_brute_force(const ps_config_t *cfg, ps_service_t service,
                             attempts, window_sec, hostname, timestamp_usec,
                             last_pid, text, sizeof(text));
 
-    send_telegram(cfg, text);
-    if (cfg->slack_webhook_url[0])
-        send_simple_webhook(cfg->slack_webhook_url, "text", text);
-    if (cfg->teams_webhook_url[0])
-        send_simple_webhook(cfg->teams_webhook_url, "text", text);
-    send_whatsapp(cfg, text);
-    if (cfg->discord_webhook_url[0])
-        send_simple_webhook(cfg->discord_webhook_url, "content", text);
+    ps_pretty_msg_t pretty;
+    const ps_pretty_msg_t *pretty_ptr = NULL;
+    if (use_pretty(cfg)) {
+        build_pretty_local_brute(cfg, service, actor_username, target_username,
+                                 attempts, window_sec, hostname, timestamp_usec,
+                                 &pretty);
+        pretty_ptr = &pretty;
+    }
+    dispatch_chat(cfg, text, pretty_ptr);
 
     if (cfg->webhook_url[0]) {
         char json[2048];
@@ -925,14 +1493,14 @@ void ps_notify_login_after_failures(const ps_config_t *cfg,
     format_login_after_failures_text(cfg, event, failures, window_sec, text,
                                      sizeof(text));
 
-    send_telegram(cfg, text);
-    if (cfg->slack_webhook_url[0])
-        send_simple_webhook(cfg->slack_webhook_url, "text", text);
-    if (cfg->teams_webhook_url[0])
-        send_simple_webhook(cfg->teams_webhook_url, "text", text);
-    send_whatsapp(cfg, text);
-    if (cfg->discord_webhook_url[0])
-        send_simple_webhook(cfg->discord_webhook_url, "content", text);
+    ps_pretty_msg_t pretty;
+    const ps_pretty_msg_t *pretty_ptr = NULL;
+    if (use_pretty(cfg)) {
+        build_pretty_login_after_failures(cfg, event, failures, window_sec,
+                                          &pretty);
+        pretty_ptr = &pretty;
+    }
+    dispatch_chat(cfg, text, pretty_ptr);
 
     if (cfg->webhook_url[0]) {
         char json[2048];
@@ -974,35 +1542,26 @@ int ps_notify_test(const ps_config_t *cfg, const char *hostname,
     char text[1024];
     format_test_text(cfg, hostname, timestamp_usec, text, sizeof(text));
 
+    // The test message uses the configured style, so it also shows the
+    // operator what real alerts will look like.
+    ps_pretty_msg_t pretty;
+    const ps_pretty_msg_t *pretty_ptr = NULL;
+    if (use_pretty(cfg)) {
+        build_pretty_test(cfg, hostname, timestamp_usec, &pretty);
+        pretty_ptr = &pretty;
+    }
+
     int configured = 0;
     int failed = 0;
     sync_dispatch = 1;
     sync_result = PS_SYNC_NOT_RUN;
 
-    if (cfg->telegram_bot_token[0]) {
+    for (int ch = 0; ch < PS_CHANNEL_COUNT; ch++) {
+        if (!channel_configured(cfg, (ps_channel_t)ch))
+            continue;
         configured++;
-        send_telegram(cfg, text);
-        failed += report_test_result("telegram");
-    }
-    if (cfg->slack_webhook_url[0]) {
-        configured++;
-        send_simple_webhook(cfg->slack_webhook_url, "text", text);
-        failed += report_test_result("slack");
-    }
-    if (cfg->teams_webhook_url[0]) {
-        configured++;
-        send_simple_webhook(cfg->teams_webhook_url, "text", text);
-        failed += report_test_result("teams");
-    }
-    if (cfg->whatsapp_access_token[0]) {
-        configured++;
-        send_whatsapp(cfg, text);
-        failed += report_test_result("whatsapp");
-    }
-    if (cfg->discord_webhook_url[0]) {
-        configured++;
-        send_simple_webhook(cfg->discord_webhook_url, "content", text);
-        failed += report_test_result("discord");
+        dispatch_channel(cfg, (ps_channel_t)ch, text, pretty_ptr);
+        failed += report_test_result(channel_name((ps_channel_t)ch));
     }
     if (cfg->webhook_url[0]) {
         configured++;

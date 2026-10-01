@@ -377,6 +377,44 @@ static void test_notify_type_login_after_failures_token(void **state) {
     cleanup_tmp();
 }
 
+// --- message_style ---
+
+static void test_message_style_default_compact(void **state) {
+    (void)state;
+    ps_config_t cfg;
+    ps_config_defaults(&cfg);
+    assert_int_equal(cfg.message_style, PS_MESSAGE_STYLE_COMPACT);
+}
+
+static void test_message_style_values(void **state) {
+    (void)state;
+    ps_config_t cfg;
+    write_tmp_config("message_style = pretty\n");
+    assert_int_equal(ps_config_load(tmp_path, &cfg), PS_OK);
+    assert_int_equal(cfg.message_style, PS_MESSAGE_STYLE_PRETTY);
+    cleanup_tmp();
+
+    write_tmp_config("message_style = Compact\n");
+    assert_int_equal(ps_config_load(tmp_path, &cfg), PS_OK);
+    assert_int_equal(cfg.message_style, PS_MESSAGE_STYLE_COMPACT);
+    cleanup_tmp();
+}
+
+static void test_message_style_invalid_rejected(void **state) {
+    (void)state;
+    ps_config_t cfg;
+    static const char *const bad[] = {
+        "message_style = fancy\n",
+        "message_style =\n",
+        "message_style = pretty,compact\n",
+    };
+    for (size_t i = 0; i < sizeof(bad) / sizeof(bad[0]); i++) {
+        write_tmp_config(bad[i]);
+        assert_int_equal(ps_config_load(tmp_path, &cfg), PS_ERR_CONFIG);
+        cleanup_tmp();
+    }
+}
+
 // --- success_after_fail_threshold ---
 
 static void test_success_after_fail_threshold_default(void **state) {
@@ -1146,6 +1184,9 @@ int main(void) {
         cmocka_unit_test(test_notify_type_whitespace_and_case),
         cmocka_unit_test(test_notify_type_all_six_categories),
         cmocka_unit_test(test_notify_type_login_after_failures_token),
+        cmocka_unit_test(test_message_style_default_compact),
+        cmocka_unit_test(test_message_style_values),
+        cmocka_unit_test(test_message_style_invalid_rejected),
         cmocka_unit_test(test_success_after_fail_threshold_default),
         cmocka_unit_test(test_success_after_fail_threshold_loads),
         cmocka_unit_test(test_success_after_fail_threshold_zero_disables),

@@ -29,6 +29,9 @@ trusted_sources = 10.0.0.0/8, 203.0.113.7
 # Chat-dispatch filter (default: all)
 enable_notification_type = all
 
+# Chat message layout: compact (default) or pretty
+message_style = compact
+
 # Telegram
 telegram_bot_token = <bot_token>
 telegram_chat_id = <chat_id>
@@ -132,6 +135,35 @@ enable_notification_type = brute_force
 # Everything (default)
 enable_notification_type = all
 ```
+
+## Message style
+
+| Key | Default | Values | Description |
+|-----|---------|--------|-------------|
+| `message_style` | `compact` | `compact`, `pretty` | Layout of the alerts sent to chat channels |
+
+`compact` is the one-line `key=value` text PAMSignal has always sent. `pretty` is easier to read on a phone: a headline, then one row per field with a bold label and a monospace value.
+
+```ini
+message_style = pretty
+```
+
+```text
+🚨 Brute force detected
+Host: web-01
+Source: 203.0.113.50
+User: root
+Attempts: 12 in 300s
+Time: 2026-03-29 14:23:01 +0000
+```
+
+- **Per-platform markup.** Each channel gets its own syntax (Telegram HTML, Slack mrkdwn, Teams and Discord markdown, WhatsApp formatting), so labels render bold and values monospace everywhere. See [Alerts → Pretty format](./alerts.md#pretty-format).
+- **Safe with hostile input.** User names and host names come from the journal and are attacker-influenced. In both styles they are only ever sent inside a code span, with backticks, markup characters, control characters and invisible Unicode neutralised first, so a login attempt as `<!channel>`, `@everyone` or `[click](https://evil.example)` cannot ping anyone or become a link. See [Alerts → How untrusted text is neutralised](./alerts.md#how-untrusted-text-is-neutralised).
+- **Falls back when too long.** A pretty message that would not fit is sent in the compact form instead of being cut.
+- **Compact is monospace.** The compact line is itself sent as one code span, so it renders in a fixed-width font on every platform.
+- **Webhook unaffected.** The custom webhook's ECS JSON is identical in both styles.
+
+Run `sudo -u pamsignal pamsignal --test-alert` to see the chosen style in your channel before reloading.
 
 ## Alert channels
 

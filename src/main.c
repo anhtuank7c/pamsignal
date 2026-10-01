@@ -183,6 +183,9 @@ static int run_check_config(void) {
     if (!enabled)
         printf(" none (events are only written to the journal)");
     printf("\n  trusted sources: %d\n", g_config.trusted_sources_count);
+    printf("  message style: %s\n",
+           g_config.message_style == PS_MESSAGE_STYLE_PRETTY ? "pretty"
+                                                             : "compact");
     return 0;
 }
 
