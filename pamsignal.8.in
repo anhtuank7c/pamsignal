@@ -125,6 +125,15 @@ The summary covers the option set, the default config path, and a
 pointer to this man page and
 .BR pamsignal.conf (5).
 Also runs before any privilege check.
+.PP
+An unrecognized option, or
+.B -c
+without a
+.IR PATH ,
+is an error:
+.B pamsignal
+prints a message to standard error and exits with status 2 without
+starting the monitor.
 .SH SIGNALS
 .TP
 .B SIGHUP
@@ -294,7 +303,7 @@ and
 when the threshold is crossed. Per-event chat alerts are suppressed for
 sudo/su login failures (the journal entry is still written so
 .B journalctl
-history is complete) — only the threshold-breach alert fires, so a
+history is complete) \(em only the threshold-breach alert fires, so a
 single mistyped password does not page the operator.
 .SH SEE ALSO
 .BR pamsignal.conf (5),

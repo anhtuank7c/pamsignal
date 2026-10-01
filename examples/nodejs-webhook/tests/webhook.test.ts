@@ -305,6 +305,39 @@ describe('Event dispatch', () => {
     expect(all).toContain('300');
   });
 
+  it('logs login_after_failures', async () => {
+    await request(app)
+      .post('/webhook/pamsignal')
+      .set(auth())
+      .send({
+        event: { action: 'login_after_failures' },
+        user: { name: 'root' },
+        source: { ip: '203.0.113.50' },
+        host: { hostname: 'srv' },
+        pamsignal: { failures: 7, window_sec: 300 },
+      });
+    const all = lines().join('\n');
+    expect(all).toContain('[LOGIN_AFTER_FAILURES]');
+    expect(all).toContain('root');
+    expect(all).toContain('203.0.113.50');
+    expect(all).toContain('7');
+  });
+
+  it('logs test_alert', async () => {
+    await request(app)
+      .post('/webhook/pamsignal')
+      .set(auth())
+      .send({
+        event: { action: 'test_alert' },
+        host: { hostname: 'srv' },
+        pamsignal: { event_type: 'TEST_ALERT' },
+      });
+    const all = lines().join('\n');
+    expect(all).toContain('[TEST_ALERT]');
+    expect(all).toContain('srv');
+    expect(all).not.toContain('[UNKNOWN_EVENT]');
+  });
+
   it('logs session_opened', async () => {
     await request(app)
       .post('/webhook/pamsignal')

@@ -30,7 +30,8 @@ static void print_help(void) {
         "\n"
         "Watches the systemd journal for sshd, sudo, su, and login events,\n"
         "detects brute-force patterns, and dispatches alerts to Telegram,\n"
-        "Slack, Microsoft Teams, WhatsApp, Discord, or a custom HTTPS webhook.\n"
+        "Slack, Microsoft Teams, WhatsApp, Discord, or a custom HTTPS "
+        "webhook.\n"
         "\n"
         "Options:\n"
         "  -f, --foreground       Stay in the foreground (do not daemonize).\n"
@@ -95,10 +96,25 @@ static void parse_args(int argc, char *argv[], int *foreground,
         } else if (strcmp(argv[i], "--test-alert") == 0 ||
                    strcmp(argv[i], "-T") == 0) {
             *mode = PS_MODE_TEST_ALERT;
-        } else if ((strcmp(argv[i], "--config") == 0 ||
-                    strcmp(argv[i], "-c") == 0) &&
-                   i + 1 < argc) {
+        } else if (strcmp(argv[i], "--config") == 0 ||
+                   strcmp(argv[i], "-c") == 0) {
+            if (i + 1 >= argc) {
+                fprintf(stderr,
+                        "pamsignal: option '%s' requires a PATH argument\n"
+                        "Try 'pamsignal --help' for more information.\n",
+                        argv[i]);
+                exit(2);
+            }
             *config_path = argv[++i];
+        } else {
+            // Refuse rather than ignore: a mistyped or not-yet-supported
+            // flag (say, a one-shot mode on an older build) must not fall
+            // through and silently start the daemon.
+            fprintf(stderr,
+                    "pamsignal: unrecognized option '%s'\n"
+                    "Try 'pamsignal --help' for more information.\n",
+                    argv[i]);
+            exit(2);
         }
     }
 }

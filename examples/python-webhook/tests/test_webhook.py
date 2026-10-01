@@ -278,6 +278,39 @@ class TestEventDispatch:
         assert "203.0.113.50" in out
         assert "300" in out
 
+    def test_login_after_failures(self, client, capsys, loud_env):
+        client.post(
+            "/webhook/pamsignal",
+            json={
+                "event": {"action": "login_after_failures"},
+                "user": {"name": "root"},
+                "source": {"ip": "203.0.113.50"},
+                "host": {"hostname": "srv"},
+                "pamsignal": {"failures": 7, "window_sec": 300},
+            },
+            headers=_auth(),
+        )
+        out = capsys.readouterr().out
+        assert "[LOGIN_AFTER_FAILURES]" in out
+        assert "root" in out
+        assert "203.0.113.50" in out
+        assert "7" in out
+
+    def test_test_alert(self, client, capsys, loud_env):
+        client.post(
+            "/webhook/pamsignal",
+            json={
+                "event": {"action": "test_alert"},
+                "host": {"hostname": "srv"},
+                "pamsignal": {"event_type": "TEST_ALERT"},
+            },
+            headers=_auth(),
+        )
+        out = capsys.readouterr().out
+        assert "[TEST_ALERT]" in out
+        assert "srv" in out
+        assert "[UNKNOWN_EVENT]" not in out
+
     def test_session_opened(self, client, capsys, loud_env):
         client.post(
             "/webhook/pamsignal",

@@ -114,6 +114,20 @@ def webhook():
                 f"{_safe(ps.get('window_sec'))}s!",
                 flush=True,
             )
+        elif action == "login_after_failures":
+            print(
+                f"🔥 [LOGIN_AFTER_FAILURES] User '{_safe(user.get('name'))}' "
+                f"logged in from {_safe(source.get('ip'))} after "
+                f"{_safe(ps.get('failures'))} failed attempts on "
+                f"{_safe(host.get('hostname'))} — possible guessed password!",
+                flush=True,
+            )
+        elif action == "test_alert":
+            print(
+                f"🔔 [TEST_ALERT] Test alert received from "
+                f"{_safe(host.get('hostname'))} — webhook channel is working",
+                flush=True,
+            )
         elif action == "session_opened":
             print(
                 f"ℹ️ [SESSION_OPEN] Session opened for user "

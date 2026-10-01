@@ -205,7 +205,7 @@ See [Alerts → Custom webhook (ECS JSON)](./alerts.md#custom-webhook-ecs-json) 
 | `--check-config` | `-t` | Validate the config file, print any errors, and exit |
 | `--test-alert` | `-T` | Send a test message to every configured channel and exit |
 
-Relative paths are resolved to absolute before daemonization.
+Relative paths are resolved to absolute before daemonization. An unrecognized option, or `-c` without a path, is an error: pamsignal prints a message and exits with status `2` instead of starting.
 
 ## Check the config and test your alerts
 

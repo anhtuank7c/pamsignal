@@ -426,6 +426,39 @@ static void test_notify_brute_no_channels(void **state) {
                           1700000000000000ULL, 12345);
 }
 
+// provider / service_name are operator-controlled 63-byte strings; when every
+// byte needs escaping the labels fragment is ~294 bytes. Every JSON formatter
+// must still emit a complete object rather than truncating mid-string.
+static void test_format_json_labels_worst_case_not_truncated(void **state) {
+    (void)state;
+    char quotes[64];
+    memset(quotes, '"', sizeof(quotes) - 1);
+    quotes[sizeof(quotes) - 1] = '\0';
+
+    ps_config_t cfg;
+    make_cfg_with_labels(&cfg, quotes, quotes);
+    ps_pam_event_t e = make_login_success();
+    char buf[2048];
+
+    format_event_json(&cfg, &e, buf, sizeof(buf));
+    assert_non_null(strstr(buf, "\\\"\"}}"));
+    assert_int_equal(buf[strlen(buf) - 1], '}');
+
+    format_brute_json(&cfg, "10.0.0.1", 5, 300, "root", "h",
+                      1700000000000000ULL, 1, buf, sizeof(buf));
+    assert_non_null(strstr(buf, "\\\"\"}}"));
+
+    format_local_brute_json(&cfg, PS_SERVICE_SUDO, "alice", "root", 5, 300, "h",
+                            1700000000000000ULL, 1, buf, sizeof(buf));
+    assert_non_null(strstr(buf, "\\\"\"}}"));
+
+    format_login_after_failures_json(&cfg, &e, 3, 300, buf, sizeof(buf));
+    assert_non_null(strstr(buf, "\\\"\"}}"));
+
+    format_test_json(&cfg, "h", 1700000000000000ULL, buf, sizeof(buf));
+    assert_non_null(strstr(buf, "\\\"\"}}"));
+}
+
 // --- Login-after-failures formatting ---
 
 static void test_format_login_after_failures_text(void **state) {
@@ -655,6 +688,7 @@ int main(void) {
         cmocka_unit_test(test_notify_event_no_channels),
         cmocka_unit_test(test_notify_brute_no_channels),
         cmocka_unit_test(test_notify_local_brute_no_channels),
+        cmocka_unit_test(test_format_json_labels_worst_case_not_truncated),
         cmocka_unit_test(test_format_login_after_failures_text),
         cmocka_unit_test(test_format_login_after_failures_json),
         cmocka_unit_test(test_format_login_after_failures_json_escapes),

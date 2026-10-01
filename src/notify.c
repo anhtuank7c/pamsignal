@@ -390,7 +390,7 @@ static void format_event_json(const ps_config_t *cfg,
     json_escape(event->username, esc_user, sizeof(esc_user));
     json_escape(event->hostname, esc_host, sizeof(esc_host));
 
-    char labels_json[256] = "";
+    char labels_json[320] = "";
     if (cfg->provider[0] || cfg->service_name[0]) {
         char esc_prov[128] = "", esc_srv[128] = "";
         json_escape(cfg->provider, esc_prov, sizeof(esc_prov));
@@ -497,7 +497,7 @@ static void format_local_brute_json(const ps_config_t *cfg,
     json_escape(target, esc_target, sizeof(esc_target));
     json_escape(host, esc_host, sizeof(esc_host));
 
-    char labels_json[256] = "";
+    char labels_json[320] = "";
     if (cfg->provider[0] || cfg->service_name[0]) {
         char esc_prov[128] = "", esc_srv[128] = "";
         json_escape(cfg->provider, esc_prov, sizeof(esc_prov));
@@ -545,7 +545,7 @@ static void format_brute_json(const ps_config_t *cfg, const char *ip,
     json_escape(user, esc_user, sizeof(esc_user));
     json_escape(host, esc_host, sizeof(esc_host));
 
-    char labels_json[256] = "";
+    char labels_json[320] = "";
     if (cfg->provider[0] || cfg->service_name[0]) {
         char esc_prov[128] = "", esc_srv[128] = "";
         json_escape(cfg->provider, esc_prov, sizeof(esc_prov));

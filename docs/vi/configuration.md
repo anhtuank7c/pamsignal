@@ -205,7 +205,7 @@ Xem [Alerts → Custom webhook (ECS JSON)](./alerts.md#custom-webhook-ecs-json) 
 | `--check-config` | `-t` | Kiểm tra file config, in ra các lỗi (nếu có) rồi thoát |
 | `--test-alert` | `-T` | Gửi một tin nhắn thử tới mọi kênh đã cấu hình rồi thoát |
 
-Đường dẫn tương đối sẽ được chuyển thành đường dẫn tuyệt đối trước khi daemonize.
+Đường dẫn tương đối sẽ được chuyển thành đường dẫn tuyệt đối trước khi daemonize. Một option không được nhận diện, hoặc `-c` thiếu đường dẫn, là lỗi: pamsignal in ra thông báo và thoát với mã `2` thay vì khởi động.
 
 ## Kiểm tra config và thử cảnh báo
 

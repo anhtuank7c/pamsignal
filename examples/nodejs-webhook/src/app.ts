@@ -119,6 +119,14 @@ app.post('/webhook/pamsignal', authenticate, (req: Request, res: Response): void
         console.log(`🚨 [BRUTE_FORCE] ${safe(pamsignal?.attempts)} failed attempts detected from IP ${safe(source?.ip)} in ${safe(pamsignal?.window_sec)}s!`);
         break;
 
+      case 'login_after_failures':
+        console.log(`🔥 [LOGIN_AFTER_FAILURES] User '${safe(user?.name)}' logged in from ${safe(source?.ip)} after ${safe(pamsignal?.failures)} failed attempts on ${safe(host?.hostname)} — possible guessed password!`);
+        break;
+
+      case 'test_alert':
+        console.log(`🔔 [TEST_ALERT] Test alert received from ${safe(host?.hostname)} — webhook channel is working`);
+        break;
+
       case 'session_opened':
         console.log(`ℹ️ [SESSION_OPEN] Session opened for user '${safe(user?.name)}' on ${safe(host?.hostname)}`);
         break;
