@@ -1,3 +1,28 @@
+pamsignal (0.7.0-1) unstable; urgency=high
+
+  * SECURITY: crafted SSH usernames could forge authentication events.
+    The message parser matched its patterns anywhere in the log line, so
+    an unauthenticated client could name itself after an sshd success
+    line and be reported as a successful login from an arbitrary address,
+    or pin its failures (and a fail2ban ban) on another IP. Patterns are
+    now anchored at the start of the message and the peer address is
+    taken from the part sshd writes itself. All earlier releases that
+    parse sshd lines are affected.
+  * Fix: every failed SSH password was counted twice (sshd line plus the
+    pam_unix copy), halving the effective brute-force threshold.
+  * Fix: keyboard-interactive SSH logins (PAM / OTP / 2FA) are recognised.
+  * Fix: unrecognized command-line options are now an error (exit 2)
+    instead of being ignored.
+  * Fix: webhook JSON labels fragment could be truncated for long,
+    escape-heavy provider / service_name tags.
+  * New: login-after-failures alert (success_after_fail_threshold) for a
+    successful login that follows a run of failures from the same IP.
+  * New: trusted_sources, a CIDR list whose routine login alerts are
+    muted while brute-force and login-after-failures alerts still fire.
+  * New: pamsignal --check-config and --test-alert one-shot modes.
+
+ -- Tuan Nguyen <anhtuank7c@hotmail.com>  Thu, 01 Oct 2026 03:00:00 +0000
+
 pamsignal (0.6.2-1) unstable; urgency=medium
 
   * No daemon code changes; documentation, integration, and packaging only.

@@ -69,7 +69,7 @@ sudo dnf install pamsignal
 20.04 chỉ còn ESM từ tháng 4/2025 và không có apt pocket trên gh-pages cho nó — nhưng một bản `.deb` nhắm Focal được build và smoke-test trong CI ở mỗi release, rồi đính kèm làm GitHub release asset. Tải về và cài trực tiếp:
 
 ```bash
-VERSION=0.5.0   # cập nhật theo từng release — xem https://github.com/anhtuank7c/pamsignal/releases
+VERSION=0.7.0   # cập nhật theo từng release — xem https://github.com/anhtuank7c/pamsignal/releases
 curl -fL -o pamsignal_focal.deb \
   "https://github.com/anhtuank7c/pamsignal/releases/download/v${VERSION}/pamsignal_${VERSION}-1_focal_amd64.deb"
 
@@ -116,9 +116,11 @@ enable_notification_type = login_success,brute_force
 
 ### 3. Reload & Theo dõi
 
-Áp dụng cấu hình và xem sự kiện trực tiếp:
+Kiểm tra cấu hình, gửi một cảnh báo thử, rồi áp dụng và xem sự kiện trực tiếp:
 
 ```bash
+sudo -u pamsignal pamsignal --check-config   # kiểm tra file cấu hình
+sudo -u pamsignal pamsignal --test-alert     # gửi tin nhắn thử tới mọi kênh
 sudo systemctl reload pamsignal
 journalctl -t pamsignal -f
 ```

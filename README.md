@@ -69,7 +69,7 @@ sudo dnf install pamsignal
 20.04 is ESM-only since April 2025 and there's no gh-pages apt pocket for it — but a Focal-targeted `.deb` is built and tested in CI on every release, then attached as a GitHub release asset. Download and install directly:
 
 ```bash
-VERSION=0.5.0   # bump per release — see https://github.com/anhtuank7c/pamsignal/releases
+VERSION=0.7.0   # bump per release — see https://github.com/anhtuank7c/pamsignal/releases
 curl -fL -o pamsignal_focal.deb \
   "https://github.com/anhtuank7c/pamsignal/releases/download/v${VERSION}/pamsignal_${VERSION}-1_focal_amd64.deb"
 
@@ -116,9 +116,11 @@ enable_notification_type = login_success,brute_force
 
 ### 3. Reload & Monitor
 
-Apply your configuration and watch the live events:
+Check your configuration, send a test alert, then apply it and watch the live events:
 
 ```bash
+sudo -u pamsignal pamsignal --check-config   # validate the file
+sudo -u pamsignal pamsignal --test-alert     # send a test message to every channel
 sudo systemctl reload pamsignal
 journalctl -t pamsignal -f
 ```
