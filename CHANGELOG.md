@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+### Fixed
+- [x] **Tests: bounds-check the `snprintf` appends in `tests/test_config.c`** (CodeQL `cpp/overflowing-snprintf`, alerts #1 and #2). Two `trusted_sources` tests advanced a buffer offset by the `snprintf` return value without checking it against the space left; the strings always fit, so nothing overflowed, but the pattern is unsafe. Both now use one helper that asserts every append fits. Test code only — the daemon is unchanged.
+
 ## 0.7.0 — 2026-10-01
 
 Minor release with a **security fix that affects every earlier version** — upgrade. A crafted SSH username could make PAMSignal report a successful login that never happened, or attribute failures to someone else's IP address. The release also fixes double-counting of failed SSH passwords, adds a critical alert for a successful login that follows a run of failures, lets you mute routine alerts from trusted networks, and adds `--check-config` / `--test-alert` so a config and its alert channels can be verified from a terminal. One upgrade note: configs that list `enable_notification_type` tokens explicitly must add `login_after_failures` to receive the new alert in chat.
