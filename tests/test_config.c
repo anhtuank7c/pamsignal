@@ -541,15 +541,28 @@ static void test_trusted_sources_malformed_rejected(void **state) {
     }
 }
 
+// Write "trusted_sources = 10.0.0.1,10.0.1.1,...\n" with n entries into buf.
+// snprintf returns the length it wanted to write, so each append is checked
+// against the space left before the offset advances; an oversized request
+// fails the test instead of walking the offset past the buffer.
+static void build_trusted_sources_line(char *buf, size_t size, int n) {
+    int w = snprintf(buf, size, "trusted_sources = ");
+    assert_true(w > 0 && (size_t)w < size);
+    size_t off = (size_t)w;
+    for (int i = 0; i < n; i++) {
+        w = snprintf(buf + off, size - off, "%s10.0.%d.1", i ? "," : "", i);
+        assert_true(w > 0 && (size_t)w < size - off);
+        off += (size_t)w;
+    }
+    w = snprintf(buf + off, size - off, "\n");
+    assert_true(w > 0 && (size_t)w < size - off);
+}
+
 static void test_trusted_sources_too_many_rejected(void **state) {
     (void)state;
-    char content[1024] = "trusted_sources = ";
-    size_t off = strlen(content);
-    for (int i = 0; i <= PS_MAX_TRUSTED_SOURCES; i++) {
-        off += (size_t)snprintf(content + off, sizeof(content) - off,
-                                "%s10.0.%d.1", i ? "," : "", i);
-    }
-    snprintf(content + off, sizeof(content) - off, "\n");
+    char content[1024];
+    build_trusted_sources_line(content, sizeof(content),
+                               PS_MAX_TRUSTED_SOURCES + 1);
     write_tmp_config(content);
     ps_config_t cfg;
     assert_int_equal(ps_config_load(tmp_path, &cfg), PS_ERR_CONFIG);
@@ -559,13 +572,9 @@ static void test_trusted_sources_too_many_rejected(void **state) {
 
 static void test_trusted_sources_max_entries_accepted(void **state) {
     (void)state;
-    char content[1024] = "trusted_sources = ";
-    size_t off = strlen(content);
-    for (int i = 0; i < PS_MAX_TRUSTED_SOURCES; i++) {
-        off += (size_t)snprintf(content + off, sizeof(content) - off,
-                                "%s10.0.%d.1", i ? "," : "", i);
-    }
-    snprintf(content + off, sizeof(content) - off, "\n");
+    char content[1024];
+    build_trusted_sources_line(content, sizeof(content),
+                               PS_MAX_TRUSTED_SOURCES);
     write_tmp_config(content);
     ps_config_t cfg;
     assert_int_equal(ps_config_load(tmp_path, &cfg), PS_OK);
