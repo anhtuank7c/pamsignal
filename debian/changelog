@@ -1,3 +1,24 @@
+pamsignal (0.7.1-1) unstable; urgency=high
+
+  * SECURITY: crafted SSH usernames could inject mentions and links into
+    chat alerts. The alert text embeds the client-chosen username and was
+    sent as ordinary message text, so a name such as "@everyone" or
+    "<!channel>" pinged a whole channel, and "[text](url)" or a bare URL
+    became a clickable link. Chat text is now only ever sent inside a
+    code span, with backticks, markup characters, control and
+    direction-changing Unicode and malformed UTF-8 neutralised first;
+    Discord payloads disable mentions. All earlier releases are affected.
+  * Fix: malformed UTF-8 in a field could make a chat API or JSON parser
+    reject the whole alert; invalid bytes are now replaced.
+  * Fix: an alert whose JSON-escaped text was truncated is dropped
+    instead of being sent cut off.
+  * New: message_style = pretty, an opt-in multi-line chat layout with
+    bold labels and monospace values in each platform's own markup.
+  * Change: the default compact line now renders in a monospace font on
+    every chat platform, as a consequence of the security fix.
+
+ -- Tuan Nguyen <anhtuank7c@hotmail.com>  Thu, 01 Oct 2026 04:00:00 +0000
+
 pamsignal (0.7.0-1) unstable; urgency=high
 
   * SECURITY: crafted SSH usernames could forge authentication events.

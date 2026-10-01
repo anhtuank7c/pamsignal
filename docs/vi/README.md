@@ -27,6 +27,8 @@ Chỉ vài giây sau một sự kiện, một dòng như thế này hiện ra tr
 [ALERT]  auth.brute_force_detected     src=203.0.113.50 attempts=12 window=300s user=root host=web-01
 ```
 
+Muốn một bố cục nhiều dòng với nhãn in đậm, dễ đọc trên điện thoại? Đặt `message_style = pretty` ([chi tiết](configuration.md#kiểu-hiển-thị-tin-nhắn)).
+
 Muốn một màn hình cho cả fleet thay vì ping lẻ từng host? PAMSignal cũng cấp dữ liệu cho một **[Grafana dashboard](grafana-getting-started.md)** dựng sẵn (xem trước ở [phần dưới](#-góc-nhìn-toàn-fleet-trong-grafana)).
 
 ## 🚀 Bắt đầu nhanh
@@ -69,7 +71,7 @@ sudo dnf install pamsignal
 20.04 chỉ còn ESM từ tháng 4/2025 và không có apt pocket trên gh-pages cho nó — nhưng một bản `.deb` nhắm Focal được build và smoke-test trong CI ở mỗi release, rồi đính kèm làm GitHub release asset. Tải về và cài trực tiếp:
 
 ```bash
-VERSION=0.7.0   # cập nhật theo từng release — xem https://github.com/anhtuank7c/pamsignal/releases
+VERSION=0.7.1   # cập nhật theo từng release — xem https://github.com/anhtuank7c/pamsignal/releases
 curl -fL -o pamsignal_focal.deb \
   "https://github.com/anhtuank7c/pamsignal/releases/download/v${VERSION}/pamsignal_${VERSION}-1_focal_amd64.deb"
 

@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## 0.7.1 — 2026-10-01
+
+Patch release with a **security fix that affects every earlier version, including 0.7.0** — upgrade. A crafted SSH username could ping a whole chat channel (`@everyone`, `<!channel>`) or turn into a clickable link in the alert. Chat alerts are now only ever sent inside a code span, so nothing an attacker types is interpreted by the chat platform. One visible consequence: the default compact line now renders in a monospace font. The release also adds `message_style = pretty`, an opt-in multi-line layout that is easier to read on a phone.
+
 ### Features
 - [x] **`message_style = pretty`** — an optional multi-line layout for chat alerts (default stays `compact`, the existing one-line text). A headline with an emoji, then one row per field with a bold label and a monospace value, rendered in each platform's own markup: Telegram HTML (`parse_mode=HTML`), Slack mrkdwn, Teams and Discord markdown, WhatsApp formatting. Covers every alert type and the `--test-alert` message, which now previews the configured style. Every journal-derived value is emitted inside a code span with control characters replaced, backticks neutralised, and `&` `<` `>` entity-escaped where they are syntax; a message over 2000 bytes falls back to compact rather than being cut mid-markup. The custom webhook's ECS JSON is unchanged. `--check-config` reports the active style.
 

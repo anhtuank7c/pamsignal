@@ -27,6 +27,8 @@ Seconds after an event, a line like this lands in your Telegram, Slack, Teams, D
 [ALERT]  auth.brute_force_detected     src=203.0.113.50 attempts=12 window=300s user=root host=web-01
 ```
 
+Prefer a multi-line layout with bold labels on your phone? Set `message_style = pretty` ([details](./docs/configuration.md#message-style)).
+
 Prefer one screen for the whole fleet instead of per-host pings? PAMSignal also feeds a ready-made **[Grafana dashboard](./docs/grafana-getting-started.md)** (preview [below](#-fleet-view-in-grafana)).
 
 ## 🚀 Quick Start
@@ -69,7 +71,7 @@ sudo dnf install pamsignal
 20.04 is ESM-only since April 2025 and there's no gh-pages apt pocket for it — but a Focal-targeted `.deb` is built and tested in CI on every release, then attached as a GitHub release asset. Download and install directly:
 
 ```bash
-VERSION=0.7.0   # bump per release — see https://github.com/anhtuank7c/pamsignal/releases
+VERSION=0.7.1   # bump per release — see https://github.com/anhtuank7c/pamsignal/releases
 curl -fL -o pamsignal_focal.deb \
   "https://github.com/anhtuank7c/pamsignal/releases/download/v${VERSION}/pamsignal_${VERSION}-1_focal_amd64.deb"
 
