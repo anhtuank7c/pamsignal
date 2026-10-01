@@ -266,7 +266,7 @@ mTLS combines additively with `webhook_auth_header` — operators with receivers
 |---|---|---|---|---|
 | `session_opened` | `SESSION_OPEN` | A PAM session opens (sshd / sudo / su / login) | 3 (info) | `session_open` |
 | `session_closed` | `SESSION_CLOSE` | A PAM session closes | 3 (info) | `session_close` |
-| `login_success` | `LOGIN_SUCCESS` | Successful SSH auth (password or public key) | 4 (notice) | `login_success` |
+| `login_success` | `LOGIN_SUCCESS` | Successful SSH auth (password, public key, or keyboard-interactive) | 4 (notice) | `login_success` |
 | `login_failure` | `LOGIN_FAILED` | Failed SSH auth | 5 (warning) | `login_failed` |
 | `login_failure` (sudo/su) | `LOGIN_FAILED` | Failed sudo/su attempt — **journal-only** (no per-event chat alert; tracked toward the brute-force threshold) | 5 (warning) | `login_failed` (suppression is independent and still applies) |
 | `brute_force_detected` | `BRUTE_FORCE_DETECTED` | Failed attempts from one IP **or** from one local actor (sudo/su) exceeded the threshold within the window | 8 (alert) | `brute_force` |
@@ -296,7 +296,7 @@ The last column is the token to list in `enable_notification_type` to receive th
 | `process.pid` | integer | All | Process ID — the live sshd session for `login_success`/`session_opened`, the (already reaped) auth child for failures and brute-force |
 | `process.user.id` | string | Login/Session | UID of the PAM-handled process |
 | `pamsignal.event_type` | string | All | Legacy uppercase enum (kept for backward compat through v0.2.x; retired in v0.3.0) |
-| `pamsignal.auth_method` | string | Login + Login-after-failures | `password`, `publickey`, or `unknown` |
+| `pamsignal.auth_method` | string | Login + Login-after-failures | `password`, `publickey`, `keyboard-interactive`, or `unknown` |
 | `pamsignal.attempts` | integer | Brute-force | Number of failed attempts that breached the threshold |
 | `pamsignal.failures` | integer | Login-after-failures | Length of the run of failed attempts that preceded the successful login |
 | `pamsignal.window_sec` | integer | Brute-force + Login-after-failures | Configured time window |

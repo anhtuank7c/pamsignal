@@ -76,25 +76,67 @@ static void extract_username(const char *start, char *username, size_t len) {
     }
 }
 
-// Parse "USER from IP port PORT [ssh2]" into event fields.
+// Returns a pointer just past prefix if s starts with it, NULL otherwise.
 //
-// The username is extracted via extract_username so a too-long input gets
-// the '+' truncation marker — sscanf("%63s") would silently truncate without
-// any signal to the alert reader. Port uses strtol to satisfy cert-err34-c.
-static int parse_login_fields(const char *p, ps_pam_event_t *event) {
+// Every pattern in ps_parse_message is matched this way — anchored at the
+// start of the message — and never with a substring search. The username in
+// an sshd line is chosen by the remote client before authentication and may
+// contain spaces, so a client can name itself
+// "Accepted password for root from 8.8.8.8 port 1 ssh2"; sshd then logs
+// "Failed password for invalid user Accepted password for root from ...".
+// A substring match would read that as a successful root login.
+static const char *skip_prefix(const char *s, const char *prefix) {
+    size_t n = strlen(prefix);
+    return strncmp(s, prefix, n) == 0 ? s + n : NULL;
+}
+
+// For a "pam_unix(<service>:<type>): ..." line, returns a pointer to the ':'
+// that ends the service name; NULL if the message is not a pam_unix line.
+static const char *pam_unix_tail(const char *message) {
+    const char *p = skip_prefix(message, "pam_unix(");
+    if (!p)
+        return NULL;
+    while (*p && *p != ':' && *p != ')' && *p != ' ')
+        p++;
+    return *p == ':' ? p : NULL;
+}
+
+// Parse "USER from IP [port PORT] [ssh2]" into event fields.
+//
+// sshd writes the peer address itself, after the client-supplied username,
+// so the genuine " from " is the last one on the line. Callers set
+// last_from for lines whose username is untrusted (failed and invalid-user
+// attempts): a client naming itself "x from 203.0.113.9 port 1" must not be
+// able to pin its failures on someone else's address. Lines for
+// authenticated users keep the first " from ", because text after the port
+// (a certificate ID, say) is not sshd's own.
+//
+// The username is only its first space-delimited token (extract_username,
+// with the '+' truncation marker). It must never carry spaces into an alert
+// or into pamsignal's own journal line: both are key=value text that
+// downstream matchers (the fail2ban filter, chat readers) take at face value,
+// so a spaced username could forge fields there. Port uses strtol to satisfy
+// cert-err34-c.
+static int parse_login_fields(const char *p, ps_pam_event_t *event,
+                              int last_from) {
+    const char *from = strstr(p, " from ");
+    if (last_from) {
+        const char *next;
+        while (from && (next = strstr(from + 1, " from ")) != NULL)
+            from = next;
+    }
+    if (!from || from == p)
+        return -1;
+
     extract_username(p, event->username, sizeof(event->username));
     if (event->username[0] == '\0')
         return -1;
-
-    const char *from = strstr(p, " from ");
-    if (!from)
-        return -1;
+    sanitize_string(event->username);
 
     char port_str[16] = {0};
     if (sscanf(from + 6, "%45s port %15s", event->source_ip, port_str) < 1)
         return -1;
 
-    sanitize_string(event->username);
     if (!is_valid_ip(event->source_ip))
         event->source_ip[0] = '\0';
 
@@ -116,14 +158,15 @@ int ps_parse_message(const char *message, ps_pam_event_t *event) {
     event->service = PS_SERVICE_OTHER;
 
     const char *p;
+    const char *pam_tail = pam_unix_tail(message);
 
     // Session opened: "pam_unix(sshd:session): session opened for user
     // USERNAME"
-    p = strstr(message, "session opened for user ");
+    p = pam_tail ? skip_prefix(pam_tail, ":session): session opened for user ")
+                 : NULL;
     if (p) {
         event->type = PS_EVENT_SESSION_OPEN;
         event->service = parse_service_from_pam(message);
-        p += 24; // skip "session opened for user "
         extract_username(p, event->username, sizeof(event->username));
         sanitize_string(event->username);
         return PS_OK;
@@ -131,52 +174,81 @@ int ps_parse_message(const char *message, ps_pam_event_t *event) {
 
     // Session closed: "pam_unix(sshd:session): session closed for user
     // USERNAME"
-    p = strstr(message, "session closed for user ");
+    p = pam_tail ? skip_prefix(pam_tail, ":session): session closed for user ")
+                 : NULL;
     if (p) {
         event->type = PS_EVENT_SESSION_CLOSE;
         event->service = parse_service_from_pam(message);
-        p += 24; // skip "session closed for user "
         extract_username(p, event->username, sizeof(event->username));
         sanitize_string(event->username);
         return PS_OK;
     }
 
     // Accepted password: "Accepted password for USER from IP port PORT ssh2"
-    p = strstr(message, "Accepted password for ");
+    p = skip_prefix(message, "Accepted password for ");
     if (p) {
         event->type = PS_EVENT_LOGIN_SUCCESS;
         event->auth_method = PS_AUTH_PASSWORD;
         event->service = PS_SERVICE_SSHD;
-        p += 22; // skip "Accepted password for "
-        parse_login_fields(p, event);
+        parse_login_fields(p, event, 0);
         return PS_OK;
     }
 
     // Accepted publickey: "Accepted publickey for USER from IP port PORT ssh2"
-    p = strstr(message, "Accepted publickey for ");
+    p = skip_prefix(message, "Accepted publickey for ");
     if (p) {
         event->type = PS_EVENT_LOGIN_SUCCESS;
         event->auth_method = PS_AUTH_PUBLICKEY;
         event->service = PS_SERVICE_SSHD;
-        p += 23; // skip "Accepted publickey for "
-        parse_login_fields(p, event);
+        parse_login_fields(p, event, 0);
+        return PS_OK;
+    }
+
+    // Accepted keyboard-interactive: sshd's challenge-response path (PAM
+    // password prompts, OTP / 2FA modules):
+    // "Accepted keyboard-interactive/pam for USER from IP port PORT ssh2"
+    p = skip_prefix(message, "Accepted keyboard-interactive/pam for ");
+    if (p) {
+        event->type = PS_EVENT_LOGIN_SUCCESS;
+        event->auth_method = PS_AUTH_KEYBOARD_INTERACTIVE;
+        event->service = PS_SERVICE_SSHD;
+        parse_login_fields(p, event, 0);
         return PS_OK;
     }
 
     // Failed password: "Failed password for [invalid user] USER from IP port
     // PORT ssh2"
-    p = strstr(message, "Failed password for ");
+    p = skip_prefix(message, "Failed password for ");
     if (p) {
         event->type = PS_EVENT_LOGIN_FAILED;
         event->auth_method = PS_AUTH_PASSWORD;
         event->service = PS_SERVICE_SSHD;
-        p += 20; // skip "Failed password for "
 
         // Handle "invalid user " prefix
         if (strncmp(p, "invalid user ", 13) == 0)
             p += 13;
 
-        parse_login_fields(p, event);
+        parse_login_fields(p, event, 1);
+        return PS_OK;
+    }
+
+    // Failed keyboard-interactive. sshd logs
+    //   "error: PAM: Authentication failure for [illegal user] USER from IP"
+    // once per failed challenge-response attempt (no port). This is the line
+    // to count: its sibling "Failed keyboard-interactive/pam for ..." is only
+    // written at INFO once a connection has used half of MaxAuthTries, so it
+    // is absent for the first attempts and would double-count the later ones.
+    // Password auth never emits this line; it has "Failed password" above.
+    p = skip_prefix(message, "error: PAM: Authentication failure for ");
+    if (p) {
+        event->type = PS_EVENT_LOGIN_FAILED;
+        event->auth_method = PS_AUTH_KEYBOARD_INTERACTIVE;
+        event->service = PS_SERVICE_SSHD;
+
+        if (strncmp(p, "illegal user ", 13) == 0)
+            p += 13;
+
+        parse_login_fields(p, event, 1);
         return PS_OK;
     }
 
@@ -189,11 +261,22 @@ int ps_parse_message(const char *message, ps_pam_event_t *event) {
     // is always the final user= field) is the target. rhost is the remote
     // host when present, populated by pam_unix on SSH→sudo chains where the
     // sudo invocation inherits a remote rhost from the calling sshd session.
-    p = strstr(message, ":auth): authentication failure;");
+    p = pam_tail ? skip_prefix(pam_tail, ":auth): authentication failure;")
+                 : NULL;
     if (p) {
         event->type = PS_EVENT_LOGIN_FAILED;
         event->auth_method = PS_AUTH_PASSWORD;
         event->service = parse_service_from_pam(message);
+
+        // sshd reports the same failed attempt itself ("Failed password for
+        // ..." / "Failed keyboard-interactive/pam for ..."), with the
+        // username and port this line lacks. Counting pam_unix's copy as
+        // well would double every sshd failure in the brute-force and
+        // login-after-failures trackers and send a second, user-less alert.
+        if (event->service == PS_SERVICE_SSHD) {
+            event->type = PS_EVENT_UNKNOWN;
+            return PS_ERR_JOURNAL;
+        }
 
         // ruser=<actor>
         const char *ruser = strstr(p, " ruser=");
@@ -286,6 +369,8 @@ const char *ps_auth_method_str(ps_auth_method_t method) {
         return "password";
     case PS_AUTH_PUBLICKEY:
         return "publickey";
+    case PS_AUTH_KEYBOARD_INTERACTIVE:
+        return "keyboard-interactive";
     case PS_AUTH_UNKNOWN:
         return "unknown";
     }

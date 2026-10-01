@@ -16,6 +16,7 @@ typedef enum {
 typedef enum {
     PS_AUTH_PASSWORD,
     PS_AUTH_PUBLICKEY,
+    PS_AUTH_KEYBOARD_INTERACTIVE,
     PS_AUTH_UNKNOWN
 } ps_auth_method_t;
 

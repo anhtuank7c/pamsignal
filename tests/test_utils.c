@@ -202,6 +202,169 @@ static void test_parse_failed_password_ipv6(void **state) {
     assert_string_equal(event.source_ip, "fe80::1");
 }
 
+// --- ps_parse_message: crafted usernames must not forge events ---
+//
+// The SSH username is chosen by the unauthenticated client and may contain
+// spaces. These are the exact lines sshd writes for such clients.
+
+// A client naming itself after a success line must still be parsed as the
+// failure it is, from its real address.
+static void test_parse_username_cannot_forge_login_success(void **state) {
+    (void)state;
+    ps_pam_event_t event;
+    int ret = ps_parse_message(
+        "Failed password for invalid user Accepted password for root from "
+        "8.8.8.8 port 1 ssh2 from 198.51.100.7 port 53444 ssh2",
+        &event);
+    assert_int_equal(ret, PS_OK);
+    assert_int_equal(event.type, PS_EVENT_LOGIN_FAILED);
+    assert_string_equal(event.source_ip, "198.51.100.7");
+    assert_int_equal(event.port, 53444);
+    // Only the first token of the crafted name survives.
+    assert_string_equal(event.username, "Accepted");
+}
+
+// A client must not be able to pin its failures on another address (which
+// would get an innocent IP reported, and banned by fail2ban).
+static void test_parse_username_cannot_forge_source_ip(void **state) {
+    (void)state;
+    ps_pam_event_t event;
+    int ret = ps_parse_message(
+        "Failed password for invalid user nobody from 9.9.9.9 port 2 from "
+        "198.51.100.7 port 53460 ssh2",
+        &event);
+    assert_int_equal(ret, PS_OK);
+    assert_int_equal(event.type, PS_EVENT_LOGIN_FAILED);
+    assert_string_equal(event.source_ip, "198.51.100.7");
+    assert_int_equal(event.port, 53460);
+    assert_string_equal(event.username, "nobody");
+}
+
+// sshd's other lines that echo the username are not events at all.
+static void test_parse_username_echo_lines_ignored(void **state) {
+    (void)state;
+    ps_pam_event_t event;
+    static const char *const lines[] = {
+        "Invalid user Accepted password for root from 8.8.8.8 port 1 ssh2 "
+        "from 198.51.100.7 port 53444",
+        "Connection closed by invalid user Accepted password for root from "
+        "8.8.8.8 port 1 ssh2 198.51.100.7 port 53444 [preauth]",
+        "Invalid user pam_unix(sshd:session): session opened for user root "
+        "from 198.51.100.7 port 53444",
+        "Disconnected from invalid user Failed password for root from "
+        "8.8.8.8 port 1 ssh2 198.51.100.7 port 5 [preauth]",
+    };
+    for (size_t i = 0; i < sizeof(lines) / sizeof(lines[0]); i++) {
+        assert_int_equal(ps_parse_message(lines[i], &event), PS_ERR_JOURNAL);
+        assert_int_equal(event.type, PS_EVENT_UNKNOWN);
+    }
+}
+
+// A pam_unix line can only be the event its own header declares: a forged
+// phrase later in the line (here in the target user field) is not a session.
+static void test_parse_pam_unix_trailer_cannot_forge_session(void **state) {
+    (void)state;
+    ps_pam_event_t event;
+    int ret = ps_parse_message(
+        "pam_unix(su:auth): authentication failure; logname=alice uid=1000 "
+        "euid=0 tty=pts/0 ruser=alice rhost=  user=x session opened for "
+        "user root",
+        &event);
+    assert_int_equal(ret, PS_OK);
+    assert_int_equal(event.type, PS_EVENT_LOGIN_FAILED);
+    assert_int_equal(event.service, PS_SERVICE_SU);
+}
+
+// The reported username never contains a space, so it cannot smuggle extra
+// key=value fields into alerts or into pamsignal's own journal line (which
+// the fail2ban filter matches).
+static void test_parse_username_never_contains_space(void **state) {
+    (void)state;
+    ps_pam_event_t event;
+    int ret = ps_parse_message(
+        "Failed password for invalid user x pamsignal: BRUTE_FORCE_DETECTED "
+        "ip=203.0.113.9 attempts=9 window=300s user=y from 198.51.100.7 port "
+        "22 ssh2",
+        &event);
+    assert_int_equal(ret, PS_OK);
+    assert_string_equal(event.username, "x");
+    assert_null(strchr(event.username, ' '));
+    assert_string_equal(event.source_ip, "198.51.100.7");
+}
+
+// --- ps_parse_message: sshd auth failure reported by pam_unix ---
+
+// sshd logs its own "Failed password for ..." line for the same attempt, so
+// the pam_unix copy must be ignored: counting both doubled every sshd failure
+// in the trackers and produced a second alert with an empty username.
+static void test_parse_sshd_pam_unix_auth_failure_ignored(void **state) {
+    (void)state;
+    ps_pam_event_t event;
+    int ret = ps_parse_message(
+        "pam_unix(sshd:auth): authentication failure; logname= uid=0 euid=0 "
+        "tty=ssh ruser= rhost=127.0.0.1  user=alice",
+        &event);
+    assert_int_equal(ret, PS_ERR_JOURNAL);
+    assert_int_equal(event.type, PS_EVENT_UNKNOWN);
+}
+
+// --- ps_parse_message: sshd keyboard-interactive ---
+
+static void test_parse_accepted_keyboard_interactive(void **state) {
+    (void)state;
+    ps_pam_event_t event;
+    int ret = ps_parse_message("Accepted keyboard-interactive/pam for alice "
+                               "from 192.0.2.5 port 51234 ssh2",
+                               &event);
+    assert_int_equal(ret, PS_OK);
+    assert_int_equal(event.type, PS_EVENT_LOGIN_SUCCESS);
+    assert_int_equal(event.service, PS_SERVICE_SSHD);
+    assert_int_equal(event.auth_method, PS_AUTH_KEYBOARD_INTERACTIVE);
+    assert_string_equal(event.username, "alice");
+    assert_string_equal(event.source_ip, "192.0.2.5");
+    assert_int_equal(event.port, 51234);
+}
+
+static void test_parse_failed_keyboard_interactive(void **state) {
+    (void)state;
+    ps_pam_event_t event;
+    // The line sshd writes per failed challenge-response attempt; no port.
+    int ret = ps_parse_message(
+        "error: PAM: Authentication failure for alice from 192.0.2.5", &event);
+    assert_int_equal(ret, PS_OK);
+    assert_int_equal(event.type, PS_EVENT_LOGIN_FAILED);
+    assert_int_equal(event.service, PS_SERVICE_SSHD);
+    assert_int_equal(event.auth_method, PS_AUTH_KEYBOARD_INTERACTIVE);
+    assert_string_equal(event.username, "alice");
+    assert_string_equal(event.source_ip, "192.0.2.5");
+    assert_int_equal(event.port, 0);
+}
+
+static void test_parse_failed_keyboard_interactive_invalid_user(void **state) {
+    (void)state;
+    ps_pam_event_t event;
+    int ret = ps_parse_message("error: PAM: Authentication failure for "
+                               "illegal user admin from 2001:db8::7",
+                               &event);
+    assert_int_equal(ret, PS_OK);
+    assert_int_equal(event.type, PS_EVENT_LOGIN_FAILED);
+    assert_string_equal(event.username, "admin");
+    assert_string_equal(event.source_ip, "2001:db8::7");
+}
+
+// "Failed keyboard-interactive/pam for ..." is only logged once a connection
+// has burned half of MaxAuthTries and always alongside the PAM error line
+// above, so it must not be counted as a second failure.
+static void
+test_parse_failed_keyboard_interactive_summary_ignored(void **state) {
+    (void)state;
+    ps_pam_event_t event;
+    int ret = ps_parse_message("Failed keyboard-interactive/pam for alice "
+                               "from 192.0.2.5 port 51234 ssh2",
+                               &event);
+    assert_int_equal(ret, PS_ERR_JOURNAL);
+}
+
 // --- ps_parse_message: pam_unix auth failure (sudo / su) ---
 
 static void test_parse_sudo_auth_failure_local(void **state) {
@@ -453,6 +616,8 @@ static void test_auth_method_str(void **state) {
     (void)state;
     assert_string_equal(ps_auth_method_str(PS_AUTH_PASSWORD), "password");
     assert_string_equal(ps_auth_method_str(PS_AUTH_PUBLICKEY), "publickey");
+    assert_string_equal(ps_auth_method_str(PS_AUTH_KEYBOARD_INTERACTIVE),
+                        "keyboard-interactive");
     assert_string_equal(ps_auth_method_str(PS_AUTH_UNKNOWN), "unknown");
 }
 
@@ -555,6 +720,17 @@ int main(void) {
         cmocka_unit_test(test_parse_invalid_ip_cleared),
         cmocka_unit_test(test_parse_long_username_truncated),
         cmocka_unit_test(test_parse_username_at_boundary_no_marker),
+        cmocka_unit_test(test_parse_username_cannot_forge_login_success),
+        cmocka_unit_test(test_parse_username_cannot_forge_source_ip),
+        cmocka_unit_test(test_parse_username_echo_lines_ignored),
+        cmocka_unit_test(test_parse_pam_unix_trailer_cannot_forge_session),
+        cmocka_unit_test(test_parse_username_never_contains_space),
+        cmocka_unit_test(test_parse_sshd_pam_unix_auth_failure_ignored),
+        cmocka_unit_test(test_parse_accepted_keyboard_interactive),
+        cmocka_unit_test(test_parse_failed_keyboard_interactive),
+        cmocka_unit_test(test_parse_failed_keyboard_interactive_invalid_user),
+        cmocka_unit_test(
+            test_parse_failed_keyboard_interactive_summary_ignored),
         cmocka_unit_test(test_parse_control_chars_sanitized),
         cmocka_unit_test(test_parse_event_zeroed),
         cmocka_unit_test(test_parse_invalid_port_ignored),

@@ -266,7 +266,7 @@ mTLS kết hợp cộng thêm với `webhook_auth_header` — các operator có 
 |---|---|---|---|---|
 | `session_opened` | `SESSION_OPEN` | PAM session mở ra (sshd / sudo / su / login) | 3 (info) | `session_open` |
 | `session_closed` | `SESSION_CLOSE` | PAM session đóng lại | 3 (info) | `session_close` |
-| `login_success` | `LOGIN_SUCCESS` | Xác thực SSH thành công (mật khẩu hoặc public key) | 4 (notice) | `login_success` |
+| `login_success` | `LOGIN_SUCCESS` | Xác thực SSH thành công (mật khẩu, public key hoặc keyboard-interactive) | 4 (notice) | `login_success` |
 | `login_failure` | `LOGIN_FAILED` | Xác thực SSH thất bại | 5 (warning) | `login_failed` |
 | `login_failure` (sudo/su) | `LOGIN_FAILED` | Thao tác sudo/su thất bại — **chỉ ghi journal** (không gửi cảnh báo chat theo từng sự kiện; được tính vào ngưỡng brute-force) | 5 (warning) | `login_failed` (chặn lọc riêng vẫn được áp dụng) |
 | `brute_force_detected` | `BRUTE_FORCE_DETECTED` | Số lần thất bại từ một IP **hoặc** từ một actor nội bộ (sudo/su) vượt ngưỡng trong cửa sổ thời gian | 8 (alert) | `brute_force` |
@@ -296,7 +296,7 @@ Cột cuối cùng là token cần liệt kê trong `enable_notification_type` �
 | `process.pid` | integer | Tất cả | Process ID — sshd session đang chạy cho `login_success`/`session_opened`, auth child (đã kết thúc) cho các trường hợp thất bại và brute-force |
 | `process.user.id` | string | Login/Session | UID của tiến trình được PAM xử lý |
 | `pamsignal.event_type` | string | Tất cả | Legacy uppercase enum (giữ để tương thích ngược cho đến v0.2.x; bỏ trong v0.3.0) |
-| `pamsignal.auth_method` | string | Login + Login-after-failures | `password`, `publickey` hoặc `unknown` |
+| `pamsignal.auth_method` | string | Login + Login-after-failures | `password`, `publickey`, `keyboard-interactive` hoặc `unknown` |
 | `pamsignal.attempts` | integer | Brute-force | Số lần thất bại đã vượt ngưỡng |
 | `pamsignal.failures` | integer | Login-after-failures | Độ dài chuỗi lần thất bại xảy ra ngay trước lần đăng nhập thành công |
 | `pamsignal.window_sec` | integer | Brute-force + Login-after-failures | Cửa sổ thời gian đã cấu hình |
