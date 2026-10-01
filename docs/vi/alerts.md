@@ -41,9 +41,12 @@ Dấu ngoặc severity có độ rộng cố định (8 ký tự) để các c�
 [WARN]   auth.login_failure user=root src=203.0.113.50:39182 host=web-01 service=sshd auth=password pid=12347 ts=2026-03-29T14:23:01+0000
 [ALERT]  auth.brute_force_detected src=203.0.113.50 attempts=12 window=300s user=root host=web-01 pid=12347 ts=2026-03-29T14:23:01+0000
 [ALERT]  auth.brute_force_detected actor=alice target=root attempts=5 window=300s service=sudo host=web-01 pid=12348 ts=2026-03-29T14:23:01+0000
+[CRIT]   auth.login_after_failures user=root src=203.0.113.50:40112 failures=7 window=300s host=web-01 service=sshd auth=password pid=12360 ts=2026-03-29T14:24:10+0000
 ```
 
 Dạng cuối cùng được phát ra khi một user nội bộ (`alice`) liên tục thất bại khi xác thực qua `sudo`/`su` trên host. Không có `src=` vì thao tác không có remote endpoint; ECS `user.name` mang tên actor và `user.target.name` là mục tiêu leo thang quyền. Cảnh báo `auth.login_failure` theo từng sự kiện **không** được phát cho sudo/su — chỉ có cảnh báo brute-force tổng hợp mới được gửi, để một lần gõ sai mật khẩu không làm phiền operator. Tuy nhiên, bản ghi journal từ `pamsignal` vẫn được ghi cho mỗi lần thất bại riêng lẻ.
+
+Dòng `[CRIT]` là cảnh báo login-after-failures: một lần đăng nhập đã **thành công** từ một IP vừa thất bại `failures` lần, đúng với hình ảnh của một mật khẩu bị đoán trúng. Cảnh báo này được gửi thêm bên cạnh dòng `auth.login_success` thông thường, và vẫn bắn kể cả với `trusted_sources`; các lần lặp lại cho cùng một IP được giãn cách theo `alert_cooldown_sec`. Xem [Configuration → Phát hiện đăng nhập thành công sau nhiều lần thất bại](./configuration.md#phát-hiện-đăng-nhập-thành-công-sau-nhiều-lần-thất-bại).
 
 *(Lưu ý: Các tag context tùy chỉnh như `provider=aws service_name=web-api` sẽ tự động được thêm vào nếu được cấu hình trong `pamsignal.conf`)*
 
@@ -267,8 +270,11 @@ mTLS kết hợp cộng thêm với `webhook_auth_header` — các operator có 
 | `login_failure` | `LOGIN_FAILED` | Xác thực SSH thất bại | 5 (warning) | `login_failed` |
 | `login_failure` (sudo/su) | `LOGIN_FAILED` | Thao tác sudo/su thất bại — **chỉ ghi journal** (không gửi cảnh báo chat theo từng sự kiện; được tính vào ngưỡng brute-force) | 5 (warning) | `login_failed` (chặn lọc riêng vẫn được áp dụng) |
 | `brute_force_detected` | `BRUTE_FORCE_DETECTED` | Số lần thất bại từ một IP **hoặc** từ một actor nội bộ (sudo/su) vượt ngưỡng trong cửa sổ thời gian | 8 (alert) | `brute_force` |
+| `login_after_failures` | `LOGIN_AFTER_FAILURES` | Một lần đăng nhập thành công từ IP có ít nhất `success_after_fail_threshold` lần thất bại gần đây — nhiều khả năng mật khẩu đã bị đoán trúng | 9 (critical) | `login_after_failures` |
 
 Cột cuối cùng là token cần liệt kê trong `enable_notification_type` để nhận loại sự kiện đó dưới dạng cảnh báo chat. Mặc định (`all`, hoặc bỏ qua key) bật mọi loại. Bộ lọc chỉ kiểm soát việc gửi chat — `journalctl -t pamsignal` ghi lại mọi sự kiện bất kể cài đặt. Xem [Configuration → Bộ lọc loại thông báo](./configuration.md#bộ-lọc-loại-thông-báo) để biết tham chiếu đầy đủ.
+
+`pamsignal --test-alert` gửi thêm một payload không phải là phát hiện: `event.action` = `test_alert`, `pamsignal.event_type` = `TEST_ALERT`, severity 3, chỉ gồm `@timestamp`, `event.*`, `host.hostname` và `labels` (nếu có). Receiver có thể bỏ qua hoặc dùng nó để kiểm tra kết nối.
 
 ### Tham chiếu trường (ECS webhook JSON)
 
@@ -276,23 +282,24 @@ Cột cuối cùng là token cần liệt kê trong `enable_notification_type` �
 |---|---|---|---|
 | `@timestamp` | string | Tất cả | ISO 8601 với timezone offset |
 | `event.action` | string | Tất cả | Một trong các giá trị trong bảng trên |
-| `event.category` | array&lt;string&gt; | Tất cả | Luôn có `"authentication"`; session thêm `"session"`, brute-force thêm `"intrusion_detection"` |
-| `event.kind` | string | Tất cả | `"event"` cho quan sát, `"alert"` cho brute-force |
+| `event.category` | array&lt;string&gt; | Tất cả | Luôn có `"authentication"`; session thêm `"session"`, brute-force và login-after-failures thêm `"intrusion_detection"` |
+| `event.kind` | string | Tất cả | `"event"` cho quan sát, `"alert"` cho brute-force và login-after-failures |
 | `event.outcome` | string | Tất cả | `"success"`, `"failure"` hoặc `"unknown"` |
-| `event.severity` | integer | Tất cả | 3=info, 4=notice, 5=warning, 8=alert |
+| `event.severity` | integer | Tất cả | 3=info, 4=notice, 5=warning, 8=alert, 9=critical |
 | `event.module` | string | Tất cả | Luôn là `"pamsignal"` |
 | `event.dataset` | string | Tất cả | Luôn là `"pamsignal.events"` |
 | `host.hostname` | string | Tất cả | Hostname của server |
 | `user.name` | string | Tất cả | Tên người dùng từ thông điệp PAM |
 | `service.name` | string | Login/Session | PAM service: `sshd`, `sudo`, `su`, `login`, `other` |
-| `source.ip` | string | Login + Brute | Remote IP (được xác thực qua `inet_pton`) |
-| `source.port` | integer | Login | Remote port |
+| `source.ip` | string | Login + Brute + Login-after-failures | Remote IP (được xác thực qua `inet_pton`) |
+| `source.port` | integer | Login + Login-after-failures | Remote port |
 | `process.pid` | integer | Tất cả | Process ID — sshd session đang chạy cho `login_success`/`session_opened`, auth child (đã kết thúc) cho các trường hợp thất bại và brute-force |
 | `process.user.id` | string | Login/Session | UID của tiến trình được PAM xử lý |
 | `pamsignal.event_type` | string | Tất cả | Legacy uppercase enum (giữ để tương thích ngược cho đến v0.2.x; bỏ trong v0.3.0) |
-| `pamsignal.auth_method` | string | Login | `password`, `publickey` hoặc `unknown` |
+| `pamsignal.auth_method` | string | Login + Login-after-failures | `password`, `publickey` hoặc `unknown` |
 | `pamsignal.attempts` | integer | Brute-force | Số lần thất bại đã vượt ngưỡng |
-| `pamsignal.window_sec` | integer | Brute-force | Cửa sổ thời gian đã cấu hình |
+| `pamsignal.failures` | integer | Login-after-failures | Độ dài chuỗi lần thất bại xảy ra ngay trước lần đăng nhập thành công |
+| `pamsignal.window_sec` | integer | Brute-force + Login-after-failures | Cửa sổ thời gian đã cấu hình |
 
 ### Tương thích SIEM
 

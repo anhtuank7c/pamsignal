@@ -9,6 +9,7 @@
 #include <string.h>
 #include <sys/mman.h>
 #include <sys/syscall.h>
+#include <sys/wait.h>
 #include <syslog.h>
 #include <systemd/sd-journal.h>
 #include <time.h>
@@ -172,6 +173,15 @@ static int build_secrets_memfd(const curl_config_t *cfg) {
     return ret;
 }
 
+// --test-alert support. Normal dispatch is fire-and-forget; in sync mode the
+// parent waits for each curl child and records its exit code here so the
+// operator gets a per-channel verdict. PS_SYNC_NOT_RUN means no curl was
+// started for the channel (alert dropped before the fork).
+#define PS_SYNC_NOT_RUN (-1)
+
+static int sync_dispatch = 0;
+static int sync_result = PS_SYNC_NOT_RUN;
+
 static void fire_curl(int raw_memfd, char *body) {
     _cleanup_close_ int memfd =
         raw_memfd; /* RAII close on all function exits (parent path) */
@@ -225,26 +235,49 @@ static void fire_curl(int raw_memfd, char *body) {
         char fdpath[32];
         snprintf(fdpath, sizeof(fdpath), "/dev/fd/%d", target_fd);
 
-        char *argv[] = {"curl",
-                        "-s",
-                        "-S",
-                        "--max-time",
-                        "10",
-                        "--proto",
-                        "=https",
-                        "--proto-redir",
-                        "=https",
-                        "-H",
-                        "Content-Type: application/json",
-                        "-K",
-                        fdpath,
-                        "-d",
-                        body,
-                        NULL};
+        char *argv[20];
+        int argc = 0;
+        argv[argc++] = "curl";
+        argv[argc++] = "-s";
+        argv[argc++] = "-S";
+        if (sync_dispatch) {
+            // --test-alert: make an HTTP error status (bad token, revoked
+            // webhook) a non-zero exit, and keep the response body off the
+            // operator's terminal.
+            argv[argc++] = "-f";
+            argv[argc++] = "-o";
+            argv[argc++] = "/dev/null";
+        }
+        argv[argc++] = "--max-time";
+        argv[argc++] = "10";
+        argv[argc++] = "--proto";
+        argv[argc++] = "=https";
+        argv[argc++] = "--proto-redir";
+        argv[argc++] = "=https";
+        argv[argc++] = "-H";
+        argv[argc++] = "Content-Type: application/json";
+        argv[argc++] = "-K";
+        argv[argc++] = fdpath;
+        argv[argc++] = "-d";
+        argv[argc++] = body;
+        argv[argc] = NULL;
 
         // Absolute path: avoid PATH search even though we just sanitized PATH.
         execv("/usr/bin/curl", argv);
         _exit(127);
+    }
+
+    if (sync_dispatch) {
+        int status = 0;
+        pid_t w;
+        do {
+            w = waitpid(pid, &status, 0);
+        } while (w < 0 && errno == EINTR);
+        // 128 stands in for "killed by a signal / could not be reaped" so it
+        // can never be mistaken for a curl exit code of 0.
+        sync_result =
+            (w == pid && WIFEXITED(status)) ? WEXITSTATUS(status) : 128;
+        return;
     }
     // Parent: fire-and-forget; SIGCHLD is set to SIG_IGN | SA_NOCLDWAIT so
     // the kernel reaps the child.
@@ -548,6 +581,128 @@ static void format_brute_json(const ps_config_t *cfg, const char *ip,
              labels_json);
 }
 
+// Render the optional provider / service_name tags as a " key=value" suffix
+// for chat text. Leaves buf empty when neither tag is configured.
+static void format_context_text(const ps_config_t *cfg, char *buf, size_t len) {
+    buf[0] = '\0';
+    if (cfg->provider[0] && cfg->service_name[0]) {
+        snprintf(buf, len, " provider=%s service_name=%s", cfg->provider,
+                 cfg->service_name);
+    } else if (cfg->provider[0]) {
+        snprintf(buf, len, " provider=%s", cfg->provider);
+    } else if (cfg->service_name[0]) {
+        snprintf(buf, len, " service_name=%s", cfg->service_name);
+    }
+}
+
+// Render the same tags as a `,"labels":{...}` JSON fragment.
+static void format_labels_json(const ps_config_t *cfg, char *buf, size_t len) {
+    buf[0] = '\0';
+    char esc_prov[128] = "", esc_srv[128] = "";
+    json_escape(cfg->provider, esc_prov, sizeof(esc_prov));
+    json_escape(cfg->service_name, esc_srv, sizeof(esc_srv));
+    if (cfg->provider[0] && cfg->service_name[0]) {
+        snprintf(buf, len,
+                 ",\"labels\":{\"provider\":\"%s\",\"service_name\":\"%s\"}",
+                 esc_prov, esc_srv);
+    } else if (cfg->provider[0]) {
+        snprintf(buf, len, ",\"labels\":{\"provider\":\"%s\"}", esc_prov);
+    } else if (cfg->service_name[0]) {
+        snprintf(buf, len, ",\"labels\":{\"service_name\":\"%s\"}", esc_srv);
+    }
+}
+
+static void format_login_after_failures_text(const ps_config_t *cfg,
+                                             const ps_pam_event_t *event,
+                                             int failures, int window,
+                                             char *buf, size_t len) {
+    char timebuf[32];
+    char context[256];
+    ps_format_timestamp(event->timestamp_usec, timebuf, sizeof(timebuf));
+    format_context_text(cfg, context, sizeof(context));
+
+    snprintf(buf, len,
+             "[CRIT]   auth.login_after_failures user=%s src=%s:%d "
+             "failures=%d window=%ds host=%s service=%s auth=%s pid=%d "
+             "ts=%s%s",
+             event->username, event->source_ip, event->port, failures, window,
+             event->hostname, ps_service_str(event->service),
+             ps_auth_method_str(event->auth_method), (int)event->pid, timebuf,
+             context);
+}
+
+static void format_login_after_failures_json(const ps_config_t *cfg,
+                                             const ps_pam_event_t *event,
+                                             int failures, int window,
+                                             char *buf, size_t len) {
+    char timebuf[32];
+    char esc_user[128], esc_host[512];
+    // 2 x 127 escaped bytes plus the fixed JSON scaffolding: 256 could
+    // truncate mid-string and emit malformed JSON for quote-heavy tags.
+    char labels_json[320];
+    ps_format_timestamp(event->timestamp_usec, timebuf, sizeof(timebuf));
+    json_escape(event->username, esc_user, sizeof(esc_user));
+    json_escape(event->hostname, esc_host, sizeof(esc_host));
+    format_labels_json(cfg, labels_json, sizeof(labels_json));
+
+    // event.outcome is "success" — the login itself succeeded; event.kind
+    // "alert" plus the intrusion_detection category mark it as a detection.
+    snprintf(buf, len,
+             "{\"@timestamp\":\"%s\","
+             "\"event\":{\"action\":\"login_after_failures\","
+             "\"category\":[\"authentication\",\"intrusion_detection\"],"
+             "\"kind\":\"alert\",\"outcome\":\"success\","
+             "\"severity\":9,\"module\":\"pamsignal\","
+             "\"dataset\":\"pamsignal.events\"},"
+             "\"host\":{\"hostname\":\"%s\"},"
+             "\"user\":{\"name\":\"%s\"},"
+             "\"service\":{\"name\":\"%s\"},"
+             "\"source\":{\"ip\":\"%s\",\"port\":%d},"
+             "\"process\":{\"pid\":%d},"
+             "\"pamsignal\":{\"event_type\":\"LOGIN_AFTER_FAILURES\","
+             "\"auth_method\":\"%s\",\"failures\":%d,\"window_sec\":%d}%s}",
+             timebuf, esc_host, esc_user, ps_service_str(event->service),
+             event->source_ip, event->port, (int)event->pid,
+             ps_auth_method_str(event->auth_method), failures, window,
+             labels_json);
+}
+
+static void format_test_text(const ps_config_t *cfg, const char *host,
+                             uint64_t ts, char *buf, size_t len) {
+    char timebuf[32];
+    char context[256];
+    ps_format_timestamp(ts, timebuf, sizeof(timebuf));
+    format_context_text(cfg, context, sizeof(context));
+
+    snprintf(buf, len,
+             "[INFO]   pamsignal.test_alert host=%s ts=%s%s msg=\"test message "
+             "from pamsignal --test-alert; this channel is working\"",
+             host, timebuf, context);
+}
+
+static void format_test_json(const ps_config_t *cfg, const char *host,
+                             uint64_t ts, char *buf, size_t len) {
+    char timebuf[32];
+    char esc_host[512];
+    // 2 x 127 escaped bytes plus the fixed JSON scaffolding: 256 could
+    // truncate mid-string and emit malformed JSON for quote-heavy tags.
+    char labels_json[320];
+    ps_format_timestamp(ts, timebuf, sizeof(timebuf));
+    json_escape(host, esc_host, sizeof(esc_host));
+    format_labels_json(cfg, labels_json, sizeof(labels_json));
+
+    snprintf(buf, len,
+             "{\"@timestamp\":\"%s\","
+             "\"event\":{\"action\":\"test_alert\","
+             "\"category\":[\"configuration\"],"
+             "\"kind\":\"event\",\"outcome\":\"success\","
+             "\"severity\":3,\"module\":\"pamsignal\","
+             "\"dataset\":\"pamsignal.events\"},"
+             "\"host\":{\"hostname\":\"%s\"},"
+             "\"pamsignal\":{\"event_type\":\"TEST_ALERT\"}%s}",
+             timebuf, esc_host, labels_json);
+}
+
 // --- Per-channel senders ---
 
 static void send_telegram(const ps_config_t *cfg, const char *text) {
@@ -757,4 +912,107 @@ void ps_notify_local_brute_force(const ps_config_t *cfg, ps_service_t service,
         curl_config_t cc = webhook_curl_config(cfg);
         post_alert(&cc, json);
     }
+}
+
+void ps_notify_login_after_failures(const ps_config_t *cfg,
+                                    const ps_pam_event_t *event, int failures,
+                                    int window_sec) {
+    if ((cfg->enable_notification_type & PS_NOTIFY_LOGIN_AFTER_FAILURES) == 0)
+        return;
+    // Caller (journal_watch.c) applies the per-source-IP cooldown using
+    // fail_entry state, mirroring the brute-force paths above.
+    char text[1024];
+    format_login_after_failures_text(cfg, event, failures, window_sec, text,
+                                     sizeof(text));
+
+    send_telegram(cfg, text);
+    if (cfg->slack_webhook_url[0])
+        send_simple_webhook(cfg->slack_webhook_url, "text", text);
+    if (cfg->teams_webhook_url[0])
+        send_simple_webhook(cfg->teams_webhook_url, "text", text);
+    send_whatsapp(cfg, text);
+    if (cfg->discord_webhook_url[0])
+        send_simple_webhook(cfg->discord_webhook_url, "content", text);
+
+    if (cfg->webhook_url[0]) {
+        char json[2048];
+        format_login_after_failures_json(cfg, event, failures, window_sec, json,
+                                         sizeof(json));
+        curl_config_t cc = webhook_curl_config(cfg);
+        post_alert(&cc, json);
+    }
+}
+
+// --- Test alert (--test-alert) ---
+
+// Print the verdict for the channel that was just dispatched in sync mode.
+// Returns 1 if it failed, 0 if curl reported success.
+static int report_test_result(const char *channel) {
+    int failed = 1;
+    if (sync_result == 0) {
+        printf("%-9s ok\n", channel);
+        failed = 0;
+    } else if (sync_result == PS_SYNC_NOT_RUN) {
+        printf("%-9s FAILED (alert could not be built or curl could not be "
+               "started)\n",
+               channel);
+    } else if (sync_result == 127) {
+        printf("%-9s FAILED (cannot execute /usr/bin/curl; is curl "
+               "installed?)\n",
+               channel);
+    } else {
+        printf("%-9s FAILED (curl exit code %d; see the curl message above)\n",
+               channel, sync_result);
+    }
+    fflush(stdout);
+    sync_result = PS_SYNC_NOT_RUN;
+    return failed;
+}
+
+int ps_notify_test(const ps_config_t *cfg, const char *hostname,
+                   uint64_t timestamp_usec) {
+    char text[1024];
+    format_test_text(cfg, hostname, timestamp_usec, text, sizeof(text));
+
+    int configured = 0;
+    int failed = 0;
+    sync_dispatch = 1;
+    sync_result = PS_SYNC_NOT_RUN;
+
+    if (cfg->telegram_bot_token[0]) {
+        configured++;
+        send_telegram(cfg, text);
+        failed += report_test_result("telegram");
+    }
+    if (cfg->slack_webhook_url[0]) {
+        configured++;
+        send_simple_webhook(cfg->slack_webhook_url, "text", text);
+        failed += report_test_result("slack");
+    }
+    if (cfg->teams_webhook_url[0]) {
+        configured++;
+        send_simple_webhook(cfg->teams_webhook_url, "text", text);
+        failed += report_test_result("teams");
+    }
+    if (cfg->whatsapp_access_token[0]) {
+        configured++;
+        send_whatsapp(cfg, text);
+        failed += report_test_result("whatsapp");
+    }
+    if (cfg->discord_webhook_url[0]) {
+        configured++;
+        send_simple_webhook(cfg->discord_webhook_url, "content", text);
+        failed += report_test_result("discord");
+    }
+    if (cfg->webhook_url[0]) {
+        configured++;
+        char json[2048];
+        format_test_json(cfg, hostname, timestamp_usec, json, sizeof(json));
+        curl_config_t cc = webhook_curl_config(cfg);
+        post_alert(&cc, json);
+        failed += report_test_result("webhook");
+    }
+
+    sync_dispatch = 0;
+    return configured ? failed : -1;
 }

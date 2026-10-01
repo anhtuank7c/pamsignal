@@ -29,4 +29,20 @@ void ps_notify_local_brute_force(const ps_config_t *cfg, ps_service_t service,
                                  int window_sec, const char *hostname,
                                  uint64_t timestamp_usec, pid_t last_pid);
 
+// Send alert for a successful login that follows a run of failures from the
+// same source IP — a likely guessed password. event is the LOGIN_SUCCESS
+// event; failures is the length of the run that preceded it.
+void ps_notify_login_after_failures(const ps_config_t *cfg,
+                                    const ps_pam_event_t *event, int failures,
+                                    int window_sec);
+
+// Send a test message to every configured channel and wait for each curl to
+// finish, printing one result line per channel to stdout. Unlike the alert
+// paths above this is synchronous and treats an HTTP error status as a
+// failure; it must not be called once SIGCHLD is ignored (i.e. only from the
+// --test-alert one-shot mode, never from the running daemon).
+// Returns the number of channels that failed, or -1 if none is configured.
+int ps_notify_test(const ps_config_t *cfg, const char *hostname,
+                   uint64_t timestamp_usec);
+
 #endif /* NOTIFY_H */

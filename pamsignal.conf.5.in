@@ -64,6 +64,46 @@ Range: 1\(en100000. Default: 256.
 Minimum number of seconds that must elapse between brute-force alerts for
 the same key. 0 disables the cooldown. Range: 0\(en86400. Default: 60.
 
+.SH LOGIN-AFTER-FAILURES DETECTION
+.TP
+.B success_after_fail_threshold
+A successful login from a source IP that has produced at least this many
+failed attempts, the most recent within
+.B fail_window_sec
+seconds, is reported as a
+.B LOGIN_AFTER_FAILURES
+alert (severity 9): the pattern of a guessed password. The run of failures
+is cleared by any successful login from that IP, so one suspicious login
+produces exactly one alert. The alert is not muted by
+.BR trusted_sources ;
+repeat chat alerts for the same IP are spaced by
+.BR alert_cooldown_sec .
+0 disables the detection. Range: 0\(en10000. Default: 3.
+
+.SH TRUSTED SOURCES
+.TP
+.B trusted_sources
+Comma-separated list of at most 32 IPv4 or IPv6 addresses or CIDR networks
+(for example an office range, a VPN, a bastion host). The routine per-event
+chat alerts
+.RB ( login_success ", " login_failed )
+are not sent for events whose source IP falls inside one of them.
+Brute-force and login-after-failures alerts still fire for trusted sources,
+and the journal trail records every event regardless.
+
+A bare address is a single host. The prefix length must be at least 1;
+hostnames are not resolved. An IPv4-mapped IPv6 peer address
+.RI ( ::ffff:a.b.c.d )
+is matched against the IPv4 entries. A malformed list is a hard error.
+Session events carry no source IP and are unaffected; use
+.B enable_notification_type
+to mute them. Default: empty.
+
+Example:
+.EX
+trusted_sources = 10.0.0.0/8, 203.0.113.7, 2001:db8::/32
+.EE
+
 .SH NOTIFICATION-TYPE FILTER
 .TP
 .B enable_notification_type
@@ -74,12 +114,14 @@ always records every event; this filter only affects Telegram, Slack,
 Teams, WhatsApp, Discord and custom-webhook delivery.
 
 Valid tokens:
-.BR login_success , " " login_failed , " " session_open , " " session_close , " " brute_force , " " all .
+.BR login_success , " " login_failed , " " session_open , " " session_close , " " brute_force , " " login_after_failures , " " all .
 
 Unknown tokens, empty values and empty list elements are hard errors.
 Default (or the token
 .B all
-) means every category.
+) means every category. An explicit list must name
+.B login_after_failures
+to receive that alert.
 
 The existing per-event suppression for sudo/su
 .B LOGIN_FAILED

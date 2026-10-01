@@ -433,6 +433,200 @@ static void test_track_sudo_with_ip_keys_by_ip(void **state) {
     assert_string_equal(fail_table[0].key, "192.0.2.5");
 }
 
+// --- Login-after-failures detection ---
+
+static ps_pam_event_t make_login_success(const char *ip, const char *user,
+                                         uint64_t ts_usec) {
+    ps_pam_event_t e = make_failed_login(ip, user, ts_usec);
+    e.type = PS_EVENT_LOGIN_SUCCESS;
+    return e;
+}
+
+static void fail_n_times(const char *ip, int n, uint64_t t0) {
+    for (int i = 0; i < n; i++) {
+        ps_pam_event_t e =
+            make_failed_login(ip, "root", t0 + (uint64_t)i * 1000000);
+        ps_track_failed_login(&e);
+    }
+}
+
+static void test_after_failures_flags_success_at_threshold(void **state) {
+    (void)state;
+    setup_config(10, 60, 8, 0);
+    g_config.success_after_fail_threshold = 3;
+    assert_int_equal(ps_fail_table_init(g_config.max_tracked_ips), PS_OK);
+
+    fail_n_times("192.0.2.1", 3, 1000000);
+    assert_int_equal(fail_table[0].recent_fails, 3);
+
+    ps_pam_event_t ok = make_login_success("192.0.2.1", "root", 5000000);
+    assert_int_equal(ps_check_login_after_failures(&ok), 1);
+    // The run is cleared so a second login is not flagged again.
+    assert_int_equal(fail_table[0].recent_fails, 0);
+    ok.timestamp_usec = 6000000;
+    assert_int_equal(ps_check_login_after_failures(&ok), 0);
+}
+
+static void test_after_failures_below_threshold_not_flagged(void **state) {
+    (void)state;
+    setup_config(10, 60, 8, 0);
+    g_config.success_after_fail_threshold = 3;
+    assert_int_equal(ps_fail_table_init(g_config.max_tracked_ips), PS_OK);
+
+    fail_n_times("192.0.2.1", 2, 1000000);
+    ps_pam_event_t ok = make_login_success("192.0.2.1", "root", 5000000);
+    assert_int_equal(ps_check_login_after_failures(&ok), 0);
+    // A legitimate success still ends the run: two more typos later must not
+    // add up with the earlier two.
+    assert_int_equal(fail_table[0].recent_fails, 0);
+    fail_n_times("192.0.2.1", 2, 6000000);
+    ok.timestamp_usec = 9000000;
+    assert_int_equal(ps_check_login_after_failures(&ok), 0);
+}
+
+static void test_after_failures_other_ip_not_flagged(void **state) {
+    (void)state;
+    setup_config(10, 60, 8, 0);
+    g_config.success_after_fail_threshold = 3;
+    assert_int_equal(ps_fail_table_init(g_config.max_tracked_ips), PS_OK);
+
+    fail_n_times("192.0.2.1", 5, 1000000);
+    ps_pam_event_t ok = make_login_success("192.0.2.2", "root", 7000000);
+    assert_int_equal(ps_check_login_after_failures(&ok), 0);
+    // The attacker's run is untouched by someone else's login.
+    assert_int_equal(fail_table[0].recent_fails, 5);
+}
+
+static void test_after_failures_stale_run_not_flagged(void **state) {
+    (void)state;
+    setup_config(10, 60, 8, 0);
+    g_config.success_after_fail_threshold = 3;
+    assert_int_equal(ps_fail_table_init(g_config.max_tracked_ips), PS_OK);
+
+    fail_n_times("192.0.2.1", 5, 1000000);
+    // Last failure at t=5s; success more than fail_window_sec (60s) later.
+    ps_pam_event_t ok = make_login_success("192.0.2.1", "root", 66000001);
+    assert_int_equal(ps_check_login_after_failures(&ok), 0);
+}
+
+static void test_after_failures_disabled_when_threshold_zero(void **state) {
+    (void)state;
+    setup_config(10, 60, 8, 0);
+    g_config.success_after_fail_threshold = 0;
+    assert_int_equal(ps_fail_table_init(g_config.max_tracked_ips), PS_OK);
+
+    fail_n_times("192.0.2.1", 9, 1000000);
+    ps_pam_event_t ok = make_login_success("192.0.2.1", "root", 10000000);
+    assert_int_equal(ps_check_login_after_failures(&ok), 0);
+}
+
+// The brute-force threshold zeroes `count` when it fires; the run length
+// that feeds this detector must survive that, otherwise an attacker who
+// trips the brute-force alert and then gets in would go unflagged.
+static void test_after_failures_survives_brute_force_reset(void **state) {
+    (void)state;
+    setup_config(3, 60, 8, 0);
+    g_config.success_after_fail_threshold = 3;
+    assert_int_equal(ps_fail_table_init(g_config.max_tracked_ips), PS_OK);
+
+    fail_n_times("192.0.2.1", 3, 1000000);
+    assert_int_equal(fail_table[0].count, 0);
+    assert_int_equal(fail_table[0].recent_fails, 3);
+
+    ps_pam_event_t ok = make_login_success("192.0.2.1", "root", 4000000);
+    assert_int_equal(ps_check_login_after_failures(&ok), 1);
+}
+
+static void test_after_failures_run_restarts_after_quiet_window(void **state) {
+    (void)state;
+    setup_config(10, 60, 8, 0);
+    g_config.success_after_fail_threshold = 3;
+    assert_int_equal(ps_fail_table_init(g_config.max_tracked_ips), PS_OK);
+
+    fail_n_times("192.0.2.1", 2, 1000000);
+    // One more failure after a quiet gap longer than the window starts a new
+    // run of length 1 rather than extending the old one to 3.
+    ps_pam_event_t late = make_failed_login("192.0.2.1", "root", 100000000);
+    ps_track_failed_login(&late);
+    assert_int_equal(fail_table[0].recent_fails, 1);
+
+    ps_pam_event_t ok = make_login_success("192.0.2.1", "root", 101000000);
+    assert_int_equal(ps_check_login_after_failures(&ok), 0);
+}
+
+static void test_after_failures_ignores_local_and_empty_ip(void **state) {
+    (void)state;
+    setup_config(10, 60, 8, 0);
+    g_config.success_after_fail_threshold = 2;
+    assert_int_equal(ps_fail_table_init(g_config.max_tracked_ips), PS_OK);
+
+    // A local sudo actor named like an IP must not be matched as one.
+    for (int i = 0; i < 3; i++) {
+        ps_pam_event_t e =
+            make_failed_sudo("192.0.2.9", "root", 1000000 + (uint64_t)i);
+        ps_track_failed_login(&e);
+    }
+    ps_pam_event_t ok = make_login_success("192.0.2.9", "root", 2000000);
+    assert_int_equal(ps_check_login_after_failures(&ok), 0);
+
+    ps_pam_event_t no_ip = make_login_success("", "root", 2000000);
+    assert_int_equal(ps_check_login_after_failures(&no_ip), 0);
+}
+
+// A holder of valid credentials looping fail,fail,fail,succeed must not be
+// able to flood chat: the detection still returns 1 (journal entry written)
+// but the chat cooldown timestamp only advances once the cooldown elapses.
+static void test_after_failures_chat_alert_respects_cooldown(void **state) {
+    (void)state;
+    setup_config(10, 600, 8, 60);
+    g_config.success_after_fail_threshold = 3;
+    assert_int_equal(ps_fail_table_init(g_config.max_tracked_ips), PS_OK);
+
+    fail_n_times("192.0.2.1", 3, 1000000);
+    ps_pam_event_t ok = make_login_success("192.0.2.1", "root", 5000000);
+    assert_int_equal(ps_check_login_after_failures(&ok), 1);
+    assert_int_equal(fail_table[0].last_after_fail_alert_usec, 5000000);
+
+    // Second incident 10s later: inside the 60s cooldown.
+    fail_n_times("192.0.2.1", 3, 12000000);
+    ok.timestamp_usec = 15000000;
+    assert_int_equal(ps_check_login_after_failures(&ok), 1);
+    assert_int_equal(fail_table[0].last_after_fail_alert_usec, 5000000);
+
+    // Third incident after the cooldown has elapsed: alerts again.
+    fail_n_times("192.0.2.1", 3, 70000000);
+    ok.timestamp_usec = 73000000;
+    assert_int_equal(ps_check_login_after_failures(&ok), 1);
+    assert_int_equal(fail_table[0].last_after_fail_alert_usec, 73000000);
+}
+
+// --- ps_dispatch_event: trusted sources still feed the trackers ---
+
+static void test_dispatch_trusted_source_still_tracked(void **state) {
+    (void)state;
+    setup_config(10, 60, 8, 0);
+    g_config.success_after_fail_threshold = 3;
+    g_config.trusted_sources[0] =
+        (ps_cidr_t){.family = AF_INET, .addr = {10}, .prefix_len = 8};
+    g_config.trusted_sources_count = 1;
+    assert_int_equal(ps_fail_table_init(g_config.max_tracked_ips), PS_OK);
+    assert_int_equal(ps_config_ip_trusted(&g_config, "10.0.0.5"), 1);
+
+    for (int i = 0; i < 4; i++) {
+        ps_pam_event_t e = make_failed_login("10.0.0.5", "root",
+                                             1000000 + (uint64_t)i * 1000000);
+        ps_dispatch_event(&e);
+    }
+    assert_int_equal(fail_table_count, 1);
+    assert_int_equal(fail_table[0].recent_fails, 4);
+
+    // The success consumes the run, proving the detector ran for a trusted
+    // source rather than being skipped along with the routine alert.
+    ps_pam_event_t ok = make_login_success("10.0.0.5", "root", 6000000);
+    ps_dispatch_event(&ok);
+    assert_int_equal(fail_table[0].recent_fails, 0);
+}
+
 // --- ps_is_trusted_exe: anti-spoofing _EXE allowlist ----------------
 
 static void test_trusted_exe_accepts_canonical_paths(void **state) {
@@ -545,6 +739,26 @@ int main(void) {
         cmocka_unit_test_teardown(test_track_skips_sudo_without_actor,
                                   teardown),
         cmocka_unit_test_teardown(test_track_sudo_with_ip_keys_by_ip, teardown),
+        cmocka_unit_test_teardown(
+            test_after_failures_flags_success_at_threshold, teardown),
+        cmocka_unit_test_teardown(
+            test_after_failures_below_threshold_not_flagged, teardown),
+        cmocka_unit_test_teardown(test_after_failures_other_ip_not_flagged,
+                                  teardown),
+        cmocka_unit_test_teardown(test_after_failures_stale_run_not_flagged,
+                                  teardown),
+        cmocka_unit_test_teardown(
+            test_after_failures_disabled_when_threshold_zero, teardown),
+        cmocka_unit_test_teardown(
+            test_after_failures_survives_brute_force_reset, teardown),
+        cmocka_unit_test_teardown(
+            test_after_failures_run_restarts_after_quiet_window, teardown),
+        cmocka_unit_test_teardown(
+            test_after_failures_ignores_local_and_empty_ip, teardown),
+        cmocka_unit_test_teardown(
+            test_after_failures_chat_alert_respects_cooldown, teardown),
+        cmocka_unit_test_teardown(test_dispatch_trusted_source_still_tracked,
+                                  teardown),
         cmocka_unit_test(test_trusted_exe_accepts_canonical_paths),
         cmocka_unit_test(test_trusted_exe_accepts_sshd_session),
         cmocka_unit_test(test_trusted_exe_accepts_alternate_system_prefixes),

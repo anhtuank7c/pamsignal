@@ -20,6 +20,12 @@ fail_window_sec = 300
 max_tracked_ips = 256
 alert_cooldown_sec = 60
 
+# Login-after-failures detection (0 = disabled)
+success_after_fail_threshold = 3
+
+# Trusted sources (default: empty)
+trusted_sources = 10.0.0.0/8, 203.0.113.7
+
 # Chat-dispatch filter (default: all)
 enable_notification_type = all
 
@@ -62,6 +68,40 @@ webhook_ca_bundle   = /etc/pamsignal/webhook-ca.pem
 | `max_tracked_ips` | `256` | 1 - 100000 | Số IP tối đa được theo dõi cùng lúc |
 | `alert_cooldown_sec` | `60` | 0 - 86400 | Số giây tối thiểu giữa các cảnh báo cho cùng một IP (0 = không có cooldown) |
 
+## Phát hiện đăng nhập thành công sau nhiều lần thất bại
+
+| Key | Mặc định | Khoảng giá trị | Mô tả |
+|-----|---------|-------|-------------|
+| `success_after_fail_threshold` | `3` | 0 - 10000 | Số lần thất bại từ một IP khiến lần đăng nhập thành công ngay sau đó trở nên đáng ngờ (0 = tắt) |
+
+Một lần đăng nhập thành công từ một IP vừa thất bại nhiều lần liên tiếp chính là dấu hiệu của một mật khẩu đã bị đoán trúng, và đây là cảnh báo bạn không bao giờ nên bỏ qua. Khi một lần đăng nhập thành công đến từ source IP có ít nhất `success_after_fail_threshold` lần thất bại, lần gần nhất nằm trong `fail_window_sec`, PAMSignal phát cảnh báo `[CRIT]` `login_after_failures` (severity 9), bên cạnh sự kiện `login_success` thông thường.
+
+- **Mỗi sự cố một cảnh báo.** Bất kỳ lần đăng nhập thành công nào từ IP đó đều xoá chuỗi thất bại của nó, nên cảnh báo không lặp lại ở lần đăng nhập kế tiếp.
+- **Không bị `trusted_sources` tắt tiếng.** Cảnh báo vẫn bắn với cả các dải tin cậy. Các cảnh báo chat lặp lại cho cùng một IP được giãn cách theo `alert_cooldown_sec`, giống cảnh báo brute-force; journal vẫn ghi lại mọi lần xảy ra. Muốn tắt, hãy đặt ngưỡng về `0` hoặc bỏ `login_after_failures` khỏi `enable_notification_type`.
+- **Độc lập với bộ đếm brute-force.** Chuỗi thất bại vẫn được giữ sau khi cảnh báo brute-force đã bắn, nên kẻ tấn công vượt `fail_threshold` rồi mới vào được vẫn bị gắn cờ.
+- **Chỉ áp dụng cho đăng nhập từ xa.** Cơ chế này đánh key theo source IP; việc leo quyền nội bộ qua `sudo`/`su` không có IP nên không được bao phủ.
+
+Một người gõ sai mật khẩu của chính mình ba lần rồi mới gõ đúng cũng sẽ kích hoạt cảnh báo này. Hãy nâng ngưỡng lên nếu chuyện đó thường xảy ra trên host của bạn.
+
+## Nguồn tin cậy
+
+| Key | Mặc định | Mô tả |
+|-----|---------|-------------|
+| `trusted_sources` | *(rỗng)* | Danh sách địa chỉ IPv4/IPv6 hoặc dải CIDR phân cách bằng dấu phẩy (tối đa 32) mà cảnh báo đăng nhập thông thường từ đó sẽ không được gửi lên chat |
+
+Dùng key này cho những nơi bạn đăng nhập hằng ngày — dải IP văn phòng, VPN, bastion host — để các lần đăng nhập đó thôi ping vào kênh.
+
+```ini
+trusted_sources = 10.0.0.0/8, 203.0.113.7, 2001:db8::/32
+```
+
+- **Cái gì bị tắt tiếng.** Chỉ các cảnh báo chat theo từng sự kiện `login_success` và `login_failed` của những sự kiện có source IP nằm trong một dải đã liệt kê.
+- **Cái gì vẫn bắn.** Cảnh báo `brute_force` và `login_after_failures`. Một máy bị chiếm quyền nằm trong dải tin cậy không thể tấn công trong im lặng.
+- **Journal không bị ảnh hưởng.** `journalctl -t pamsignal` vẫn ghi lại mọi sự kiện từ mọi nguồn.
+- **Sự kiện session không được bao phủ.** `session_open` / `session_close` không mang source IP. Hãy tắt chúng bằng `enable_notification_type`.
+
+Một địa chỉ đứng riêng nghĩa là đúng một host đó. Độ dài prefix phải ít nhất là 1 (`0.0.0.0/0` bị từ chối), hostname không được resolve, và một phần tử sai định dạng là lỗi config cứng. Một peer IPv6 dạng IPv4-mapped (`::ffff:10.1.2.3`) được so khớp với các phần tử IPv4.
+
 ## Bộ lọc loại thông báo
 
 `enable_notification_type` cho phép chọn những loại sự kiện nào sẽ kích hoạt cảnh báo trên các kênh chat. Đây là danh sách phân cách bằng dấu phẩy. Mặc định — khi key bị bỏ qua hoặc khi `all` được chỉ định — là mọi loại sự kiện, giữ nguyên hành vi trước đó. Các token không hợp lệ là lỗi config cứng; giá trị rỗng và các phần tử danh sách rỗng đều bị từ chối.
@@ -73,7 +113,10 @@ webhook_ca_bundle   = /etc/pamsignal/webhook-ca.pem
 | `session_open` | Một PAM session mở ra (bao gồm cả các session nền của systemd như cron) |
 | `session_close` | Một PAM session đóng lại |
 | `brute_force` | Ngưỡng brute-force từ xa (theo IP) hoặc nội bộ (theo actor sudo/su) bị vượt qua |
+| `login_after_failures` | Một lần đăng nhập thành công đến từ IP vừa có chuỗi thất bại gần đây (xem [Phát hiện đăng nhập thành công sau nhiều lần thất bại](#phát-hiện-đăng-nhập-thành-công-sau-nhiều-lần-thất-bại)) |
 | `all` | Sentinel cho tất cả các loại ở trên (tương đương với việc bỏ qua key) |
+
+> **Nâng cấp khi đang dùng danh sách tường minh?** `login_after_failures` là một loại mới. Nếu config của bạn đã liệt kê các token cụ thể (ví dụ `login_success,brute_force`), hãy thêm `login_after_failures` để tiếp tục nhận cảnh báo này trên chat; với `all` hoặc khi bỏ qua key, bạn sẽ tự động nhận được.
 
 **Phạm vi áp dụng.** Bộ lọc này chỉ kiểm soát việc gửi cảnh báo qua chat (Telegram, Slack, Teams, WhatsApp, Discord, custom webhook). Nhật ký cục bộ qua `journalctl -t pamsignal` vẫn ghi lại mọi sự kiện bất kể cài đặt, nên log forensics luôn đầy đủ. Cơ chế chặn riêng theo từng sự kiện cho `LOGIN_FAILED` của sudo/su (chỉ cảnh báo brute-force tổng hợp mới được gửi) là độc lập và nằm bên dưới bộ lọc này.
 
@@ -159,8 +202,45 @@ Xem [Alerts → Custom webhook (ECS JSON)](./alerts.md#custom-webhook-ecs-json) 
 |------|-------|-------------|
 | `--foreground` | `-f` | Chạy ở chế độ foreground (không daemonize) |
 | `--config PATH` | `-c PATH` | Sử dụng file config ở đường dẫn tùy chỉnh |
+| `--check-config` | `-t` | Kiểm tra file config, in ra các lỗi (nếu có) rồi thoát |
+| `--test-alert` | `-T` | Gửi một tin nhắn thử tới mọi kênh đã cấu hình rồi thoát |
 
 Đường dẫn tương đối sẽ được chuyển thành đường dẫn tuyệt đối trước khi daemonize.
+
+## Kiểm tra config và thử cảnh báo
+
+Sau khi sửa config, hãy kiểm tra nó trước khi reload, rồi xác nhận các kênh thực sự gửi được:
+
+```bash
+sudo -u pamsignal pamsignal --check-config
+sudo -u pamsignal pamsignal --test-alert
+```
+
+`--check-config` in ra từng lỗi kèm số dòng và thoát với mã `1`, hoặc in một bản tóm tắt ngắn và thoát với mã `0`:
+
+```text
+pamsignal: config:2: trusted_sources must be a comma-separated list of at most 32 IPv4/IPv6 addresses or CIDR networks (prefix length 1 or more)
+pamsignal: config has 1 error(s)
+```
+
+```text
+pamsignal: /etc/pamsignal/pamsignal.conf: configuration OK
+  alert channels: telegram slack
+  trusted sources: 2
+```
+
+`--test-alert` gửi một tin nhắn thử cho mỗi kênh đã cấu hình, chờ từng kênh hoàn tất, rồi in ra kết quả. Một request bị từ chối (sai token, webhook đã bị thu hồi) được tính là thất bại, và lỗi của chính curl được hiển thị ngay phía trên dòng kết quả:
+
+```text
+telegram  ok
+curl: (22) The requested URL returned error: 404
+slack     FAILED (curl exit code 22; see the curl message above)
+pamsignal: 1 alert channel(s) failed
+```
+
+Lệnh chỉ thoát với mã `0` khi mọi kênh đã cấu hình đều nhận tin nhắn. Tin nhắn thử bỏ qua `enable_notification_type` và `alert_cooldown_sec`.
+
+Cả hai lệnh phải chạy bằng service user, không phải root: các kiểm tra ownership trên file config và file TLS key được tính theo user đang chạy lệnh, nên chỉ khi đó kết quả mới khớp với những gì daemon sẽ thấy. Cả hai đều dùng được với `-c PATH`.
 
 ## Reload không cần restart
 

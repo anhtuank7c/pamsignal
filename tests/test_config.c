@@ -354,14 +354,223 @@ static void test_notify_type_whitespace_and_case(void **state) {
     cleanup_tmp();
 }
 
-static void test_notify_type_all_five_categories(void **state) {
+static void test_notify_type_all_six_categories(void **state) {
     (void)state;
     write_tmp_config("enable_notification_type = login_success,login_failed,"
-                     "session_open,session_close,brute_force\n");
+                     "session_open,session_close,brute_force,"
+                     "login_after_failures\n");
     ps_config_t cfg;
     int ret = ps_config_load(tmp_path, &cfg);
     assert_int_equal(ret, PS_OK);
     assert_int_equal(cfg.enable_notification_type, PS_NOTIFY_ALL);
+    cleanup_tmp();
+}
+
+static void test_notify_type_login_after_failures_token(void **state) {
+    (void)state;
+    write_tmp_config("enable_notification_type = login_after_failures\n");
+    ps_config_t cfg;
+    int ret = ps_config_load(tmp_path, &cfg);
+    assert_int_equal(ret, PS_OK);
+    assert_int_equal(cfg.enable_notification_type,
+                     PS_NOTIFY_LOGIN_AFTER_FAILURES);
+    cleanup_tmp();
+}
+
+// --- success_after_fail_threshold ---
+
+static void test_success_after_fail_threshold_default(void **state) {
+    (void)state;
+    ps_config_t cfg;
+    ps_config_defaults(&cfg);
+    assert_int_equal(cfg.success_after_fail_threshold,
+                     PS_DEFAULT_SUCCESS_AFTER_FAIL_THRESHOLD);
+}
+
+static void test_success_after_fail_threshold_loads(void **state) {
+    (void)state;
+    write_tmp_config("success_after_fail_threshold = 7\n");
+    ps_config_t cfg;
+    assert_int_equal(ps_config_load(tmp_path, &cfg), PS_OK);
+    assert_int_equal(cfg.success_after_fail_threshold, 7);
+    cleanup_tmp();
+}
+
+static void test_success_after_fail_threshold_zero_disables(void **state) {
+    (void)state;
+    write_tmp_config("success_after_fail_threshold = 0\n");
+    ps_config_t cfg;
+    assert_int_equal(ps_config_load(tmp_path, &cfg), PS_OK);
+    assert_int_equal(cfg.success_after_fail_threshold, 0);
+    cleanup_tmp();
+}
+
+static void test_success_after_fail_threshold_out_of_range(void **state) {
+    (void)state;
+    ps_config_t cfg;
+    write_tmp_config("success_after_fail_threshold = -1\n");
+    assert_int_equal(ps_config_load(tmp_path, &cfg), PS_ERR_CONFIG);
+    cleanup_tmp();
+    write_tmp_config("success_after_fail_threshold = 10001\n");
+    assert_int_equal(ps_config_load(tmp_path, &cfg), PS_ERR_CONFIG);
+    cleanup_tmp();
+}
+
+// --- trusted_sources ---
+
+static void test_trusted_sources_default_empty(void **state) {
+    (void)state;
+    ps_config_t cfg;
+    ps_config_defaults(&cfg);
+    assert_int_equal(cfg.trusted_sources_count, 0);
+    assert_int_equal(ps_config_ip_trusted(&cfg, "10.0.0.1"), 0);
+}
+
+static void test_trusted_sources_ipv4_cidr_and_host(void **state) {
+    (void)state;
+    write_tmp_config("trusted_sources = 10.0.0.0/8, 203.0.113.7\n");
+    ps_config_t cfg;
+    assert_int_equal(ps_config_load(tmp_path, &cfg), PS_OK);
+    assert_int_equal(cfg.trusted_sources_count, 2);
+
+    assert_int_equal(ps_config_ip_trusted(&cfg, "10.0.0.1"), 1);
+    assert_int_equal(ps_config_ip_trusted(&cfg, "10.255.255.255"), 1);
+    assert_int_equal(ps_config_ip_trusted(&cfg, "11.0.0.1"), 0);
+    // A bare address is a /32: only the exact host matches.
+    assert_int_equal(ps_config_ip_trusted(&cfg, "203.0.113.7"), 1);
+    assert_int_equal(ps_config_ip_trusted(&cfg, "203.0.113.8"), 0);
+    cleanup_tmp();
+}
+
+// A prefix that is not a multiple of 8 exercises the partial-byte mask.
+static void test_trusted_sources_non_octet_prefix(void **state) {
+    (void)state;
+    write_tmp_config("trusted_sources = 192.168.16.0/20\n");
+    ps_config_t cfg;
+    assert_int_equal(ps_config_load(tmp_path, &cfg), PS_OK);
+
+    assert_int_equal(ps_config_ip_trusted(&cfg, "192.168.16.1"), 1);
+    assert_int_equal(ps_config_ip_trusted(&cfg, "192.168.31.254"), 1);
+    assert_int_equal(ps_config_ip_trusted(&cfg, "192.168.32.1"), 0);
+    assert_int_equal(ps_config_ip_trusted(&cfg, "192.168.15.255"), 0);
+    cleanup_tmp();
+}
+
+// Host bits set in the configured network are ignored, as with ip-route.
+static void test_trusted_sources_host_bits_ignored(void **state) {
+    (void)state;
+    write_tmp_config("trusted_sources = 10.1.2.3/8\n");
+    ps_config_t cfg;
+    assert_int_equal(ps_config_load(tmp_path, &cfg), PS_OK);
+    assert_int_equal(ps_config_ip_trusted(&cfg, "10.200.0.1"), 1);
+    cleanup_tmp();
+}
+
+static void test_trusted_sources_ipv6(void **state) {
+    (void)state;
+    write_tmp_config("trusted_sources = 2001:db8::/32, fe80::1\n");
+    ps_config_t cfg;
+    assert_int_equal(ps_config_load(tmp_path, &cfg), PS_OK);
+    assert_int_equal(cfg.trusted_sources_count, 2);
+
+    assert_int_equal(ps_config_ip_trusted(&cfg, "2001:db8:1234::1"), 1);
+    assert_int_equal(ps_config_ip_trusted(&cfg, "2001:db9::1"), 0);
+    assert_int_equal(ps_config_ip_trusted(&cfg, "fe80::1"), 1);
+    assert_int_equal(ps_config_ip_trusted(&cfg, "fe80::2"), 0);
+    // Families never cross-match.
+    assert_int_equal(ps_config_ip_trusted(&cfg, "32.1.13.184"), 0);
+    cleanup_tmp();
+}
+
+static void test_trusted_sources_ipv4_mapped_ipv6(void **state) {
+    (void)state;
+    write_tmp_config("trusted_sources = 10.0.0.0/8\n");
+    ps_config_t cfg;
+    assert_int_equal(ps_config_load(tmp_path, &cfg), PS_OK);
+    assert_int_equal(ps_config_ip_trusted(&cfg, "::ffff:10.1.2.3"), 1);
+    assert_int_equal(ps_config_ip_trusted(&cfg, "::ffff:11.1.2.3"), 0);
+    cleanup_tmp();
+}
+
+static void test_trusted_sources_unparseable_ip_not_trusted(void **state) {
+    (void)state;
+    write_tmp_config("trusted_sources = 10.0.0.0/8\n");
+    ps_config_t cfg;
+    assert_int_equal(ps_config_load(tmp_path, &cfg), PS_OK);
+    assert_int_equal(ps_config_ip_trusted(&cfg, ""), 0);
+    assert_int_equal(ps_config_ip_trusted(&cfg, NULL), 0);
+    assert_int_equal(ps_config_ip_trusted(&cfg, "not-an-ip"), 0);
+    assert_int_equal(ps_config_ip_trusted(&cfg, "10.0.0.1 "), 0);
+    cleanup_tmp();
+}
+
+static void test_trusted_sources_empty_value_clears(void **state) {
+    (void)state;
+    write_tmp_config("trusted_sources = 10.0.0.0/8\n"
+                     "trusted_sources =\n");
+    ps_config_t cfg;
+    assert_int_equal(ps_config_load(tmp_path, &cfg), PS_OK);
+    assert_int_equal(cfg.trusted_sources_count, 0);
+    cleanup_tmp();
+}
+
+static void test_trusted_sources_malformed_rejected(void **state) {
+    (void)state;
+    static const char *const bad[] = {
+        "trusted_sources = 10.0.0.0/33\n",        // prefix too long for IPv4
+        "trusted_sources = 2001:db8::/129\n",     // prefix too long for IPv6
+        "trusted_sources = 0.0.0.0/0\n",          // would trust everything
+        "trusted_sources = ::/0\n",               //
+        "trusted_sources = 10.0.0.0/\n",          // empty prefix
+        "trusted_sources = 10.0.0.0/ 8\n",        // whitespace in prefix
+        "trusted_sources = 10.0.0.0/+8\n",        // signed prefix
+        "trusted_sources = 10.0.0.0/8x\n",        // trailing garbage
+        "trusted_sources = 10.0.0/8\n",           // short address
+        "trusted_sources = example.com\n",        // hostnames are not resolved
+        "trusted_sources = 10.0.0.1,,10.0.0.2\n", // empty element
+        "trusted_sources = 10.0.0.1,\n",          // trailing comma
+        "trusted_sources = /8\n",                 // no address
+    };
+    for (size_t i = 0; i < sizeof(bad) / sizeof(bad[0]); i++) {
+        write_tmp_config(bad[i]);
+        ps_config_t cfg;
+        assert_int_equal(ps_config_load(tmp_path, &cfg), PS_ERR_CONFIG);
+        // A rejected list must never leave a partial allowlist behind.
+        assert_int_equal(cfg.trusted_sources_count, 0);
+        cleanup_tmp();
+    }
+}
+
+static void test_trusted_sources_too_many_rejected(void **state) {
+    (void)state;
+    char content[1024] = "trusted_sources = ";
+    size_t off = strlen(content);
+    for (int i = 0; i <= PS_MAX_TRUSTED_SOURCES; i++) {
+        off += (size_t)snprintf(content + off, sizeof(content) - off,
+                                "%s10.0.%d.1", i ? "," : "", i);
+    }
+    snprintf(content + off, sizeof(content) - off, "\n");
+    write_tmp_config(content);
+    ps_config_t cfg;
+    assert_int_equal(ps_config_load(tmp_path, &cfg), PS_ERR_CONFIG);
+    assert_int_equal(cfg.trusted_sources_count, 0);
+    cleanup_tmp();
+}
+
+static void test_trusted_sources_max_entries_accepted(void **state) {
+    (void)state;
+    char content[1024] = "trusted_sources = ";
+    size_t off = strlen(content);
+    for (int i = 0; i < PS_MAX_TRUSTED_SOURCES; i++) {
+        off += (size_t)snprintf(content + off, sizeof(content) - off,
+                                "%s10.0.%d.1", i ? "," : "", i);
+    }
+    snprintf(content + off, sizeof(content) - off, "\n");
+    write_tmp_config(content);
+    ps_config_t cfg;
+    assert_int_equal(ps_config_load(tmp_path, &cfg), PS_OK);
+    assert_int_equal(cfg.trusted_sources_count, PS_MAX_TRUSTED_SOURCES);
+    assert_int_equal(ps_config_ip_trusted(&cfg, "10.0.31.1"), 1);
     cleanup_tmp();
 }
 
@@ -926,7 +1135,23 @@ int main(void) {
         cmocka_unit_test(test_notify_type_multiple_categories),
         cmocka_unit_test(test_notify_type_all_sentinel),
         cmocka_unit_test(test_notify_type_whitespace_and_case),
-        cmocka_unit_test(test_notify_type_all_five_categories),
+        cmocka_unit_test(test_notify_type_all_six_categories),
+        cmocka_unit_test(test_notify_type_login_after_failures_token),
+        cmocka_unit_test(test_success_after_fail_threshold_default),
+        cmocka_unit_test(test_success_after_fail_threshold_loads),
+        cmocka_unit_test(test_success_after_fail_threshold_zero_disables),
+        cmocka_unit_test(test_success_after_fail_threshold_out_of_range),
+        cmocka_unit_test(test_trusted_sources_default_empty),
+        cmocka_unit_test(test_trusted_sources_ipv4_cidr_and_host),
+        cmocka_unit_test(test_trusted_sources_non_octet_prefix),
+        cmocka_unit_test(test_trusted_sources_host_bits_ignored),
+        cmocka_unit_test(test_trusted_sources_ipv6),
+        cmocka_unit_test(test_trusted_sources_ipv4_mapped_ipv6),
+        cmocka_unit_test(test_trusted_sources_unparseable_ip_not_trusted),
+        cmocka_unit_test(test_trusted_sources_empty_value_clears),
+        cmocka_unit_test(test_trusted_sources_malformed_rejected),
+        cmocka_unit_test(test_trusted_sources_too_many_rejected),
+        cmocka_unit_test(test_trusted_sources_max_entries_accepted),
         cmocka_unit_test(test_notify_type_unknown_category_rejected),
         cmocka_unit_test(test_notify_type_empty_value_rejected),
         cmocka_unit_test(test_notify_type_empty_element_rejected),

@@ -10,6 +10,16 @@ pamsignal \- real-time PAM authentication monitor with multi-channel alerts
 .IR PATH ]
 .br
 .B pamsignal
+.RB { \-t \ |\  \-\-check\-config }
+.RB [ \-c
+.IR PATH ]
+.br
+.B pamsignal
+.RB { \-T \ |\  \-\-test\-alert }
+.RB [ \-c
+.IR PATH ]
+.br
+.B pamsignal
 .RB { \-V \ |\  \-\-version }
 .br
 .B pamsignal
@@ -79,6 +89,30 @@ is called; an unresolvable path causes
 .B pamsignal
 to refuse to start (defending against symlink swaps and permission
 misconfigurations).
+.TP
+.BR \-t ", " \-\-check\-config
+Load and validate the configuration file, then exit without starting the
+monitor. Every problem is reported on standard error with its line number;
+on success a short summary (enabled alert channels, number of trusted
+sources) is printed. Exit status is 0 if the file is valid and 1 if it is
+invalid or does not exist. Run it as the service user so that file
+ownership and permission checks match what the daemon will see:
+.B sudo \-u pamsignal pamsignal \-\-check\-config
+.TP
+.BR \-T ", " \-\-test\-alert
+Validate the configuration, send one test message to every configured
+alert channel, wait for each delivery to finish, and exit. One result line
+is printed per channel; an HTTP error status from the receiver (for example
+a revoked webhook or a wrong token) counts as a failure, and the underlying
+.BR curl (1)
+error is shown. The test message ignores
+.B enable_notification_type
+and
+.BR alert_cooldown_sec .
+Exit status is 0 only if every configured channel accepted the message; it
+is 1 if any channel failed or none is configured. Run it as the service
+user, like
+.BR \-\-check\-config .
 .TP
 .BR \-V ", " \-\-version
 Print the daemon's version (e.g. "pamsignal 0.6.0") to standard output

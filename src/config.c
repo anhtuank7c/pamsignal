@@ -1,7 +1,9 @@
+#include <arpa/inet.h>
 #include <ctype.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <limits.h>
+#include <stdarg.h>
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -18,8 +20,37 @@
 ps_config_t g_config;
 const char *g_config_path = PS_DEFAULT_CONFIG_PATH;
 
+// --- Diagnostics ---
+//
+// Config diagnostics always go to the journal. --check-config and
+// --test-alert run at a terminal, where the operator would otherwise have to
+// go digging in journalctl to learn why the file was rejected, so those modes
+// mirror warnings and errors to stderr as well.
+
+static int log_to_stderr = 0;
+
+void ps_config_log_to_stderr(int enabled) {
+    log_to_stderr = enabled;
+}
+
+__attribute__((format(printf, 2, 3))) static void
+cfg_log(int priority, const char *fmt, ...) {
+    va_list ap;
+    va_start(ap, fmt);
+    sd_journal_printv(priority, fmt, ap);
+    va_end(ap);
+
+    if (log_to_stderr && priority <= LOG_WARNING) {
+        va_start(ap, fmt);
+        vfprintf(stderr, fmt, ap);
+        va_end(ap);
+        fputc('\n', stderr);
+    }
+}
+
 void ps_config_defaults(ps_config_t *cfg) {
     memset(cfg, 0, sizeof(*cfg));
+    cfg->success_after_fail_threshold = PS_DEFAULT_SUCCESS_AFTER_FAIL_THRESHOLD;
     cfg->fail_threshold = PS_DEFAULT_FAIL_THRESHOLD;
     cfg->fail_window_sec = PS_DEFAULT_FAIL_WINDOW_SEC;
     cfg->max_tracked_ips = PS_DEFAULT_MAX_TRACKED_IPS;
@@ -76,6 +107,7 @@ static int parse_notification_mask(const char *val, unsigned int *out) {
         {"session_open", PS_NOTIFY_SESSION_OPEN},
         {"session_close", PS_NOTIFY_SESSION_CLOSE},
         {"brute_force", PS_NOTIFY_BRUTE_FORCE},
+        {"login_after_failures", PS_NOTIFY_LOGIN_AFTER_FAILURES},
         {"all", PS_NOTIFY_ALL},
     };
 
@@ -119,9 +151,131 @@ static int parse_notification_mask(const char *val, unsigned int *out) {
     return 0;
 }
 
+// --- Trusted sources (CIDR list) ---
+
+// Parse one "addr" or "addr/prefix" element. A bare address is a host route
+// (/32 or /128). A zero-length prefix is refused: 0.0.0.0/0 would silence
+// routine alerts for the whole internet, which is never what an operator
+// means and is far more likely a typo.
+static int parse_cidr(const char *s, ps_cidr_t *out) {
+    char addr[INET6_ADDRSTRLEN];
+    const char *slash = strchr(s, '/');
+    size_t alen = slash ? (size_t)(slash - s) : strlen(s);
+    if (alen == 0 || alen >= sizeof(addr))
+        return -1;
+    memcpy(addr, s, alen);
+    addr[alen] = '\0';
+
+    memset(out, 0, sizeof(*out));
+    int max_prefix;
+    if (inet_pton(AF_INET, addr, out->addr) == 1) {
+        out->family = AF_INET;
+        max_prefix = 32;
+    } else if (inet_pton(AF_INET6, addr, out->addr) == 1) {
+        out->family = AF_INET6;
+        max_prefix = 128;
+    } else {
+        return -1;
+    }
+
+    int prefix = max_prefix;
+    if (slash) {
+        // strtol would accept leading whitespace or a sign; require a digit.
+        if (slash[1] < '0' || slash[1] > '9')
+            return -1;
+        if (parse_int_range(slash + 1, 1, max_prefix, &prefix) < 0)
+            return -1;
+    }
+    out->prefix_len = (uint8_t)prefix;
+    return 0;
+}
+
+// Parse a comma-separated CIDR list into cfg->trusted_sources. An empty value
+// clears the list. Returns -1 on a malformed element, an empty element, or
+// more than PS_MAX_TRUSTED_SOURCES entries; cfg is left with an empty list in
+// that case so a half-parsed allowlist can never take effect.
+static int parse_trusted_sources(const char *val, ps_config_t *cfg) {
+    cfg->trusted_sources_count = 0;
+    if (!val || !*val)
+        return 0;
+
+    char buf[1024];
+    if (snprintf(buf, sizeof(buf), "%s", val) >= (int)sizeof(buf))
+        return -1;
+
+    int count = 0;
+    char *p = buf;
+    while (1) {
+        char *comma = strchr(p, ',');
+        if (comma)
+            *comma = '\0';
+
+        char *t = trim(p);
+        if (*t == '\0' || count >= PS_MAX_TRUSTED_SOURCES ||
+            parse_cidr(t, &cfg->trusted_sources[count]) < 0)
+            return -1;
+        count++;
+
+        if (!comma)
+            break;
+        p = comma + 1;
+    }
+    cfg->trusted_sources_count = count;
+    return 0;
+}
+
+static int prefix_match(const uint8_t *a, const uint8_t *b, unsigned bits) {
+    unsigned full = bits / 8;
+    unsigned rem = bits % 8;
+    if (full && memcmp(a, b, full) != 0)
+        return 0;
+    if (rem) {
+        uint8_t mask = (uint8_t)(0xFFu << (8 - rem));
+        if ((a[full] & mask) != (b[full] & mask))
+            return 0;
+    }
+    return 1;
+}
+
+int ps_config_ip_trusted(const ps_config_t *cfg, const char *ip) {
+    if (!ip || !*ip || cfg->trusted_sources_count <= 0)
+        return 0;
+
+    uint8_t addr[16] = {0};
+    int family;
+    if (inet_pton(AF_INET, ip, addr) == 1) {
+        family = AF_INET;
+    } else if (inet_pton(AF_INET6, ip, addr) == 1) {
+        family = AF_INET6;
+        // An IPv4-mapped IPv6 address (::ffff:a.b.c.d) is the same peer as
+        // a.b.c.d, so match it against the IPv4 entries.
+        static const uint8_t v4_mapped[12] = {0, 0, 0, 0, 0,    0,
+                                              0, 0, 0, 0, 0xff, 0xff};
+        if (memcmp(addr, v4_mapped, sizeof(v4_mapped)) == 0) {
+            memmove(addr, addr + 12, 4);
+            family = AF_INET;
+        }
+    } else {
+        return 0;
+    }
+
+    int count = cfg->trusted_sources_count;
+    if (count > PS_MAX_TRUSTED_SOURCES)
+        count = PS_MAX_TRUSTED_SOURCES;
+    unsigned max_bits = family == AF_INET ? 32 : 128;
+    for (int i = 0; i < count; i++) {
+        const ps_cidr_t *c = &cfg->trusted_sources[i];
+        if (c->family != family || c->prefix_len > max_bits)
+            continue;
+        if (prefix_match(addr, c->addr, c->prefix_len))
+            return 1;
+    }
+    return 0;
+}
+
 // --- Config key mapping table ---
 
-typedef enum { CFG_STRING, CFG_INT, CFG_NOTIFY_MASK } cfg_type_t;
+typedef enum { CFG_STRING, CFG_INT, CFG_NOTIFY_MASK, CFG_CIDR_LIST } cfg_type_t;
 
 typedef struct {
     const char *key;
@@ -143,6 +297,8 @@ typedef struct {
     {#name, CFG_INT, offsetof(ps_config_t, name), 0, lo, hi}
 #define CFG_NOTIFY(name) \
     {#name, CFG_NOTIFY_MASK, offsetof(ps_config_t, name), 0, 0, 0}
+// Parsed straight into cfg->trusted_sources[]; offset and size are unused.
+#define CFG_CIDRS(name) {#name, CFG_CIDR_LIST, 0, 0, 0, 0}
 
 static const cfg_entry_t config_keys[] = {
     CFG_STR(telegram_bot_token),
@@ -164,7 +320,9 @@ static const cfg_entry_t config_keys[] = {
     CFG_INT(fail_window_sec, 1, 86400),
     CFG_INT(max_tracked_ips, 1, 100000),
     CFG_INT(alert_cooldown_sec, 0, 86400),
+    CFG_INT(success_after_fail_threshold, 0, 10000),
     CFG_NOTIFY(enable_notification_type),
+    CFG_CIDRS(trusted_sources),
 };
 
 static const size_t config_keys_count =
@@ -294,10 +452,10 @@ static int is_telegram_chat_id(const char *s) {
 static int validate_tls_path(const char *path, const char *label, int private) {
     for (const unsigned char *p = (const unsigned char *)path; *p; p++) {
         if (*p < 0x20 || *p == 0x7F || *p == '"' || *p == '\\') {
-            sd_journal_print(LOG_ERR,
-                             "pamsignal: config: %s: path contains a control "
-                             "character, quote, or backslash",
-                             label);
+            cfg_log(LOG_ERR,
+                    "pamsignal: config: %s: path contains a control "
+                    "character, quote, or backslash",
+                    label);
             return -1;
         }
     }
@@ -305,46 +463,44 @@ static int validate_tls_path(const char *path, const char *label, int private) {
     _cleanup_close_ int fd = open(path, O_RDONLY | O_NOFOLLOW | O_CLOEXEC);
     if (fd < 0) {
         if (errno == ELOOP) {
-            sd_journal_print(LOG_ERR,
-                             "pamsignal: config: %s: refusing to follow "
-                             "symlink at %s",
-                             label, path);
+            cfg_log(LOG_ERR,
+                    "pamsignal: config: %s: refusing to follow "
+                    "symlink at %s",
+                    label, path);
         } else {
-            sd_journal_print(LOG_ERR,
-                             "pamsignal: config: %s: cannot open %s: %s", label,
-                             path, strerror(errno));
+            cfg_log(LOG_ERR, "pamsignal: config: %s: cannot open %s: %s", label,
+                    path, strerror(errno));
         }
         return -1;
     }
 
     struct stat st;
     if (fstat(fd, &st) < 0) {
-        sd_journal_print(LOG_ERR, "pamsignal: config: %s: fstat(%s) failed: %s",
-                         label, path, strerror(errno));
+        cfg_log(LOG_ERR, "pamsignal: config: %s: fstat(%s) failed: %s", label,
+                path, strerror(errno));
         return -1;
     }
 
     if (!S_ISREG(st.st_mode)) {
-        sd_journal_print(LOG_ERR,
-                         "pamsignal: config: %s: %s is not a regular file",
-                         label, path);
+        cfg_log(LOG_ERR, "pamsignal: config: %s: %s is not a regular file",
+                label, path);
         return -1;
     }
 
     if (st.st_uid != 0 && st.st_uid != geteuid()) {
-        sd_journal_print(LOG_ERR,
-                         "pamsignal: config: %s: %s must be owned by root or "
-                         "the daemon user (uid=%u)",
-                         label, path, (unsigned)st.st_uid);
+        cfg_log(LOG_ERR,
+                "pamsignal: config: %s: %s must be owned by root or "
+                "the daemon user (uid=%u)",
+                label, path, (unsigned)st.st_uid);
         return -1;
     }
 
     if (private && (st.st_mode & (S_IRGRP | S_IROTH))) {
-        sd_journal_print(LOG_ERR,
-                         "pamsignal: config: %s: %s must not be group- or "
-                         "world-readable (mode 0%o); private keys belong to "
-                         "the daemon only",
-                         label, path, st.st_mode & 0777);
+        cfg_log(LOG_ERR,
+                "pamsignal: config: %s: %s must not be group- or "
+                "world-readable (mode 0%o); private keys belong to "
+                "the daemon only",
+                label, path, st.st_mode & 0777);
         return -1;
     }
 
@@ -361,16 +517,15 @@ static int validate_webhook_tls(const ps_config_t *cfg) {
         return 0;
 
     if (!cfg->webhook_url[0]) {
-        sd_journal_print(LOG_ERR,
-                         "pamsignal: config: webhook TLS keys "
+        cfg_log(LOG_ERR, "pamsignal: config: webhook TLS keys "
                          "(webhook_client_cert/key/ca_bundle) are set but "
                          "webhook_url is not configured");
         errors++;
     }
 
     if (has_cert != has_key) {
-        sd_journal_print(LOG_ERR, "pamsignal: config: webhook_client_cert and "
-                                  "webhook_client_key must be set together");
+        cfg_log(LOG_ERR, "pamsignal: config: webhook_client_cert and "
+                         "webhook_client_key must be set together");
         errors++;
     }
 
@@ -392,35 +547,33 @@ static int validate_alert_targets(const ps_config_t *cfg) {
 
     if (cfg->telegram_bot_token[0]) {
         if (!is_telegram_bot_token(cfg->telegram_bot_token)) {
-            sd_journal_print(
-                LOG_ERR, "pamsignal: config: telegram_bot_token "
-                         "format invalid (expected NNNN:[A-Za-z0-9_-]{20+})");
+            cfg_log(LOG_ERR,
+                    "pamsignal: config: telegram_bot_token "
+                    "format invalid (expected NNNN:[A-Za-z0-9_-]{20+})");
             errors++;
         }
         if (!cfg->telegram_chat_id[0] ||
             !is_telegram_chat_id(cfg->telegram_chat_id)) {
-            sd_journal_print(LOG_ERR, "pamsignal: config: telegram_chat_id "
-                                      "missing or invalid");
+            cfg_log(LOG_ERR, "pamsignal: config: telegram_chat_id "
+                             "missing or invalid");
             errors++;
         }
     }
 
     if (cfg->whatsapp_access_token[0]) {
         if (!has_only_chars(cfg->whatsapp_access_token, is_token_char)) {
-            sd_journal_print(LOG_ERR,
-                             "pamsignal: config: whatsapp_access_token "
+            cfg_log(LOG_ERR, "pamsignal: config: whatsapp_access_token "
                              "contains disallowed characters");
             errors++;
         }
         if (!has_only_chars(cfg->whatsapp_phone_number_id, is_digit_int)) {
-            sd_journal_print(LOG_ERR,
-                             "pamsignal: config: whatsapp_phone_number_id "
+            cfg_log(LOG_ERR, "pamsignal: config: whatsapp_phone_number_id "
                              "must be digits only");
             errors++;
         }
         if (!has_only_chars(cfg->whatsapp_recipient, is_digit_int)) {
-            sd_journal_print(LOG_ERR, "pamsignal: config: whatsapp_recipient "
-                                      "must be digits only");
+            cfg_log(LOG_ERR, "pamsignal: config: whatsapp_recipient "
+                             "must be digits only");
             errors++;
         }
     }
@@ -436,24 +589,22 @@ static int validate_alert_targets(const ps_config_t *cfg) {
     };
     for (size_t i = 0; i < sizeof(urls) / sizeof(urls[0]); i++) {
         if (urls[i].value[0] && !is_https_url(urls[i].value)) {
-            sd_journal_print(LOG_ERR,
-                             "pamsignal: config: %s must be an https:// URL "
-                             "with no whitespace or shell metacharacters",
-                             urls[i].name);
+            cfg_log(LOG_ERR,
+                    "pamsignal: config: %s must be an https:// URL "
+                    "with no whitespace or shell metacharacters",
+                    urls[i].name);
             errors++;
         }
     }
 
     if (cfg->webhook_auth_header[0]) {
         if (!cfg->webhook_url[0]) {
-            sd_journal_print(LOG_ERR,
-                             "pamsignal: config: webhook_auth_header is set "
+            cfg_log(LOG_ERR, "pamsignal: config: webhook_auth_header is set "
                              "but webhook_url is not configured");
             errors++;
         }
         if (!is_http_header(cfg->webhook_auth_header)) {
-            sd_journal_print(LOG_ERR,
-                             "pamsignal: config: webhook_auth_header must be "
+            cfg_log(LOG_ERR, "pamsignal: config: webhook_auth_header must be "
                              "in 'Name: value' form with no control chars, "
                              "quotes, or backslashes");
             errors++;
@@ -479,26 +630,25 @@ static FILE *open_config_secure(const char *path) {
         return NULL;
 
     if (!S_ISREG(st.st_mode)) {
-        sd_journal_print(LOG_ERR, "pamsignal: config %s is not a regular file",
-                         path);
+        cfg_log(LOG_ERR, "pamsignal: config %s is not a regular file", path);
         errno = EINVAL;
         return NULL;
     }
 
     if (st.st_mode & (S_IWGRP | S_IWOTH)) {
-        sd_journal_print(LOG_ERR,
-                         "pamsignal: config %s must not be group- or "
-                         "world-writable (mode 0%o)",
-                         path, st.st_mode & 0777);
+        cfg_log(LOG_ERR,
+                "pamsignal: config %s must not be group- or "
+                "world-writable (mode 0%o)",
+                path, st.st_mode & 0777);
         errno = EACCES;
         return NULL;
     }
 
     if (st.st_uid != 0 && st.st_uid != geteuid()) {
-        sd_journal_print(LOG_ERR,
-                         "pamsignal: config %s must be owned by root or the "
-                         "daemon user (uid=%u)",
-                         path, (unsigned)st.st_uid);
+        cfg_log(LOG_ERR,
+                "pamsignal: config %s must be owned by root or the "
+                "daemon user (uid=%u)",
+                path, (unsigned)st.st_uid);
         errno = EACCES;
         return NULL;
     }
@@ -524,20 +674,20 @@ int ps_config_load(const char *path, ps_config_t *cfg) {
     _cleanup_fclose_ FILE *f = open_config_secure(path);
     if (!f) {
         if (errno == ENOENT) {
-            sd_journal_print(LOG_INFO,
-                             "pamsignal: config file not found: %s "
-                             "(using defaults)",
-                             path);
+            cfg_log(LOG_INFO,
+                    "pamsignal: config file not found: %s "
+                    "(using defaults)",
+                    path);
             return PS_OK;
         }
         if (errno == ELOOP) {
-            sd_journal_print(LOG_ERR,
-                             "pamsignal: refusing to follow symlink for "
-                             "config: %s",
-                             path);
+            cfg_log(LOG_ERR,
+                    "pamsignal: refusing to follow symlink for "
+                    "config: %s",
+                    path);
         } else if (errno != EACCES && errno != EINVAL) {
-            sd_journal_print(LOG_ERR, "pamsignal: cannot open config: %s: %s",
-                             path, strerror(errno));
+            cfg_log(LOG_ERR, "pamsignal: cannot open config: %s: %s", path,
+                    strerror(errno));
         }
         return PS_ERR_CONFIG;
     }
@@ -555,8 +705,8 @@ int ps_config_load(const char *path, ps_config_t *cfg) {
 
         char *eq = strchr(p, '=');
         if (!eq) {
-            sd_journal_print(
-                LOG_ERR, "pamsignal: config:%d: missing '=' separator", lineno);
+            cfg_log(LOG_ERR, "pamsignal: config:%d: missing '=' separator",
+                    lineno);
             errors++;
             continue;
         }
@@ -578,20 +728,31 @@ int ps_config_load(const char *path, ps_config_t *cfg) {
                 int *dst = (int *)((char *)cfg + config_keys[i].offset);
                 if (parse_int_range(val, config_keys[i].min, config_keys[i].max,
                                     dst) < 0) {
-                    sd_journal_print(
-                        LOG_ERR, "pamsignal: config:%d: %s must be %d..%d",
-                        lineno, key, config_keys[i].min, config_keys[i].max);
+                    cfg_log(LOG_ERR, "pamsignal: config:%d: %s must be %d..%d",
+                            lineno, key, config_keys[i].min,
+                            config_keys[i].max);
+                    errors++;
+                }
+            } else if (config_keys[i].type == CFG_CIDR_LIST) {
+                if (parse_trusted_sources(val, cfg) < 0) {
+                    cfg_log(LOG_ERR,
+                            "pamsignal: config:%d: %s must be a "
+                            "comma-separated list of at most %d IPv4/IPv6 "
+                            "addresses or CIDR networks (prefix length 1 or "
+                            "more)",
+                            lineno, key, PS_MAX_TRUSTED_SOURCES);
                     errors++;
                 }
             } else {
                 unsigned int *dst =
                     (unsigned int *)((char *)cfg + config_keys[i].offset);
                 if (parse_notification_mask(val, dst) < 0) {
-                    sd_journal_print(
+                    cfg_log(
                         LOG_ERR,
                         "pamsignal: config:%d: %s must be a comma-separated "
                         "list of login_success, login_failed, session_open, "
-                        "session_close, brute_force, or 'all'",
+                        "session_close, brute_force, login_after_failures, "
+                        "or 'all'",
                         lineno, key);
                     errors++;
                 }
@@ -600,38 +761,38 @@ int ps_config_load(const char *path, ps_config_t *cfg) {
         }
 
         if (!found) {
-            sd_journal_print(LOG_WARNING,
-                             "pamsignal: config:%d: unknown key: %s", lineno,
-                             key);
+            cfg_log(LOG_WARNING, "pamsignal: config:%d: unknown key: %s",
+                    lineno, key);
         }
     }
 
     errors += validate_alert_targets(cfg);
 
     if (errors > 0) {
-        sd_journal_print(LOG_ERR, "pamsignal: config has %d error(s)", errors);
+        cfg_log(LOG_ERR, "pamsignal: config has %d error(s)", errors);
         return PS_ERR_CONFIG;
     }
 
-    sd_journal_print(LOG_INFO,
-                     "pamsignal: config loaded: telegram=%s slack=%s teams=%s "
-                     "whatsapp=%s discord=%s webhook=%s webhook_auth=%s "
-                     "webhook_mtls=%s fail_threshold=%d fail_window_sec=%d "
-                     "max_tracked_ips=%d alert_cooldown_sec=%d "
-                     "enable_notification_type=0x%02x "
-                     "provider=%s service_name=%s",
-                     cfg->telegram_bot_token[0] ? "on" : "off",
-                     cfg->slack_webhook_url[0] ? "on" : "off",
-                     cfg->teams_webhook_url[0] ? "on" : "off",
-                     cfg->whatsapp_access_token[0] ? "on" : "off",
-                     cfg->discord_webhook_url[0] ? "on" : "off",
-                     cfg->webhook_url[0] ? "on" : "off",
-                     cfg->webhook_auth_header[0] ? "on" : "off",
-                     cfg->webhook_client_cert[0] ? "on" : "off",
-                     cfg->fail_threshold, cfg->fail_window_sec,
-                     cfg->max_tracked_ips, cfg->alert_cooldown_sec,
-                     cfg->enable_notification_type,
-                     cfg->provider[0] ? cfg->provider : "none",
-                     cfg->service_name[0] ? cfg->service_name : "none");
+    cfg_log(LOG_INFO,
+            "pamsignal: config loaded: telegram=%s slack=%s teams=%s "
+            "whatsapp=%s discord=%s webhook=%s webhook_auth=%s "
+            "webhook_mtls=%s fail_threshold=%d fail_window_sec=%d "
+            "max_tracked_ips=%d alert_cooldown_sec=%d "
+            "success_after_fail_threshold=%d trusted_sources=%d "
+            "enable_notification_type=0x%02x "
+            "provider=%s service_name=%s",
+            cfg->telegram_bot_token[0] ? "on" : "off",
+            cfg->slack_webhook_url[0] ? "on" : "off",
+            cfg->teams_webhook_url[0] ? "on" : "off",
+            cfg->whatsapp_access_token[0] ? "on" : "off",
+            cfg->discord_webhook_url[0] ? "on" : "off",
+            cfg->webhook_url[0] ? "on" : "off",
+            cfg->webhook_auth_header[0] ? "on" : "off",
+            cfg->webhook_client_cert[0] ? "on" : "off", cfg->fail_threshold,
+            cfg->fail_window_sec, cfg->max_tracked_ips, cfg->alert_cooldown_sec,
+            cfg->success_after_fail_threshold, cfg->trusted_sources_count,
+            cfg->enable_notification_type,
+            cfg->provider[0] ? cfg->provider : "none",
+            cfg->service_name[0] ? cfg->service_name : "none");
     return PS_OK;
 }

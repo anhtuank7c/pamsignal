@@ -20,6 +20,12 @@ fail_window_sec = 300
 max_tracked_ips = 256
 alert_cooldown_sec = 60
 
+# Login-after-failures detection (0 = disabled)
+success_after_fail_threshold = 3
+
+# Trusted sources (default: empty)
+trusted_sources = 10.0.0.0/8, 203.0.113.7
+
 # Chat-dispatch filter (default: all)
 enable_notification_type = all
 
@@ -62,6 +68,40 @@ webhook_ca_bundle   = /etc/pamsignal/webhook-ca.pem
 | `max_tracked_ips` | `256` | 1 - 100000 | Maximum IPs tracked simultaneously |
 | `alert_cooldown_sec` | `60` | 0 - 86400 | Minimum seconds between alerts for the same IP (0 = no cooldown) |
 
+## Login-after-failures detection
+
+| Key | Default | Range | Description |
+|-----|---------|-------|-------------|
+| `success_after_fail_threshold` | `3` | 0 - 10000 | Failed attempts from one IP that make a following successful login suspicious (0 = disabled) |
+
+A successful login from an IP that has just failed several times is the pattern of a guessed password, and it is the one alert you should never ignore. When a login succeeds from a source IP with at least `success_after_fail_threshold` failures, the most recent within `fail_window_sec`, PAMSignal raises a `[CRIT]` `login_after_failures` alert (severity 9), on top of the normal `login_success` event.
+
+- **One alert per incident.** Any successful login from that IP clears its run of failures, so the alert does not repeat on the next login.
+- **Not muted by `trusted_sources`.** It fires for trusted networks too. Repeat chat alerts for the same IP are spaced by `alert_cooldown_sec`, like brute-force alerts; the journal records every occurrence. To turn it off, set the threshold to `0` or leave `login_after_failures` out of `enable_notification_type`.
+- **Independent of the brute-force counter.** The run survives a brute-force alert, so an attacker who trips `fail_threshold` and then gets in is still flagged.
+- **Remote logins only.** It is keyed by source IP; local `sudo`/`su` elevation has no IP and is not covered.
+
+A person who mistypes their own password three times and then gets it right triggers it too. Raise the threshold if that is common on your hosts.
+
+## Trusted sources
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `trusted_sources` | *(empty)* | Comma-separated IPv4/IPv6 addresses or CIDR networks (at most 32) whose routine login alerts are not sent to chat |
+
+Use it for the places you log in from every day — an office range, a VPN, a bastion host — so those logins stop pinging the channel.
+
+```ini
+trusted_sources = 10.0.0.0/8, 203.0.113.7, 2001:db8::/32
+```
+
+- **What is muted.** Only the per-event `login_success` and `login_failed` chat alerts for events whose source IP is inside a listed network.
+- **What still fires.** `brute_force` and `login_after_failures` alerts. A compromised machine inside a trusted network cannot attack silently.
+- **The journal is unaffected.** `journalctl -t pamsignal` records every event from every source.
+- **Session events are not covered.** `session_open` / `session_close` carry no source IP. Mute them with `enable_notification_type` instead.
+
+A bare address means that single host. The prefix length must be at least 1 (`0.0.0.0/0` is rejected), hostnames are not resolved, and a malformed entry is a hard config error. An IPv4-mapped IPv6 peer (`::ffff:10.1.2.3`) matches the IPv4 entries.
+
 ## Notification-type filter
 
 `enable_notification_type` selects which event categories trigger chat alerts. It is a comma-separated list. The default — when the key is omitted, or when `all` is given — is every category, preserving prior behaviour. Unknown tokens are a hard config error; empty values and empty list elements are rejected.
@@ -73,7 +113,10 @@ webhook_ca_bundle   = /etc/pamsignal/webhook-ca.pem
 | `session_open` | A PAM session opens (incl. systemd background sessions like cron) |
 | `session_close` | A PAM session closes |
 | `brute_force` | Either remote (IP-based) or local (sudo/su actor-based) brute-force threshold is crossed |
+| `login_after_failures` | A login succeeds from an IP with a run of recent failures (see [Login-after-failures detection](#login-after-failures-detection)) |
 | `all` | Sentinel for every category above (equivalent to omitting the key) |
+
+> **Upgrading with an explicit list?** `login_after_failures` is a new category. If your config already names specific tokens (for example `login_success,brute_force`), add `login_after_failures` to keep receiving that alert in chat; with `all` or the key omitted you get it automatically.
 
 **Scope.** This filter only gates chat dispatch (Telegram, Slack, Teams, WhatsApp, Discord, custom webhook). The local `journalctl -t pamsignal` trail records every event regardless, so the forensic log stays complete. The existing per-event suppression for sudo/su `LOGIN_FAILED` (only the brute-force alert fires) is independent and layered beneath this filter.
 
@@ -159,8 +202,45 @@ See [Alerts → Custom webhook (ECS JSON)](./alerts.md#custom-webhook-ecs-json) 
 |------|-------|-------------|
 | `--foreground` | `-f` | Run in foreground (don't daemonize) |
 | `--config PATH` | `-c PATH` | Use alternative config file path |
+| `--check-config` | `-t` | Validate the config file, print any errors, and exit |
+| `--test-alert` | `-T` | Send a test message to every configured channel and exit |
 
 Relative paths are resolved to absolute before daemonization.
+
+## Check the config and test your alerts
+
+After editing the config, validate it before reloading, then confirm the channels actually deliver:
+
+```bash
+sudo -u pamsignal pamsignal --check-config
+sudo -u pamsignal pamsignal --test-alert
+```
+
+`--check-config` prints every problem with its line number and exits `1`, or a short summary and `0`:
+
+```text
+pamsignal: config:2: trusted_sources must be a comma-separated list of at most 32 IPv4/IPv6 addresses or CIDR networks (prefix length 1 or more)
+pamsignal: config has 1 error(s)
+```
+
+```text
+pamsignal: /etc/pamsignal/pamsignal.conf: configuration OK
+  alert channels: telegram slack
+  trusted sources: 2
+```
+
+`--test-alert` sends one test message per configured channel, waits for each to finish, and prints a verdict. A rejected request (wrong token, revoked webhook) is a failure, and curl's own error is shown above the verdict:
+
+```text
+telegram  ok
+curl: (22) The requested URL returned error: 404
+slack     FAILED (curl exit code 22; see the curl message above)
+pamsignal: 1 alert channel(s) failed
+```
+
+It exits `0` only if every configured channel accepted the message. The test message ignores `enable_notification_type` and `alert_cooldown_sec`.
+
+Both commands must run as the service user, not root: the ownership checks on the config and TLS key files are relative to the user running them, so only then does the result match what the daemon will see. Both also work with `-c PATH`.
 
 ## Reload without restart
 

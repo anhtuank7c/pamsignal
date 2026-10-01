@@ -1,6 +1,8 @@
 #include <errno.h>
 #include <grp.h>
 #include <limits.h>
+#include <stddef.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -9,11 +11,13 @@
 #include <syslog.h>
 #include <systemd/sd-daemon.h>
 #include <systemd/sd-journal.h>
+#include <time.h>
 #include <unistd.h>
 
 #include "config.h"
 #include "init.h"
 #include "journal_watch.h"
+#include "notify.h"
 
 static void print_version(void) {
     printf("pamsignal %s\n", PAMSIGNAL_VERSION);
@@ -34,6 +38,11 @@ static void print_help(void) {
         "                         shipped pamsignal.service uses this mode.\n"
         "  -c, --config PATH      Read configuration from PATH instead of\n"
         "                         the compiled-in default (%s).\n"
+        "  -t, --check-config     Validate the configuration file, report any\n"
+        "                         errors on stderr, and exit (0 = valid).\n"
+        "  -T, --test-alert       Send a test message to every configured\n"
+        "                         alert channel, print a result per channel,\n"
+        "                         and exit (0 = all delivered).\n"
         "  -V, --version          Print version and exit.\n"
         "  -h, --help             Print this help message and exit.\n"
         "\n"
@@ -49,10 +58,19 @@ static void print_help(void) {
         PS_DEFAULT_CONFIG_PATH, PS_DEFAULT_CONFIG_PATH);
 }
 
+// One-shot modes run a single check from a terminal and exit instead of
+// starting the monitor.
+typedef enum {
+    PS_MODE_DAEMON,
+    PS_MODE_CHECK_CONFIG,
+    PS_MODE_TEST_ALERT
+} ps_run_mode_t;
+
 static void parse_args(int argc, char *argv[], int *foreground,
-                       const char **config_path) {
+                       const char **config_path, ps_run_mode_t *mode) {
     *foreground = 0;
     *config_path = PS_DEFAULT_CONFIG_PATH;
+    *mode = PS_MODE_DAEMON;
 
     for (int i = 1; i < argc; i++) {
         // --version / --help exit immediately, before any privilege or
@@ -71,6 +89,12 @@ static void parse_args(int argc, char *argv[], int *foreground,
         if (strcmp(argv[i], "--foreground") == 0 ||
             strcmp(argv[i], "-f") == 0) {
             *foreground = 1;
+        } else if (strcmp(argv[i], "--check-config") == 0 ||
+                   strcmp(argv[i], "-t") == 0) {
+            *mode = PS_MODE_CHECK_CONFIG;
+        } else if (strcmp(argv[i], "--test-alert") == 0 ||
+                   strcmp(argv[i], "-T") == 0) {
+            *mode = PS_MODE_TEST_ALERT;
         } else if ((strcmp(argv[i], "--config") == 0 ||
                     strcmp(argv[i], "-c") == 0) &&
                    i + 1 < argc) {
@@ -116,10 +140,83 @@ static int has_journal_access(void) {
     return 0;
 }
 
+// --check-config: the file has already loaded cleanly; summarise what the
+// daemon would do with it.
+static int run_check_config(void) {
+    static const struct {
+        const char *name;
+        size_t offset;
+    } channels[] = {
+        {"telegram", offsetof(ps_config_t, telegram_bot_token)},
+        {"slack", offsetof(ps_config_t, slack_webhook_url)},
+        {"teams", offsetof(ps_config_t, teams_webhook_url)},
+        {"whatsapp", offsetof(ps_config_t, whatsapp_access_token)},
+        {"discord", offsetof(ps_config_t, discord_webhook_url)},
+        {"webhook", offsetof(ps_config_t, webhook_url)},
+    };
+
+    printf("pamsignal: %s: configuration OK\n", g_config_path);
+    printf("  alert channels:");
+    int enabled = 0;
+    for (size_t i = 0; i < sizeof(channels) / sizeof(channels[0]); i++) {
+        if (((const char *)&g_config)[channels[i].offset]) {
+            printf(" %s", channels[i].name);
+            enabled++;
+        }
+    }
+    if (!enabled)
+        printf(" none (events are only written to the journal)");
+    printf("\n  trusted sources: %d\n", g_config.trusted_sources_count);
+    return 0;
+}
+
+// --test-alert: push one message through every configured channel and wait
+// for the verdicts.
+static int run_test_alert(void) {
+    char hostname[256] = "unknown";
+    if (gethostname(hostname, sizeof(hostname)) == 0)
+        hostname[sizeof(hostname) - 1] = '\0';
+
+    struct timespec now = {0};
+    clock_gettime(CLOCK_REALTIME, &now);
+    uint64_t now_usec =
+        (uint64_t)now.tv_sec * 1000000ULL + (uint64_t)now.tv_nsec / 1000ULL;
+
+    int failed = ps_notify_test(&g_config, hostname, now_usec);
+    if (failed < 0) {
+        fprintf(stderr,
+                "pamsignal: no alert channel is configured in %s; nothing "
+                "to test\n",
+                g_config_path);
+        return 1;
+    }
+    if (failed > 0) {
+        fprintf(stderr, "pamsignal: %d alert channel(s) failed\n", failed);
+        return 1;
+    }
+    printf("pamsignal: test alert delivered to every configured channel\n");
+    return 0;
+}
+
 int main(int argc, char *argv[]) {
     int foreground;
     const char *config_path;
-    parse_args(argc, argv, &foreground, &config_path);
+    ps_run_mode_t mode;
+    parse_args(argc, argv, &foreground, &config_path, &mode);
+
+    if (geteuid() == 0 && mode != PS_MODE_DAEMON) {
+        // Same non-root invariant as the daemon: the ownership checks on the
+        // config and TLS key files are relative to the effective uid, so the
+        // result is only meaningful when run as the service user.
+        fprintf(stderr,
+                "pamsignal: do not run this check as root. Run it as "
+                "the service user so the\n"
+                "result matches what the daemon will see:\n"
+                "  sudo -u pamsignal pamsignal %s\n",
+                mode == PS_MODE_CHECK_CONFIG ? "--check-config"
+                                             : "--test-alert");
+        return 1;
+    }
 
     if (geteuid() == 0) {
         fprintf(stderr, "pamsignal should not run as root.\n"
@@ -132,7 +229,9 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    if (!has_journal_access()) {
+    // The one-shot modes never read the journal, so they do not need the
+    // systemd-journal group.
+    if (mode == PS_MODE_DAEMON && !has_journal_access()) {
         const char *user = getenv("USER");
         fprintf(stderr,
                 "pamsignal: current user is not in the systemd-journal "
@@ -157,17 +256,40 @@ int main(int argc, char *argv[]) {
         g_config_path = resolved_path;
     } else if (errno == ENOENT) {
         g_config_path = config_path;
+        if (mode != PS_MODE_DAEMON) {
+            // The daemon tolerates a missing file (compiled defaults), but
+            // an operator asking to check or test one almost certainly
+            // mistyped the path.
+            fprintf(stderr, "pamsignal: config file not found: %s\n",
+                    config_path);
+            return 1;
+        }
     } else {
         fprintf(stderr, "pamsignal: cannot resolve config path %s: %s\n",
                 config_path, strerror(errno));
         return 1;
     }
 
+    if (mode != PS_MODE_DAEMON)
+        ps_config_log_to_stderr(1);
+
     int ret = ps_config_load(g_config_path, &g_config);
     if (ret != PS_OK) {
         fprintf(stderr, "pamsignal: failed to load config: %s\n",
                 g_config_path);
         return 1;
+    }
+
+    if (mode == PS_MODE_CHECK_CONFIG)
+        return run_check_config();
+
+    if (mode == PS_MODE_TEST_ALERT) {
+        // Same setuid-escalation guard the daemon applies to its curl
+        // children.
+        if (prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) < 0)
+            fprintf(stderr, "pamsignal: PR_SET_NO_NEW_PRIVS failed: %s\n",
+                    strerror(errno));
+        return run_test_alert();
     }
 
     ret = ps_fail_table_init(g_config.max_tracked_ips);

@@ -426,6 +426,111 @@ static void test_notify_brute_no_channels(void **state) {
                           1700000000000000ULL, 12345);
 }
 
+// --- Login-after-failures formatting ---
+
+static void test_format_login_after_failures_text(void **state) {
+    (void)state;
+    ps_config_t cfg;
+    make_cfg_with_labels(&cfg, "aws", NULL);
+    ps_pam_event_t e = make_login_success();
+
+    char buf[1024];
+    format_login_after_failures_text(&cfg, &e, 7, 300, buf, sizeof(buf));
+
+    assert_non_null(strstr(buf, "[CRIT]   auth.login_after_failures"));
+    assert_non_null(strstr(buf, "user=alice"));
+    assert_non_null(strstr(buf, "src=192.0.2.1:22"));
+    assert_non_null(strstr(buf, "failures=7 window=300s"));
+    assert_non_null(strstr(buf, "host=webserver01"));
+    assert_non_null(strstr(buf, "auth=publickey"));
+    assert_non_null(strstr(buf, "pid=1234"));
+    assert_non_null(strstr(buf, " provider=aws"));
+}
+
+static void test_format_login_after_failures_json(void **state) {
+    (void)state;
+    ps_config_t cfg;
+    make_cfg_with_labels(&cfg, "hetzner", "web");
+    ps_pam_event_t e = make_login_success();
+
+    char buf[2048];
+    format_login_after_failures_json(&cfg, &e, 7, 300, buf, sizeof(buf));
+
+    assert_non_null(strstr(buf, "\"action\":\"login_after_failures\""));
+    assert_non_null(strstr(
+        buf, "\"category\":[\"authentication\",\"intrusion_detection\"]"));
+    assert_non_null(strstr(buf, "\"kind\":\"alert\""));
+    assert_non_null(strstr(buf, "\"outcome\":\"success\""));
+    assert_non_null(strstr(buf, "\"severity\":9"));
+    assert_non_null(strstr(buf, "\"user\":{\"name\":\"alice\"}"));
+    assert_non_null(
+        strstr(buf, "\"source\":{\"ip\":\"192.0.2.1\",\"port\":22}"));
+    assert_non_null(strstr(buf, "\"event_type\":\"LOGIN_AFTER_FAILURES\""));
+    assert_non_null(strstr(buf, "\"failures\":7,\"window_sec\":300"));
+    assert_non_null(strstr(
+        buf, "\"labels\":{\"provider\":\"hetzner\",\"service_name\":\"web\"}"));
+    assert_int_equal(buf[strlen(buf) - 1], '}');
+}
+
+// A hostile username must not be able to break out of the JSON string.
+static void test_format_login_after_failures_json_escapes(void **state) {
+    (void)state;
+    ps_config_t cfg;
+    make_cfg_default(&cfg);
+    ps_pam_event_t e = make_login_success();
+    snprintf(e.username, sizeof(e.username), "%s", "a\"b\\c");
+
+    char buf[2048];
+    format_login_after_failures_json(&cfg, &e, 3, 60, buf, sizeof(buf));
+    assert_non_null(strstr(buf, "\"user\":{\"name\":\"a\\\"b\\\\c\"}"));
+}
+
+static void test_notify_login_after_failures_no_channels(void **state) {
+    (void)state;
+    ps_config_t cfg;
+    make_cfg_default(&cfg);
+    ps_pam_event_t e = make_login_success();
+    ps_notify_login_after_failures(&cfg, &e, 5, 300);
+}
+
+// --- Test alert (--test-alert) ---
+
+static void test_format_test_text(void **state) {
+    (void)state;
+    ps_config_t cfg;
+    make_cfg_with_labels(&cfg, NULL, "web-api");
+
+    char buf[1024];
+    format_test_text(&cfg, "web-01", 1700000000000000ULL, buf, sizeof(buf));
+    assert_non_null(strstr(buf, "[INFO]   pamsignal.test_alert host=web-01"));
+    assert_non_null(strstr(buf, " service_name=web-api"));
+    assert_non_null(strstr(buf, "--test-alert"));
+}
+
+static void test_format_test_json(void **state) {
+    (void)state;
+    ps_config_t cfg;
+    make_cfg_default(&cfg);
+
+    char buf[2048];
+    format_test_json(&cfg, "web\"01", 1700000000000000ULL, buf, sizeof(buf));
+    assert_non_null(strstr(buf, "\"action\":\"test_alert\""));
+    assert_non_null(strstr(buf, "\"event_type\":\"TEST_ALERT\""));
+    assert_non_null(strstr(buf, "\"host\":{\"hostname\":\"web\\\"01\"}"));
+    assert_null(strstr(buf, "\"labels\""));
+    assert_int_equal(buf[strlen(buf) - 1], '}');
+}
+
+// With no channel configured there is nothing to test: -1, and no curl is
+// ever forked.
+static void test_notify_test_no_channels(void **state) {
+    (void)state;
+    ps_config_t cfg;
+    make_cfg_default(&cfg);
+    assert_int_equal(ps_notify_test(&cfg, "host", 1700000000000000ULL), -1);
+    assert_int_equal(sync_dispatch, 0);
+}
+
 static void test_notify_local_brute_no_channels(void **state) {
     (void)state;
     ps_config_t cfg;
@@ -550,6 +655,13 @@ int main(void) {
         cmocka_unit_test(test_notify_event_no_channels),
         cmocka_unit_test(test_notify_brute_no_channels),
         cmocka_unit_test(test_notify_local_brute_no_channels),
+        cmocka_unit_test(test_format_login_after_failures_text),
+        cmocka_unit_test(test_format_login_after_failures_json),
+        cmocka_unit_test(test_format_login_after_failures_json_escapes),
+        cmocka_unit_test(test_notify_login_after_failures_no_channels),
+        cmocka_unit_test(test_format_test_text),
+        cmocka_unit_test(test_format_test_json),
+        cmocka_unit_test(test_notify_test_no_channels),
         cmocka_unit_test(test_notify_event_cooldown_repeat),
         // enable_notification_type gating
         cmocka_unit_test(test_event_notify_bit_mapping),

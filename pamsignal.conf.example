@@ -3,6 +3,8 @@
 #
 # All values shown are defaults. Uncomment and change as needed.
 # Reload without restart: sudo systemctl reload pamsignal
+# Validate after editing:  sudo -u pamsignal pamsignal --check-config
+# Send a test alert:       sudo -u pamsignal pamsignal --test-alert
 #
 # This file may contain alert credentials.
 # Recommended permissions: root:pamsignal 0640
@@ -17,14 +19,28 @@
 # provider = aws
 # service_name = web-api
 
+# Login-after-failures detection. A successful login from an IP that has
+# just failed at least this many times (within fail_window_sec) is flagged
+# as a likely guessed password with a [CRIT] alert. 0 disables it.
+# success_after_fail_threshold = 3
+
+# Trusted sources. Comma-separated IPv4/IPv6 addresses or CIDR networks
+# (office, VPN, bastion; at most 32) whose routine login_success /
+# login_failed chat alerts are muted. Brute-force and login-after-failures
+# alerts still fire for them, and the journal still records every event.
+# Example:
+#   trusted_sources = 10.0.0.0/8, 203.0.113.7, 2001:db8::/32
+# trusted_sources =
+
 # Alert rate limiting
 # alert_cooldown_sec = 60
 
 # Chat-dispatch filter. Comma-separated list of event categories that
-# should fire a chat alert. Default = all five (preserves prior behaviour).
+# should fire a chat alert. Default = all six (preserves prior behaviour).
 # Valid tokens: login_success, login_failed, session_open, session_close,
-# brute_force, all. Filters only the chat channels; the local journal
-# (journalctl -t pamsignal) still records every event.
+# brute_force, login_after_failures, all. Filters only the chat channels;
+# the local journal (journalctl -t pamsignal) still records every event.
+# Note: an explicit list must name login_after_failures to receive it.
 # Examples:
 #   enable_notification_type = login_success,brute_force
 #   enable_notification_type = all

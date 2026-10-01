@@ -87,9 +87,15 @@ typedef struct {
     // trying to elevate to). Empty for IP entries.
     char target_username[64];
     int count;
+    // Failures in the current unbroken run: unlike count it is not zeroed
+    // when the brute-force threshold fires, only when the key goes quiet for
+    // a full window or a login from it succeeds. Feeds the
+    // login-after-failures check.
+    int recent_fails;
     uint64_t first_attempt_usec;
     uint64_t last_attempt_usec;
     uint64_t last_brute_alert_usec;
+    uint64_t last_after_fail_alert_usec;
 } ps_fail_entry_t;
 
 static ps_fail_entry_t *fail_table = NULL;
@@ -165,9 +171,11 @@ static void fail_entry_init(ps_fail_entry_t *e, const char *key,
     snprintf(e->target_username, sizeof(e->target_username), "%s",
              event->target_username);
     e->count = 1;
+    e->recent_fails = 1;
     e->first_attempt_usec = event->timestamp_usec;
     e->last_attempt_usec = event->timestamp_usec;
     e->last_brute_alert_usec = 0;
+    e->last_after_fail_alert_usec = 0;
 }
 
 static void emit_brute_force_alert(const ps_fail_entry_t *entry,
@@ -256,6 +264,14 @@ static void ps_track_failed_login(const ps_pam_event_t *event) {
         } else {
             fail_table[i].count++;
         }
+
+        // The run restarts once the key has been quiet for a full window.
+        if (event->timestamp_usec - fail_table[i].last_attempt_usec >
+            window_usec) {
+            fail_table[i].recent_fails = 1;
+        } else if (fail_table[i].recent_fails < INT_MAX) {
+            fail_table[i].recent_fails++;
+        }
         fail_table[i].last_attempt_usec = event->timestamp_usec;
 
         if (fail_table[i].count >= g_config.fail_threshold) {
@@ -300,6 +316,109 @@ static void ps_track_failed_login(const ps_pam_event_t *event) {
             oldest = i;
     }
     fail_entry_init(&fail_table[oldest], ev_key, ev_key_type, event);
+}
+
+// --- Login-after-failures detection ---
+//
+// A successful login from an IP that has just produced a run of failures is
+// the strongest signal this daemon can give that a password was guessed. It
+// is checked on every remote LOGIN_SUCCESS and deliberately ignores
+// trusted_sources: it is the one alert an operator must never miss. It fires
+// at most once per run (the run is cleared here), and repeat chat alerts for
+// the same IP are spaced by alert_cooldown_sec like brute-force ones.
+//
+// Returns 1 if the login was flagged, 0 otherwise.
+static int ps_check_login_after_failures(const ps_pam_event_t *event) {
+    if (g_config.success_after_fail_threshold <= 0 || !fail_table ||
+        event->source_ip[0] == '\0')
+        return 0;
+
+    uint64_t window_usec = (uint64_t)g_config.fail_window_sec * 1000000ULL;
+
+    for (int i = 0; i < fail_table_count; i++) {
+        if (fail_table[i].key_type != PS_FAIL_KEY_IP ||
+            strcmp(fail_table[i].key, event->source_ip) != 0)
+            continue;
+
+        int fails = fail_table[i].recent_fails;
+        uint64_t since_last_fail =
+            event->timestamp_usec >= fail_table[i].last_attempt_usec
+                ? event->timestamp_usec - fail_table[i].last_attempt_usec
+                : 0;
+
+        // A success ends the run whether or not it is flagged, so one
+        // suspicious login produces exactly one alert.
+        fail_table[i].recent_fails = 0;
+
+        if (since_last_fail > window_usec ||
+            fails < g_config.success_after_fail_threshold)
+            return 0;
+
+        char fails_str[16];
+        char window_str[16];
+        char port_str[16];
+        snprintf(fails_str, sizeof(fails_str), "%d", fails);
+        snprintf(window_str, sizeof(window_str), "%d",
+                 g_config.fail_window_sec);
+        snprintf(port_str, sizeof(port_str), "%d", event->port);
+
+        sd_journal_send(
+            "MESSAGE=pamsignal: LOGIN_AFTER_FAILURES ip=%s user=%s "
+            "failures=%s window=%ss auth=%s",
+            event->source_ip, event->username, fails_str, window_str,
+            ps_auth_method_str(event->auth_method), "PRIORITY=%d", LOG_CRIT,
+            "SYSLOG_IDENTIFIER=pamsignal", "EVENT_ACTION=login_after_failures",
+            "EVENT_CATEGORY=authentication,intrusion_detection",
+            "EVENT_KIND=alert", "EVENT_OUTCOME=success", "EVENT_SEVERITY=9",
+            "EVENT_MODULE=pamsignal", "USER_NAME=%s", event->username,
+            "SOURCE_IP=%s", event->source_ip, "SOURCE_PORT=%s", port_str,
+            "SERVICE_NAME=%s", ps_service_str(event->service),
+            "HOST_HOSTNAME=%s", event->hostname, NULL);
+
+        // Same per-key cooldown as brute-force: the journal entry above is
+        // written every time, but someone holding valid credentials must not
+        // be able to flood the chat channel (and the curl child budget) by
+        // looping fail,fail,fail,succeed.
+        uint64_t cooldown_usec =
+            (uint64_t)g_config.alert_cooldown_sec * 1000000ULL;
+        int notify_allowed =
+            (g_config.alert_cooldown_sec <= 0) ||
+            (fail_table[i].last_after_fail_alert_usec == 0) ||
+            (event->timestamp_usec - fail_table[i].last_after_fail_alert_usec >=
+             cooldown_usec);
+        if (notify_allowed) {
+            ps_notify_login_after_failures(&g_config, event, fails,
+                                           g_config.fail_window_sec);
+            fail_table[i].last_after_fail_alert_usec = event->timestamp_usec;
+        }
+        return 1;
+    }
+    return 0;
+}
+
+// Fan a parsed, already-journaled event out to chat alerts and the trackers.
+static void ps_dispatch_event(const ps_pam_event_t *event) {
+    // For sudo/su LOGIN_FAILED, suppress the per-event chat alert: a single
+    // mistyped password would otherwise produce one Telegram/Slack ping per
+    // keypress, drowning out the actually-meaningful brute-force alert that
+    // ps_track_failed_login emits when the threshold is crossed. The journal
+    // entry from ps_log_event still records every individual failure, so the
+    // forensic trail is intact.
+    int suppress_event_alert =
+        event->type == PS_EVENT_LOGIN_FAILED &&
+        (event->service == PS_SERVICE_SUDO || event->service == PS_SERVICE_SU);
+
+    // trusted_sources mutes only the routine per-event ping. The brute-force
+    // and login-after-failures trackers below still see the event, so a
+    // compromised machine inside a trusted network cannot attack silently.
+    if (!suppress_event_alert &&
+        !ps_config_ip_trusted(&g_config, event->source_ip))
+        ps_notify_event(&g_config, event);
+
+    if (event->type == PS_EVENT_LOGIN_FAILED)
+        ps_track_failed_login(event);
+    else if (event->type == PS_EVENT_LOGIN_SUCCESS)
+        ps_check_login_after_failures(event);
 }
 
 // --- Event processing ---
@@ -462,21 +581,7 @@ static void ps_process_entry(sd_journal *j) {
     sd_journal_get_realtime_usec(j, &event.timestamp_usec);
 
     ps_log_event(&event);
-
-    // For sudo/su LOGIN_FAILED, suppress the per-event chat alert: a single
-    // mistyped password would otherwise produce one Telegram/Slack ping per
-    // keypress, drowning out the actually-meaningful brute-force alert that
-    // ps_track_failed_login emits when the threshold is crossed. The journal
-    // entry from ps_log_event still records every individual failure, so the
-    // forensic trail is intact.
-    int suppress_event_alert =
-        event.type == PS_EVENT_LOGIN_FAILED &&
-        (event.service == PS_SERVICE_SUDO || event.service == PS_SERVICE_SU);
-    if (!suppress_event_alert)
-        ps_notify_event(&g_config, &event);
-
-    if (event.type == PS_EVENT_LOGIN_FAILED)
-        ps_track_failed_login(&event);
+    ps_dispatch_event(&event);
 }
 
 // --- Public API ---
