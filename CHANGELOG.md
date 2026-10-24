@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Security
+- [x] **`examples/nodejs-webhook/`: clear Dependabot alerts #24, #25, #26, #27** (lockfile + pnpm `overrides` only; PAMSignal itself is C and unaffected). Runtime-scope: express's transitive `proxy-addr` 2.0.7 → 2.0.8 (GHSA-jqcg-44mw-7w3h, critical — IPv4-mapped IPv6 trust-subnet IP spoofing). Dev/test-scope (jest coverage reporting only): `handlebars` 4.7.9 → 4.7.10 (GHSA-p8wg-vrv2-v86f critical, GHSA-8r5x-fm3f-whwj critical, GHSA-xw65-4hp5-5hc7 medium). Also raises the `body-parser` override `^1.20.6` → `^1.20.9` for GHSA-27r3-jxmh-p828 (high, DoS via trailing bytes after a compressed body), flagged by `pnpm audit` before Dependabot. `pnpm audit` reports no known vulnerabilities; all 66 jest tests pass.
+- [x] **`examples/python-webhook/`: bump `werkzeug` 3.1.8 → 3.1.9 in `uv.lock`** (Dependabot alert #23, GHSA-g6x2-hccm-hh4m, medium — `safe_join()` accepted Windows device names). Runtime transitive of Flask; the example does not call `safe_join`. Lockfile-only via `uv lock --upgrade-package werkzeug`; all 64 pytest tests pass.
+
 ## 0.7.1 — 2026-10-01
 
 Patch release with a **security fix that affects every earlier version, including 0.7.0** — upgrade. A crafted SSH username could ping a whole chat channel (`@everyone`, `<!channel>`) or turn into a clickable link in the alert. Chat alerts are now only ever sent inside a code span, so nothing an attacker types is interpreted by the chat platform. One visible consequence: the default compact line now renders in a monospace font. The release also adds `message_style = pretty`, an opt-in multi-line layout that is easier to read on a phone.
