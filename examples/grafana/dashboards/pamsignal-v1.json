@@ -22,7 +22,7 @@
       }
     ]
   },
-  "description": "PAMSignal fleet auth dashboard — login activity, brute-force detection, and drill-downs by source IP / user.",
+  "description": "PAMSignal fleet auth dashboard: login activity, brute-force detection, and drill-downs by source IP / user.",
   "editable": true,
   "fiscalYearStartMonth": 0,
   "graphTooltip": 1,
@@ -502,7 +502,7 @@
     "time_options": ["5m", "15m", "1h", "6h", "12h", "24h", "7d", "30d"]
   },
   "timezone": "browser",
-  "title": "PAMSignal — Auth across the fleet",
+  "title": "PAMSignal: Auth across the fleet",
   "uid": "pamsignal-v1",
   "version": 1,
   "weekStart": ""

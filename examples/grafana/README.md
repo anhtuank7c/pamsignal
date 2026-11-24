@@ -1,6 +1,6 @@
-# PAMSignal — Grafana integration
+# PAMSignal: Grafana integration
 
-> 🌐 **English** · [Tiếng Việt](../../docs/vi/examples/grafana.md)
+> **English** · [Tiếng Việt](../../docs/vi/examples/grafana.md)
 
 Fleet-wide SSH/sudo/su/login monitoring for PAMSignal, in Grafana.
 
@@ -9,17 +9,17 @@ Fleet-wide SSH/sudo/su/login monitoring for PAMSignal, in Grafana.
 This directory ships everything an operator needs to take PAMSignal events from a
 Linux fleet and surface them in a single Grafana dashboard:
 
-- `alloy.river` — production [Grafana Alloy](https://grafana.com/docs/alloy/latest/)
+- `alloy.river`: production [Grafana Alloy](https://grafana.com/docs/alloy/latest/)
   config. One install per host. Scrapes `SYSLOG_IDENTIFIER=pamsignal` from systemd
   journald and ships to Loki.
-- `dashboards/pamsignal-v1.json` — the dashboard, provisioning-ready (datasource UID hardcoded to `loki`, matches the bundled provisioning file).
-- `dashboards/pamsignal-v1.grafana-com.json` — same dashboard, "shared externally" format with a `${DS_LOKI}` placeholder + `__inputs`/`__requires` blocks. Upload **this** file to grafana.com or use Grafana's UI Import, which prompts you to pick your own Loki datasource.
-- `alerts.yaml` — four Grafana-native alert rules.
-- `docker-compose.yml` — a single-command local stack so you can see the dashboard
+- `dashboards/pamsignal-v1.json`: the dashboard, provisioning-ready (datasource UID hardcoded to `loki`, matches the bundled provisioning file).
+- `dashboards/pamsignal-v1.grafana-com.json`: same dashboard, "shared externally" format with a `${DS_LOKI}` placeholder + `__inputs`/`__requires` blocks. Upload **this** file to grafana.com or use Grafana's UI Import, which prompts you to pick your own Loki datasource.
+- `alerts.yaml`: four Grafana-native alert rules.
+- `docker-compose.yml`: a single-command local stack so you can see the dashboard
   before you commit to deploying anything.
-- `verify.sh` — one-shot health check for your pipeline.
+- `verify.sh`: one-shot health check for your pipeline.
 
-The full design — schema, label-cardinality plan, panel rationale — lives in
+The full design (schema, label-cardinality plan, panel rationale) lives in
 [`docs/grafana-integration.md`](../../docs/grafana-integration.md).
 
 ---
@@ -33,7 +33,7 @@ cd examples/grafana
 docker compose up -d
 ```
 
-Open **http://localhost:3000** — anonymous Admin, no login. The dashboard is
+Open **http://localhost:3000**: anonymous Admin, no login. The dashboard is
 under the **PAMSignal** folder. Synthetic events stream in at ~2/sec; brute-force
 bursts fire every ~25 seconds on average.
 
@@ -55,9 +55,9 @@ docker compose down -v
 
 The synthetic producer pushes events into Loki via two paths simultaneously:
 
-1. **Direct push** to `loki/api/v1/push` — simulates what an HTTP-based agent
+1. **Direct push** to `loki/api/v1/push`, which simulates what an HTTP-based agent
    would do.
-2. **Append to a shared file** that `alloy` tails — proves the production-style
+2. **Append to a shared file** that `alloy` tails, which proves the production-style
    Alloy pipeline works locally too.
 
 Both paths land in the same Loki instance with the same label set, so the
@@ -77,13 +77,13 @@ or [Helm](https://grafana.com/docs/loki/latest/setup/install/helm/).
 ### 2. Install Alloy on each PAMSignal host
 
 ```bash
-# Debian/Ubuntu — from grafana.com APT repo
+# Debian/Ubuntu: from grafana.com APT repo
 curl -fsSL https://apt.grafana.com/gpg.key | sudo gpg --dearmor -o /etc/apt/keyrings/grafana.gpg
 echo "deb [signed-by=/etc/apt/keyrings/grafana.gpg] https://apt.grafana.com stable main" \
   | sudo tee /etc/apt/sources.list.d/grafana.list
 sudo apt-get update && sudo apt-get install alloy
 
-# RHEL/Fedora/Alma/Rocky — from grafana.com RPM repo
+# RHEL/Fedora/Alma/Rocky: from grafana.com RPM repo
 # https://grafana.com/docs/alloy/latest/set-up/install/linux/
 ```
 
@@ -112,7 +112,7 @@ sudo journalctl -u alloy -f
 
 ### 4. Import the dashboard
 
-**Option A — provision** (recommended for self-hosted Grafana):
+**Option A: provision** (recommended for self-hosted Grafana):
 
 ```bash
 sudo cp dashboards/pamsignal-v1.json /var/lib/grafana/dashboards/
@@ -121,7 +121,7 @@ sudo cp ../grafana/provisioning/dashboards/pamsignal.yml \
 sudo systemctl restart grafana-server
 ```
 
-**Option B — import via UI**: Grafana → Dashboards → New → Import → upload
+**Option B: import via UI**: Grafana → Dashboards → New → Import → upload
 `dashboards/pamsignal-v1.grafana-com.json` (the version with `${DS_LOKI}`
 placeholders). Pick your Loki datasource when prompted.
 
@@ -149,7 +149,7 @@ From any machine that can reach Loki and Grafana:
 LOKI_URL=https://loki.yourdomain GRAFANA_URL=https://grafana.yourdomain ./verify.sh
 ```
 
-Expected output ends in `✅ Pipeline healthy`. If not, the script tells you which
+Expected output ends in `Pipeline healthy`. If not, the script tells you which
 step broke.
 
 ---
@@ -163,7 +163,7 @@ graph LR
     alloy["Grafana Alloy<br/>(per host)"]
     loki[("Loki")]
     grafana["Grafana"]
-    operator["🧑‍💻 Operator"]
+    operator["Operator"]
 
     pamsignal -- "sd_journal_send<br/>(ECS fields)" --> journald
     journald -- "SYSLOG_IDENTIFIER=pamsignal" --> alloy
@@ -188,7 +188,7 @@ graph LR
   labels (`app`, `host`, `service`, `event_action`). Everything else stays
   in the JSON line body and is parsed at query time. See the
   [label cardinality plan](../../docs/grafana-integration.md#label-cardinality-plan).
-- Loki indexes those four labels — `5 services × 6 actions × fleet_size`
+- Loki indexes those four labels: `5 services × 6 actions × fleet_size`
   streams. Safe to thousands of hosts.
 
 ---
@@ -206,7 +206,7 @@ the relabel rule in `alloy.river` won't match.
 
 ### Dashboard panels empty
 
-Look at the time picker. The default is "last 6h" — if your stack just came up,
+Look at the time picker. The default is "last 6h"; if your stack just came up,
 shorten to "last 5m".
 
 Open Grafana **Explore** with the Loki datasource and run `{app="pamsignal"}`.
@@ -224,7 +224,7 @@ as you ran `usermod -aG systemd-journal alloy`.
 
 ### `service_name` label appears alongside `service`
 
-Loki 3.x auto-derives `service_name` for log-volume tracking. Harmless — the
+Loki 3.x auto-derives `service_name` for log-volume tracking. Harmless: the
 dashboard queries `service=` directly. If you want it gone, set
 `discover_log_levels: false` and `discover_service_name: false` in your
 `loki.write` block.
@@ -234,7 +234,7 @@ dashboard queries `service=` directly. If you want it gone, set
 PAMSignal only writes `EVENT_ACTION=brute_force_detected` when its internal
 `fail_threshold` is hit. If you've tuned that high (e.g., 50), individual hosts
 won't trigger and the panel stays at 0. Rule #3 in `alerts.yaml` is the safety
-net for this case — it fires on raw failed-login spikes even if PAMSignal
+net for this case: it fires on raw failed-login spikes even if PAMSignal
 hasn't escalated.
 
 ---
@@ -242,14 +242,14 @@ hasn't escalated.
 ## Tuning notes
 
 - **Retention.** Default in `config/loki-config.yml` is 7 days. Increase for
-  audit/compliance — see Loki's [retention docs](https://grafana.com/docs/loki/latest/operations/storage/retention/).
+  audit/compliance; see Loki's [retention docs](https://grafana.com/docs/loki/latest/operations/storage/retention/).
 - **Cardinality.** Don't promote `source_ip` or `user_name` to Loki labels.
   Both are unbounded and will explode the index. The dashboard parses them at
-  query time with `| json` — keep it that way.
+  query time with `| json`; keep it that way.
 - **session_closed noise.** Heavy sudo/su use generates a lot of `session_closed`
   events. There's a commented-out `stage.drop` in `alloy.river` if you want to
   drop them at the Alloy layer.
-- **Off-hours alerts.** Not shipped — policy varies. Bolt on a rule with a
+- **Off-hours alerts.** Not shipped, because policy varies. Bolt on a rule with a
   CRON-like filter via Grafana's time-of-day pre-condition if you want one.
 
 ---
@@ -258,9 +258,9 @@ hasn't escalated.
 
 PRs welcome:
 
-- New panels — add to `dashboards/pamsignal-v1.json`, screenshot the change.
-- New alert rules — add to `alerts.yaml` with a row in the table above.
-- Distro-specific Alloy install notes — append to the "Deploy for real" section.
+- New panels: add to `dashboards/pamsignal-v1.json`, screenshot the change.
+- New alert rules: add to `alerts.yaml` with a row in the table above.
+- Distro-specific Alloy install notes: append to the "Deploy for real" section.
 
 CI (`.github/workflows/grafana-integration.yml`) brings up the docker-compose
 stack on every PR that touches this directory and runs `verify.sh`.

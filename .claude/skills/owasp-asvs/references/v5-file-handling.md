@@ -1,4 +1,4 @@
-# V5 — File Handling
+# V5: File Handling
 
 > Upstream: <https://github.com/OWASP/ASVS/blob/master/5.0/en/0x14-V5-File-Handling.md>
 
@@ -21,19 +21,19 @@ The chapter covers upload/download, MIME validation, path traversal, malware sca
 
 ---
 
-## V5.1 — File upload
+## V5.1: File upload
 
 | V-ID | Requirement | Level | Project evaluation |
 |---|---|---|---|
-| V5.1.* | All file-upload requirements | L1 | N/A — PAMSignal has no upload surface. |
+| V5.1.* | All file-upload requirements | L1 | N/A: PAMSignal has no upload surface. |
 
-## V5.2 — File download / serve
+## V5.2: File download / serve
 
 | V-ID | Requirement | Level | Project evaluation |
 |---|---|---|---|
-| V5.2.* | All file-download requirements | L1 | N/A — PAMSignal does not serve files. |
+| V5.2.* | All file-download requirements | L1 | N/A: PAMSignal does not serve files. |
 
-## V5.3 — Local file operations on sensitive files
+## V5.3: Local file operations on sensitive files
 
 | V-ID | Requirement | Level | Project evaluation |
 |---|---|---|---|
@@ -43,25 +43,25 @@ The chapter covers upload/download, MIME validation, path traversal, malware sca
 | V5.3.4 | Verify ownership and mode are validated before trust is extended to the file's contents. | L1 | `validate_tls_path` rejects non-regular, non-root/non-daemon ownership, and world/group-readable private keys. ✓ Verify the config file has an equivalent check (`src/config.c:404+`). |
 | V5.3.5 | Verify file creation uses an explicit umask and mode that excludes group/other access for sensitive files. | L1 | `umask(0077)` after daemonization + explicit `0600` on `openat`. ✓ |
 
-## V5.4 — Path traversal
+## V5.4: Path traversal
 
 | V-ID | Requirement | Level | Project evaluation |
 |---|---|---|---|
 | V5.4.1 | Verify user-controlled paths cannot escape an allow-listed root. | L1 | The only user-controlled path is the config file path (passed via `-c` / default `/etc/pamsignal.conf`). It's not concatenated with anything; the daemon opens exactly that path with `O_NOFOLLOW`. ✓ |
 | V5.4.2 | Verify path normalization happens before validation (`..` segments, NUL bytes). | L1 | `validate_tls_path` rejects control chars including NUL (loop terminates on `\0`, so embedded NULs are detected); does not normalize `..` because the path is operator-supplied and any traversal would be the operator's own choice. Document this if questioned. |
 
-## V5.5 — Server-side file processing
+## V5.5: Server-side file processing
 
 | V-ID | Requirement | Level | Project evaluation |
 |---|---|---|---|
-| V5.5.* | All file-processing requirements | L1 | N/A — PAMSignal does not transform, render, or convert files. Reads config text and TLS material; that's it. |
+| V5.5.* | All file-processing requirements | L1 | N/A: PAMSignal does not transform, render, or convert files. Reads config text and TLS material; that's it. |
 
 ---
 
 ## Common drift in this codebase
 
 - **A new file open uses plain `open(path, O_RDONLY)`** without `O_NOFOLLOW` or `O_CLOEXEC`. Catch with: `grep -n 'open(' src/*.c | grep -v O_NOFOLLOW`.
-- **A new file create skips `O_EXCL` or sets mode `0644` "for debugging".** Both are 🔴.
+- **A new file create skips `O_EXCL` or sets mode `0644` "for debugging".** Both are Critical.
 - **A new operator-supplied path bypasses `validate_tls_path`-style checks** (e.g., a future "audit log file" feature). New sensitive paths need the same five-check pattern: control-char filter, `O_NOFOLLOW`, `fstat` on fd, ownership, mode.
 
 ---
@@ -81,12 +81,12 @@ The chapter covers upload/download, MIME validation, path traversal, malware sca
 ## Report row template
 
 ```markdown
-| 3 | V5.3.1 | 🔴 | src/<new>.c:42 | New audit_log_open() uses open(path, O_WRONLY\|O_CREAT) without O_NOFOLLOW [L1] | Symlink swap can redirect the write to an attacker-chosen path | Mirror src/init.c:155 — add O_NOFOLLOW \| O_EXCL \| O_CLOEXEC and an explicit 0600 mode |
+| 3 | V5.3.1 | Critical | src/<new>.c:42 | New audit_log_open() uses open(path, O_WRONLY\|O_CREAT) without O_NOFOLLOW [L1] | Symlink swap can redirect the write to an attacker-chosen path | Mirror src/init.c:155: add O_NOFOLLOW \| O_EXCL \| O_CLOEXEC and an explicit 0600 mode |
 ```
 
 ---
 
 ## Cross-references
 
-- Root `/CLAUDE.md` §Security Requirements — "File operations: `O_NOFOLLOW | O_EXCL` for PID file, explicit umask".
-- `tests/test_config.c` — extend with negative tests: symlink to `/etc/shadow`, world-readable private key, non-regular file (FIFO).
+- Root `/CLAUDE.md` §Security Requirements: "File operations: `O_NOFOLLOW | O_EXCL` for PID file, explicit umask".
+- `tests/test_config.c`: extend with negative tests: symlink to `/etc/shadow`, world-readable private key, non-regular file (FIFO).

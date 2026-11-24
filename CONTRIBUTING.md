@@ -1,8 +1,8 @@
 # Contributing to PAMSignal
 
-> 🌐 **English** · [Tiếng Việt](docs/vi/CONTRIBUTING.md)
+> **English** · [Tiếng Việt](docs/vi/CONTRIBUTING.md)
 
-Thanks for your interest. PAMSignal is a small C daemon with a tight focus on detecting PAM auth events and dispatching alerts; the deliberately narrow scope is part of the project's threat model. Please read [`docs/threat-model.md`](./docs/threat-model.md) before proposing a feature — it's the reference for whether a change strengthens an in-scope mitigation or pulls work into the daemon from an out-of-scope area.
+Thanks for your interest. PAMSignal is a small C daemon with a tight focus on detecting PAM auth events and dispatching alerts; the deliberately narrow scope is part of the project's threat model. Please read [`docs/threat-model.md`](./docs/threat-model.md) before proposing a feature. It's the reference for whether a change strengthens an in-scope mitigation or pulls work into the daemon from an out-of-scope area.
 
 This document covers how to make code, doc, and packaging contributions. For:
 
@@ -28,12 +28,12 @@ meson compile -C build
 meson test -C build
 ```
 
-For deeper build / debugging guidance — fuzzing, ASAN runs locally, the journalctl introspection patterns, packaging into `.deb` / `.rpm` — see [`docs/development.md`](./docs/development.md). For systemd unit + sandbox details, [`docs/deployment.md`](./docs/deployment.md).
+For deeper build / debugging guidance (fuzzing, ASAN runs locally, the journalctl introspection patterns, packaging into `.deb` / `.rpm`), see [`docs/development.md`](./docs/development.md). For systemd unit + sandbox details, [`docs/deployment.md`](./docs/deployment.md).
 
 ## Branch + commit workflow
 
 1. Fork and branch from `main`. One branch per logical change.
-2. Make your change. Keep commits small and focused — reviewers should be able to understand each commit on its own.
+2. Make your change. Keep commits small and focused; reviewers should be able to understand each commit on its own.
 3. Run the [pre-commit checklist](#pre-commit-checklist) below. **Every item is required for a PR to merge.**
 4. Push your branch and open a PR against `main`. Fill in the PR template.
 5. CI runs ASAN+UBSAN sanitizers on every push to a PR; both must pass.
@@ -64,7 +64,7 @@ Types in use here:
 
 Rules:
 
-- Subject is **imperative mood** ("add", "fix", "update" — not "added", "fixes", "updated").
+- Subject is **imperative mood** ("add", "fix", "update", not "added", "fixes", "updated").
 - No period at the end of the subject.
 - The body explains *why* the change is needed; the diff already shows *what*.
 - Reference issues with `#NNN` in the body, not the subject.
@@ -78,7 +78,7 @@ fix: stop dropping brute-force counter on SIGHUP reload
 Reloading the config previously zeroed the in-memory fail_table,
 which let an attacker SIGHUP-spam the daemon to reset their per-IP
 counter just before crossing the threshold. Preserve the table
-across reloads — config changes shouldn't invalidate observed
+across reloads; config changes shouldn't invalidate observed
 attack state.
 
 Refs #42
@@ -94,14 +94,14 @@ C source code follows the conventions encoded in `.clang-format` and `.clang-tid
 - **Globals**: `g_` prefix (e.g. `g_config`).
 - **Macros / `#define`**: `UPPER_SNAKE_CASE` with `PS_` prefix.
 - **Types** (structs and enums): `_t` suffix (e.g. `ps_pam_event_t`, `ps_event_type_t`).
-- **Enum constants**: `UPPER_SNAKE_CASE` with `PS_` prefix (clang-tidy enforces this — adding an enum without the prefix will fail lint).
+- **Enum constants**: `UPPER_SNAKE_CASE` with `PS_` prefix (clang-tidy enforces this; adding an enum without the prefix will fail lint).
 - **Error handling**: return code enums (`PS_OK`, `PS_ERR_*`), early returns over deeply nested success paths.
 - **Logging**: `sd_journal_print()` / `sd_journal_send()`. **Do not** call `printf`, `syslog`, or write to stdout/stderr from production code paths.
 
 Comment policy:
 
 - Default to writing **no comments**. Well-named identifiers and small functions should make the *what* obvious.
-- Add a comment when the *why* is non-obvious: a hidden constraint, a subtle invariant, a workaround for a specific bug, behavior that would surprise a reader. Include enough context that the comment ages well — reference the relevant CVE, kernel man-page section, or PAM message format if applicable.
+- Add a comment when the *why* is non-obvious: a hidden constraint, a subtle invariant, a workaround for a specific bug, behavior that would surprise a reader. Include enough context that the comment ages well: reference the relevant CVE, kernel man-page section, or PAM message format if applicable.
 
 ## Test requirements
 
@@ -147,10 +147,10 @@ Then update [`CHANGELOG.md`](./CHANGELOG.md) under `## Unreleased`. Use `[x]` fo
 
 A maintainer will review your PR. Expect feedback within a few days for non-trivial changes. We aim to keep reviews focused on:
 
-1. **Threat model alignment** — does the change strengthen an in-scope defense or extend the daemon into a non-goal? See [`docs/threat-model.md`](./docs/threat-model.md).
-2. **Test adequacy** — does the test suite encode the change so a future regression fails CI?
-3. **API stability** — is this change introducing a config key, journal field, or webhook payload field that we'll need to support across versions? Public surfaces are versioned via SemVer; deprecations need an overlap period (the `PAMSIGNAL_*` retirement in v0.3.0 is the precedent).
-4. **Coding style** — covered by clang-format / clang-tidy; we won't bikeshed style if your pre-commit run is clean.
+1. **Threat model alignment**: does the change strengthen an in-scope defense or extend the daemon into a non-goal? See [`docs/threat-model.md`](./docs/threat-model.md).
+2. **Test adequacy**: does the test suite encode the change so a future regression fails CI?
+3. **API stability**: is this change introducing a config key, journal field, or webhook payload field that we'll need to support across versions? Public surfaces are versioned via SemVer; deprecations need an overlap period (the `PAMSIGNAL_*` retirement in v0.3.0 is the precedent).
+4. **Coding style**: covered by clang-format / clang-tidy; we won't bikeshed style if your pre-commit run is clean.
 
 Reviewers may request changes; please respond on the PR rather than force-pushing without explanation. Force-pushes during review are fine when explicitly addressing a comment, but please leave a short note on the PR thread saying what changed.
 

@@ -1,8 +1,8 @@
 # Chính Sách Bảo Mật
 
-> 🌐 [English](../../SECURITY.md) · **Tiếng Việt**
+> [English](../../SECURITY.md) · **Tiếng Việt**
 
-PAMSignal là một daemon giám sát bảo mật. Một lỗ hổng trong chính daemon — vượt qua brute-force tracker, giả mạo cảnh báo, log injection, leo thang đặc quyền, memory corruption — được coi là một lỗi ưu tiên cao. Tài liệu này mô tả cách báo cáo riêng tư và những gì bạn có thể mong đợi sau khi báo cáo.
+PAMSignal là một daemon giám sát bảo mật. Một lỗ hổng trong chính daemon (vượt qua brute-force tracker, giả mạo cảnh báo, log injection, leo thang đặc quyền, memory corruption) được coi là một lỗi ưu tiên cao. Tài liệu này mô tả cách báo cáo riêng tư và những gì bạn có thể mong đợi sau khi báo cáo.
 
 ## Báo Cáo Lỗ Hổng
 
@@ -10,7 +10,7 @@ PAMSignal là một daemon giám sát bảo mật. Một lỗ hổng trong chín
 
 Sử dụng một trong các kênh riêng tư dưới đây:
 
-1. **Ưu tiên — GitHub Security Advisories.** Mở một advisory riêng tư trên repository:
+1. **Ưu tiên: GitHub Security Advisories.** Mở một advisory riêng tư trên repository:
    <https://github.com/anhtuank7c/pamsignal/security/advisories/new>
    Thread này vẫn riêng tư cho đến khi cả người báo cáo và người bảo trì đồng ý công bố, và việc yêu cầu gán CVE có thể được thực hiện qua cùng một giao diện.
 
@@ -36,21 +36,21 @@ Khi báo cáo, vui lòng bao gồm:
 
 Hai trục:
 
-**Dòng release.** Chỉ dòng release **minor** gần nhất mới nhận được bản vá bảo mật. Các bản vá cho các minor cũ hơn được xem xét từng trường hợp và chỉ khi bản vá rõ ràng trong một dòng — bất kỳ ai chạy project đều nên mong đợi việc nâng cấp lên minor mới nhất để được hỗ trợ bảo mật.
+**Dòng release.** Chỉ dòng release **minor** gần nhất mới nhận được bản vá bảo mật. Các bản vá cho các minor cũ hơn được xem xét từng trường hợp và chỉ khi bản vá rõ ràng trong một dòng; bất kỳ ai chạy project đều nên mong đợi việc nâng cấp lên minor mới nhất để được hỗ trợ bảo mật.
 
 | Phiên bản | Được hỗ trợ |
 |---------|-----------|
-| `0.3.x` | ✅ |
-| `0.2.x` | ❌ (dùng `0.3.x`) |
-| `0.1.x` | ❌ |
+| `0.3.x` | Có |
+| `0.2.x` | Không (dùng `0.3.x`) |
+| `0.1.x` | Không |
 
 Đường cài đặt được khuyến nghị là repository apt hoặc dnf đã được ký, được ghi lại trong [`README.md`](README.md#1-cài-đặt); `apt upgrade` / `dnf upgrade` giữ bạn trên dòng được hỗ trợ một cách tự động.
 
-**Hệ điều hành / distro.** Pamsignal chỉ hỗ trợ Linux hiện đại có systemd gốc. Ma trận distro đầy đủ — các distro được kiểm tra trên CI, các distro dự kiến hoạt động với chú thích từng dòng, và các release không được hỗ trợ rõ ràng với lý do kỹ thuật cho mỗi điểm cut-off — nằm trong [`docs/distros.md`](../../docs/distros.md). Một báo cáo lỗ hổng đối với distro Tier 3 sẽ bị đóng với một con trỏ đến tài liệu đó; các lỗ hổng ảnh hưởng đến distro Tier 1 hoặc Tier 2 nằm trong phạm vi xem xét bảo mật theo chính sách này.
+**Hệ điều hành / distro.** Pamsignal chỉ hỗ trợ Linux hiện đại có systemd gốc. Ma trận distro đầy đủ (các distro được kiểm tra trên CI, các distro dự kiến hoạt động với chú thích từng dòng, và các release không được hỗ trợ rõ ràng với lý do kỹ thuật cho mỗi điểm cut-off) nằm trong [`docs/distros.md`](../../docs/distros.md). Một báo cáo lỗ hổng đối với distro Tier 3 sẽ bị đóng với một con trỏ đến tài liệu đó; các lỗ hổng ảnh hưởng đến distro Tier 1 hoặc Tier 2 nằm trong phạm vi xem xét bảo mật theo chính sách này.
 
 ## Phạm Vi
 
-Bảng phân tích đầy đủ trong phạm vi / ngoài phạm vi — bao gồm các khả năng của kẻ tấn công mà daemon giả định, ranh giới tin cậy bên trong codebase, và các lựa chọn thiết kế tạo ra tư thế bảo mật hiện tại — nằm trong [`docs/threat-model.md`](../../docs/threat-model.md). Hãy đọc trước khi báo cáo; đặc biệt, phần "Out of scope" ở đó rất toàn diện về các non-goal (compromised journald / libsystemd / curl, root đã có trên host, alert-provider compromise, multi-host correlation, durable alert delivery, admin misconfiguration).
+Bảng phân tích đầy đủ trong phạm vi / ngoài phạm vi, bao gồm các khả năng của kẻ tấn công mà daemon giả định, ranh giới tin cậy bên trong codebase, và các lựa chọn thiết kế tạo ra tư thế bảo mật hiện tại, nằm trong [`docs/threat-model.md`](../../docs/threat-model.md). Hãy đọc trước khi báo cáo; đặc biệt, phần "Out of scope" ở đó rất toàn diện về các non-goal (compromised journald / libsystemd / curl, root đã có trên host, alert-provider compromise, multi-host correlation, durable alert delivery, admin misconfiguration).
 
 Tóm tắt, đủ cho hầu hết các báo cáo:
 
@@ -68,4 +68,4 @@ Xem xét các biện pháp phòng thủ hiện có trước khi báo cáo giúp 
 - systemd unit hardening: `NoNewPrivileges`, `ProtectSystem=strict`, `MemoryDenyWriteExecute`, `RestrictNamespaces`, `SystemCallFilter=@system-service ~@privileged @resources`, `CapabilityBoundingSet=` (trống). Có thể xác minh bằng `systemd-analyze security pamsignal.service`.
 - Fuzzing liên tục: `tests/fuzz_parse_message.c` là một libFuzzer harness tùy chọn cho `ps_parse_message`. Chạy với `meson setup -Dfuzz=enabled build-fuzz` (yêu cầu clang).
 
-Nếu phát hiện của bạn là một cải tiến dựa trên một trong những biện pháp này — ví dụ một trường hợp parser mà fuzz corpus chưa bao phủ, hoặc một khoảng trống syscall-filter — vui lòng nêu rõ điều đó trong báo cáo để bản vá có thể được triển khai cùng với một regression test.
+Nếu phát hiện của bạn là một cải tiến dựa trên một trong những biện pháp này (ví dụ một trường hợp parser mà fuzz corpus chưa bao phủ, hoặc một khoảng trống syscall-filter), vui lòng nêu rõ điều đó trong báo cáo để bản vá có thể được triển khai cùng với một regression test.

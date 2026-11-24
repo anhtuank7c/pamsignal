@@ -265,9 +265,9 @@ int main(int argc, char *argv[]) {
 
     // Resolve config path to absolute before daemonize calls chdir("/").
     // Failure modes:
-    //   ENOENT — file doesn't exist; ps_config_load will fall back to
+    //   ENOENT: file doesn't exist; ps_config_load will fall back to
     //            defaults. Keep the original (likely default) path.
-    //   anything else (EACCES, ELOOP, ENAMETOOLONG, ...) — refuse to start.
+    //   anything else (EACCES, ELOOP, ENAMETOOLONG, ...): refuse to start.
     //   Continuing with an unresolvable user-supplied path could surface a
     //   symlink swap or permission misconfiguration.
     static char resolved_path[PATH_MAX];

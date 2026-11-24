@@ -1,8 +1,8 @@
 // Transport-layer test for the mTLS path. The existing webhook.test.ts
 // exercises the Bearer middleware via supertest against the Express `app`
 // directly (no transport involved); this file proves the construction
-// pattern in src/server.ts — `https.createServer({ requestCert: true,
-// rejectUnauthorized: true, ca })` + the same `app` — actually rejects
+// pattern in src/server.ts (`https.createServer({ requestCert: true,
+// rejectUnauthorized: true, ca })` + the same `app`) actually rejects
 // unauthenticated TLS handshakes and accepts authenticated ones.
 //
 // Certs are generated fresh under a temp dir at setup via openssl (same
@@ -146,10 +146,10 @@ function postWithoutClientCert(payload: object): Promise<{ status?: number; tlsE
           Authorization: `Bearer ${SECRET}`,
         },
         ca: fs.readFileSync(path.join(certDir, 'ca.crt')),
-        // Deliberately no `cert` / `key` — server should reject the request.
+        // Deliberately no `cert` / `key`; server should reject the request.
       },
       (res) => {
-        // If we get here, the server let an unauthenticated client through —
+        // If we get here, the server let an unauthenticated client through,
         // resolve with the status so the test can fail loudly with the value.
         resolve({ status: res.statusCode });
       },
@@ -184,7 +184,7 @@ describe('mTLS handshake', () => {
     process.env.WEBHOOK_SECRET = 'different-secret';
     const { status, tlsError } = await postWithClientCert(VALID_PAYLOAD);
     expect(tlsError).toBeUndefined();
-    // Bearer mismatch — middleware should 401 even though TLS handshake
+    // Bearer mismatch: middleware should 401 even though TLS handshake
     // and client cert validation passed.
     expect(status).toBe(401);
     process.env.WEBHOOK_SECRET = SECRET;

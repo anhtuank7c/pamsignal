@@ -1,4 +1,4 @@
-# PAMSignal — local try-it stack
+# PAMSignal: local try-it stack
 #
 # Brings up Loki + Grafana + Alloy + a synthetic event producer so you can
 # see the PAMSignal dashboard working without needing a real Linux host with

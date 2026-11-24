@@ -18,7 +18,7 @@
       "id": "single-chapter-v1-en",
       "input": "ASVS V1 encoding & sanitization review on the parsing surfaces.",
       "expect": [
-        "scope narrowed to V1 only — does not load other reference files",
+        "scope narrowed to V1 only; does not load other reference files",
         "checks that sanitize_string is called by every extract_* parser in src/utils.c",
         "checks that json_escape is applied to every PAM-derived field before insertion into the alert body in src/notify.c",
         "checks the spoof guard ps_is_trusted_exe is active in src/journal_watch.c",
@@ -48,7 +48,7 @@
     },
     {
       "id": "level-targeted-l2",
-      "input": "L2 ASVS compliance check — what's missing?",
+      "input": "L2 ASVS compliance check: what's missing?",
       "expect": [
         "scope confirmed: L2 controls only, across applicable chapters",
         "findings include: V11.2.3 documented key rotation procedure for operator-supplied TLS keys, V13.4.3-4 sandbox directives (MemoryMax, PrivateTmp, ProtectSystem), V15.5.2 SBOM / reproducible build, V15.6.3 ASan/UBSan CI build, V16.4.1 journal FSS",
@@ -62,7 +62,7 @@
         "skill clarifies whether to use HEAD vs HEAD~1 diff scope",
         "loads only the chapters touched by the diff (e.g., V1+V2 for a new parser; V15+V12 for a notify change; V13 for a meson.build change)",
         "report explicitly states the scope was the diff, not the whole repo",
-        "marks chapters not touched by the diff as 'not in scope', not as ✅ Pass"
+        "marks chapters not touched by the diff as 'not in scope', not as PASS"
       ]
     },
     {

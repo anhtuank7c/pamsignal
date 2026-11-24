@@ -1,6 +1,6 @@
 # PAMSignal Node.js Webhook Receiver
 
-> 🌐 **English** · [Tiếng Việt](../../docs/vi/examples/nodejs-webhook.md)
+> **English** · [Tiếng Việt](../../docs/vi/examples/nodejs-webhook.md)
 
 This is a ready-to-use example of a Custom Webhook receiver built with **TypeScript**, Node.js, and Express. It receives structured ECS JSON alerts from PAMSignal and processes them.
 
@@ -10,7 +10,7 @@ This example incorporates Express best practices, including:
 - **Request Logging** using `morgan`
 - **Authentication** using a secret Bearer token
 
-## 🚀 Getting Started
+## Getting Started
 
 ### 1. Install Dependencies
 
@@ -45,9 +45,9 @@ npm run dev
 
 The server will start listening on `http://localhost:3000/webhook/pamsignal`.
 
-## ⚙️ Integrating with PAMSignal
+## Integrating with PAMSignal
 
-This Express app strictly enforces `Authorization: Bearer <token>` to avoid leaking secrets through URL access logs. PAMSignal supports this directly via the `webhook_auth_header` config key — no reverse proxy required.
+This Express app strictly enforces `Authorization: Bearer <token>` to avoid leaking secrets through URL access logs. PAMSignal supports this directly via the `webhook_auth_header` config key, so no reverse proxy is required.
 
 ### Direct configuration (recommended)
 
@@ -97,7 +97,7 @@ EOF
 npm run dev   # or: npm run build && npm start
 ```
 
-You should see `🔐 PAMSignal Webhook Receiver listening on https://localhost:3000/webhook/pamsignal (mTLS — client cert required)`.
+You should see `PAMSignal Webhook Receiver listening on https://localhost:3000/webhook/pamsignal (mTLS, client cert required)`.
 
 #### Configure pamsignal
 
@@ -112,15 +112,15 @@ webhook_client_key  = /absolute/path/to/certs/client.key
 webhook_ca_bundle   = /absolute/path/to/certs/ca.crt
 ```
 
-Reload pamsignal (`sudo systemctl reload pamsignal`) and trigger an event — the receiver should log it. A request from any client without a valid cert (e.g. `curl https://localhost:3000/webhook/pamsignal`) will be rejected at the TLS handshake before reaching Express.
+Reload pamsignal (`sudo systemctl reload pamsignal`) and trigger an event; the receiver should log it. A request from any client without a valid cert (e.g. `curl https://localhost:3000/webhook/pamsignal`) will be rejected at the TLS handshake before reaching Express.
 
 #### Production layout
 
-For production deployments, replace `./certs/*` with paths managed by your cert pipeline (cert-manager, certbot, `systemd-creds`, internal CA + ACME, etc.). The four env vars and the `webhook_*` config keys are unchanged. `gen-test-certs.sh` is for local/CI testing — do not ship its output to production.
+For production deployments, replace `./certs/*` with paths managed by your cert pipeline (cert-manager, certbot, `systemd-creds`, internal CA + ACME, etc.). The four env vars and the `webhook_*` config keys are unchanged. `gen-test-certs.sh` is for local/CI testing; do not ship its output to production.
 
 mTLS combines additively with `webhook_auth_header` if the receiver wants both (mTLS for transport-layer service identity, Bearer for per-request authorization). The Express middleware in this example checks the Bearer token regardless of the transport, so an mTLS-only deployment can simply leave `WEBHOOK_SECRET` unset (or set both for defense in depth).
 
-## 🛠️ Deploying as a Systemd Daemon
+## Deploying as a Systemd Daemon
 
 For production, you should run this webhook receiver as a background service so it automatically starts on boot and restarts if it crashes. 
 
@@ -177,20 +177,20 @@ For production, you should run this webhook receiver as a background service so 
    journalctl -u pamsignal-webhook -f
    ```
 
-## 🧪 Testing it manually
+## Testing it manually
 
 ### Using Bruno API Client
 
-A shared **Bruno** collection lives at [`../bruno-collection/`](../bruno-collection/) and works against any receiver that implements the PAMSignal webhook contract — this Node.js example and the Python Flask example both qualify. It ships two environments:
+A shared **Bruno** collection lives at [`../bruno-collection/`](../bruno-collection/) and works against any receiver that implements the PAMSignal webhook contract. This Node.js example and the Python Flask example both qualify. It ships two environments:
 
-- **Local** — plain HTTP, Bearer-token only
-- **Local-mTLS** — HTTPS with a client cert (pair with `TLS_REQUIRE_CLIENT_CERT=true` here)
+- **Local**: plain HTTP, Bearer-token only
+- **Local-mTLS**: HTTPS with a client cert (pair with `TLS_REQUIRE_CLIENT_CERT=true` here)
 
 See [`../bruno-collection/README.md`](../bruno-collection/README.md) for cert-symlink setup. Quick start:
 
 1. Download [Bruno](https://www.usebruno.com/).
-2. Click **Open Collection** (not *Import Collection* — that path expects Postman/OpenAPI JSON) and select the `examples/bruno-collection` folder.
-3. Pick the environment from the dropdown (top right) — `Local` or `Local-mTLS`.
+2. Click **Open Collection** (not *Import Collection*, which expects Postman/OpenAPI JSON) and select the `examples/bruno-collection` folder.
+3. Pick the environment from the dropdown (top right): `Local` or `Local-mTLS`.
 4. Update the chosen environment's `WEBHOOK_SECRET` to match your `.env` and click **Send**.
 
 ### Using Curl
@@ -211,7 +211,7 @@ curl -X POST http://localhost:3000/webhook/pamsignal \
 
 You should see the parsed event beautifully logged in your `journalctl` stream or Node.js console!
 
-## ✅ Unit Tests
+## Unit Tests
 
 This project includes a comprehensive Jest test suite that verifies authentication (Bearer token) and payload validation.
 

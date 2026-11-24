@@ -1,6 +1,6 @@
 # Meson & Ninja: Công Cụ Build
 
-> 🌐 [English](../../notes/meson-build-system.md) · **Tiếng Việt**
+> [English](../../notes/meson-build-system.md) · **Tiếng Việt**
 
 - **Trạng thái**: Hoàn thành
 - **Ngày bắt đầu**: 20/02/2026

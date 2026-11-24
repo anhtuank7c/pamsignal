@@ -16,7 +16,7 @@ timeout-*
 # dpkg-buildpackage / debhelper byproducts. tests/scenario.sh and a
 # manual `dpkg-buildpackage -us -uc -b` both produce these under debian/.
 # Tracked debian/ files (changelog, control, copyright, postinst, postrm,
-# prerm, rules, source/format) are not affected — these patterns only
+# prerm, rules, source/format) are not affected; these patterns only
 # match the auto-generated state.
 debian/.debhelper/
 debian/debhelper-build-stamp

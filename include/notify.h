@@ -11,7 +11,7 @@
 void ps_notify_event(const ps_config_t *cfg, const ps_pam_event_t *event);
 
 // Send alert for brute-force detection. last_pid is the failing sshd auth
-// child from the breaching attempt — included for forensic context, even
+// child from the breaching attempt, included for forensic context, even
 // though the process is typically already reaped by the time the alert
 // reaches the operator.
 void ps_notify_brute_force(const ps_config_t *cfg, const char *source_ip,
@@ -30,7 +30,7 @@ void ps_notify_local_brute_force(const ps_config_t *cfg, ps_service_t service,
                                  uint64_t timestamp_usec, pid_t last_pid);
 
 // Send alert for a successful login that follows a run of failures from the
-// same source IP — a likely guessed password. event is the LOGIN_SUCCESS
+// same source IP: a likely guessed password. event is the LOGIN_SUCCESS
 // event; failures is the length of the run that preceded it.
 void ps_notify_login_after_failures(const ps_config_t *cfg,
                                     const ps_pam_event_t *event, int failures,

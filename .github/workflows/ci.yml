@@ -12,7 +12,7 @@ on:
   pull_request:
     branches: [main]
 
-# Cancel in-progress runs when a newer commit lands on the same ref —
+# Cancel in-progress runs when a newer commit lands on the same ref;
 # CI capacity is not infinite and the older run's signal is stale.
 concurrency:
   group: ci-${{ github.ref }}

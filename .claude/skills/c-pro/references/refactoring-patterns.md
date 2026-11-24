@@ -1,4 +1,4 @@
-# Refactoring Patterns — Concrete Before/After
+# Refactoring Patterns: Concrete Before/After
 
 The SKILL.md lists C-specific smells in a table. This file shows how to actually fix them, with paired examples drawn from the kinds of code you find in long-running daemons.
 
@@ -19,7 +19,7 @@ The SKILL.md lists C-specific smells in a table. This file shows how to actually
 
 ## 1. Long function with mixed concerns
 
-**Before** — 80 lines doing three things at once:
+**Before**: 80 lines doing three things at once:
 
 ```c
 int ps_journal_process(sd_journal *j) {
@@ -39,7 +39,7 @@ int ps_journal_process(sd_journal *j) {
 }
 ```
 
-**After** — three named verbs:
+**After**: three named verbs:
 
 ```c
 int ps_journal_process(sd_journal *j) {
@@ -72,7 +72,7 @@ int ps_parse_line(const char *line,
 
 Five outputs, error-prone at every call site.
 
-**After** — return a struct:
+**After**: return a struct:
 
 ```c
 typedef struct {
@@ -94,7 +94,7 @@ if (ps_parse_line(line, &p) != PS_OK) return PS_ERR_PARSE;
 log_event(&p);
 ```
 
-If the struct grows to dozens of fields, that is a separate problem (too many concerns) — but for 4–8 related outputs, the struct is the right answer.
+If the struct grows to dozens of fields, that is a separate problem (too many concerns), but for 4–8 related outputs, the struct is the right answer.
 
 ---
 
@@ -108,7 +108,7 @@ void ps_notify_send(const char *msg, bool urgent, bool include_ip, bool to_teleg
 ps_notify_send("ssh failure", true, false, true);   // unreadable at the call site
 ```
 
-**After** — name the variants:
+**After**: name the variants:
 
 ```c
 void ps_notify_send_alert(const char *msg);
@@ -144,7 +144,7 @@ else                                  format_unknown(ev, buf);
 
 Every new event type means another `else if`.
 
-**After** — table dispatch:
+**After**: table dispatch:
 
 ```c
 typedef void (*ps_format_fn)(const ps_event_t *, char *buf, size_t cap);
@@ -171,7 +171,7 @@ A `switch` over the enum is equivalent and sometimes clearer when each case has 
 
 ## 5. Repeated NULL-guards at the top of every function
 
-**Before** — five functions, each starting with:
+**Before**: five functions, each starting with:
 
 ```c
 int ps_foo(ps_ctx_t *ctx, const char *s) {
@@ -181,9 +181,9 @@ int ps_foo(ps_ctx_t *ctx, const char *s) {
 }
 ```
 
-This is defensive theater if the callers are all internal — and harmful if it masks real bugs by turning programmer errors into runtime errors.
+This is defensive theater if the callers are all internal, and harmful if it masks real bugs by turning programmer errors into runtime errors.
 
-**After** — document the precondition, assert it:
+**After**: document the precondition, assert it:
 
 ```c
 /**
@@ -196,15 +196,15 @@ int ps_foo(ps_ctx_t *ctx, const char *s) {
 }
 ```
 
-If the function is genuinely a public API where untrusted callers might pass `NULL`, keep the runtime check at the one entry point — not at every internal helper.
+If the function is genuinely a public API where untrusted callers might pass `NULL`, keep the runtime check at the one entry point, not at every internal helper.
 
 ---
 
 ## 6. Manual cleanup ladders everywhere
 
-**Before** — every function ends in 15 lines of goto-cleanup, each subtly different and a source of leaks.
+**Before**: every function ends in 15 lines of goto-cleanup, each subtly different and a source of leaks.
 
-**After** — introduce `_cleanup_*_` macros once, use everywhere:
+**After**: introduce `_cleanup_*_` macros once, use everywhere:
 
 ```c
 // include/ps_cleanup.h
@@ -265,7 +265,7 @@ For values used in one translation unit only, prefer `static const`:
 static const size_t MAX_USERNAME = 32;
 ```
 
-Macros for things that need a type are a trap — they have no scope and no type-checking.
+Macros for things that need a type are a trap: they have no scope and no type-checking.
 
 ---
 
@@ -306,7 +306,7 @@ int ps_parse_batch(const char *blob);
 
 Caller has to distinguish three meanings from one `int`. Common bugs: treating `0` as success, treating `-1` as count.
 
-**After** — separate the channels:
+**After**: separate the channels:
 
 ```c
 int ps_parse_batch(const char *blob, size_t *out_count);
@@ -315,7 +315,7 @@ int ps_parse_batch(const char *blob, size_t *out_count);
 size_t n = 0;
 int rc = ps_parse_batch(blob, &n);
 if (rc != PS_OK)  return rc;
-if (n == 0)       /* empty input — handle distinctly */;
+if (n == 0)       /* empty input: handle distinctly */;
 ```
 
 The return code carries success/failure. The count is a separate channel that is only meaningful when `rc == PS_OK`.
@@ -355,7 +355,7 @@ static inline int ps_safe_copy(char *dest, size_t cap, const char *src) {
 }
 ```
 
-Truncation is usually a bug — surface it as an error, do not silently drop characters.
+Truncation is usually a bug. Surface it as an error, do not silently drop characters.
 
 ---
 

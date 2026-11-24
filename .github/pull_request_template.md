@@ -1,5 +1,5 @@
 <!--
-Thanks for sending a PR. Fill in the sections below — anything left
+Thanks for sending a PR. Fill in the sections below; anything left
 blank usually means a longer review cycle.
 
 For SECURITY fixes, please use the private-disclosure path in
@@ -45,7 +45,7 @@ For example:
 - [ ] `clang-format -i src/*.c include/*.h tests/*.c` produced no diff (style is convergent).
 - [ ] `clang-tidy -p build src/*.c tests/*.c` reports zero warnings/errors.
 - [ ] `meson compile -C build` produces zero warnings.
-- [ ] `meson test -C build` — every existing test still passes; new tests cover the change.
+- [ ] `meson test -C build`: every existing test still passes; new tests cover the change.
 - [ ] [`CHANGELOG.md`](../CHANGELOG.md) updated under `## Unreleased` with an entry in the appropriate subsection.
 - [ ] Commit subject follows [Conventional Commits](https://www.conventionalcommits.org/) (`feat:` / `fix:` / `security:` / `refactor:` / `docs:` / `chore:` / `test:` / `perf:`), imperative mood, ≤72 chars.
 - [ ] For `refactor!:` / breaking changes: a `BREAKING CHANGE:` footer in the commit body, plus a CHANGELOG note explaining the migration path.

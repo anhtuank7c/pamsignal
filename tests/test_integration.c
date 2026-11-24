@@ -15,7 +15,7 @@
 // We #include BOTH journal_watch.c and notify.c into this translation unit
 // so we can drive file-static helpers from each (fail_table, format_brute_json
 // etc) without exposing them in the public headers. The meson rule therefore
-// must NOT also list src/journal_watch.c or src/notify.c — that would yield
+// must NOT also list src/journal_watch.c or src/notify.c; that would yield
 // duplicate symbols. src/utils.c and src/config.c are still linked normally.
 
 #include <setjmp.h>
@@ -210,7 +210,7 @@ static void test_sudo_local_brute_force_end_to_end(void **state) {
 //
 // When sudo runs inside an SSH session, pam_unix puts the caller's IP in
 // rhost. The parser must surface it as source_ip, and the tracker's
-// derive_fail_key must then prefer the IP over the local-user fallback —
+// derive_fail_key must then prefer the IP over the local-user fallback;
 // otherwise an attacker who SSH'd in could evade IP-based brute-force
 // correlation by pivoting to sudo.
 
@@ -240,7 +240,7 @@ static void test_sudo_with_rhost_is_ip_keyed(void **state) {
 //
 // Two attackers from different IPs must be tracked independently. Each IP's
 // alert payload, generated from its own breaching event, must reference only
-// its own address — no cross-contamination from the other entry.
+// its own address, with no cross-contamination from the other entry.
 
 static void test_multi_ip_interleaved_tracking(void **state) {
     (void)state;

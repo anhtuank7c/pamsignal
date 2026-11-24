@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# who-did-what — a read-only report of who logged in, who became root, what
+# who-did-what: a read-only report of who logged in, who became root, what
 # they ran and which watched files they changed, built from the systemd
 # journal and the Linux audit log.
 #
@@ -23,7 +23,7 @@ SECTIONS=()
 
 usage() {
     cat <<EOF
-$PROG $VERSION — who logged in, who became root, what they ran, what they changed.
+$PROG $VERSION: who logged in, who became root, what they ran, what they changed.
 
 Usage: sudo $0 [options] [section...]
 
@@ -274,11 +274,11 @@ section_sudo() {
 
 audit_ready() {
     if ! command -v ausearch >/dev/null 2>&1 || ! command -v auditctl >/dev/null 2>&1; then
-        note "auditd is not installed — see docs/ssh-hardening.md, section 2.3"
+        note "auditd is not installed; see docs/ssh-hardening.md, section 2.3"
         return 1
     fi
     if ! AUDIT_RULES=$(auditctl -l 2>/dev/null); then
-        note "cannot read the audit rules — run with sudo"
+        note "cannot read the audit rules; run with sudo"
         return 1
     fi
 }
@@ -341,7 +341,7 @@ section_commands() {
     heading "Commands (auditd, by login ID)"
     audit_ready || return 0
     if ! grep -q 'key=user-cmd' <<<"$AUDIT_RULES"; then
-        note "no audit rule with key 'user-cmd' is loaded — see docs/ssh-hardening.md, section 2.3"
+        note "no audit rule with key 'user-cmd' is loaded; see docs/ssh-hardening.md, section 2.3"
         return 0
     fi
     audit_user_args || return 0
@@ -413,7 +413,7 @@ section_files() {
             }
         }' <<<"$AUDIT_RULES" | grep -vx 'user-cmd' | sort -u || true)
     if [ -z "$keys" ]; then
-        note "no audit file watches (-w ... or -F path=/dir= with a key) are loaded — see docs/ssh-hardening.md, section 2.4"
+        note "no audit file watches (-w ... or -F path=/dir= with a key) are loaded; see docs/ssh-hardening.md, section 2.4"
         return 0
     fi
     audit_user_args || return 0
@@ -453,9 +453,9 @@ main() {
     parse_args "$@"
     resolve_window
     if [ "$(id -u)" -ne 0 ]; then
-        printf '%s: not running as root — other users'"'"' journal entries and the audit log will be missing. Use sudo.\n' "$PROG" >&2
+        printf '%s: not running as root: other users'"'"' journal entries and the audit log will be missing. Use sudo.\n' "$PROG" >&2
     fi
-    printf '%s on %s — %s to %s%s\n' "$PROG" "$(hostname)" \
+    printf '%s on %s: %s to %s%s\n' "$PROG" "$(hostname)" \
         "$(date -d "@$SINCE_EPOCH" '+%Y-%m-%d %H:%M')" "$(date -d "@$UNTIL_EPOCH" '+%Y-%m-%d %H:%M')" \
         "${USER_FILTER:+, user $USER_FILTER}" | sanitize
     want logins && section_logins

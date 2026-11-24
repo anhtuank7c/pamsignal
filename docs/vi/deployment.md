@@ -1,10 +1,10 @@
 # Deployment
 
-> 🌐 [English](../deployment.md) · **Tiếng Việt**
+> [English](../deployment.md) · **Tiếng Việt**
 
 ## Cài đặt
 
-Con đường được khuyến nghị là dùng file `.deb` hoặc `.rpm` đã phát hành từ project repo (cùng các lệnh một dòng trong [README quick start](README.md#1-cài-đặt)). Các package này tạo system user `pamsignal`, đặt quyền file config thành `root:pamsignal 0640`, và kích hoạt systemd unit cho bạn — khi cài qua `apt` hoặc `dnf` bạn có thể bỏ qua thẳng đến [Cấu hình](#cấu-hình).
+Con đường được khuyến nghị là dùng file `.deb` hoặc `.rpm` đã phát hành từ project repo (cùng các lệnh một dòng trong [README quick start](README.md#1-cài-đặt)). Các package này tạo system user `pamsignal`, đặt quyền file config thành `root:pamsignal 0640`, và kích hoạt systemd unit cho bạn. Khi cài qua `apt` hoặc `dnf` bạn có thể bỏ qua thẳng đến [Cấu hình](#cấu-hình).
 
 Nếu build từ source, bạn tự thực hiện các bước đó; xem phần "Source build" bên dưới.
 
@@ -22,7 +22,7 @@ sudo apt update -o Dir::Etc::sourcelist="sources.list.d/pamsignal.list" \
 sudo apt install pamsignal
 ```
 
-Lệnh `apt update` được giới hạn ở đây chỉ refresh `pamsignal.list`. Nếu một repo bên thứ ba khác trên máy bị lỗi (ví dụ `NO_PUBKEY` hết hạn), lệnh `apt update && apt install` thông thường sẽ thoát với mã lỗi khác 0 và không bao giờ chạy tới bước cài đặt — các cờ `-o Dir::Etc::*` né vấn đề này bằng cách chỉ đọc đúng source của PamSignal. Bỏ các cờ này nếu bạn muốn chạy `apt update` đầy đủ.
+Lệnh `apt update` được giới hạn ở đây chỉ refresh `pamsignal.list`. Nếu một repo bên thứ ba khác trên máy bị lỗi (ví dụ `NO_PUBKEY` hết hạn), lệnh `apt update && apt install` thông thường sẽ thoát với mã lỗi khác 0 và không bao giờ chạy tới bước cài đặt; các cờ `-o Dir::Etc::*` né vấn đề này bằng cách chỉ đọc đúng source của PamSignal. Bỏ các cờ này nếu bạn muốn chạy `apt update` đầy đủ.
 
 `/etc/apt/keyrings` là vị trí tiêu chuẩn cho các APT signing key được cài bởi system administrator (theo `sources.list(5)`); dòng `install -d` là idempotent và an toàn để chạy lại trên các hệ thống đã có thư mục này.
 
@@ -57,14 +57,14 @@ sudo meson install -C build
 
 Với `--prefix=/usr/local` mặc định bạn sẽ có:
 
-- `/usr/local/bin/pamsignal` — binary (quy ước hiện đại của systemd: các daemon định hướng admin chia sẻ `/usr/bin` với mọi thứ khác, giống như `journalctl`, `systemctl`, `podman`, `containerd`)
-- `/usr/local/lib/systemd/system/pamsignal.service` — systemd unit (đường dẫn tìm kiếm vendor unit)
-- `/usr/local/etc/pamsignal/pamsignal.conf` — example config (từ `pamsignal.conf.example`)
-- `/usr/local/share/man/man8/pamsignal.8` — man page
+- `/usr/local/bin/pamsignal`: binary (quy ước hiện đại của systemd: các daemon định hướng admin chia sẻ `/usr/bin` với mọi thứ khác, giống như `journalctl`, `systemctl`, `podman`, `containerd`)
+- `/usr/local/lib/systemd/system/pamsignal.service`: systemd unit (đường dẫn tìm kiếm vendor unit)
+- `/usr/local/etc/pamsignal/pamsignal.conf`: example config (từ `pamsignal.conf.example`)
+- `/usr/local/share/man/man8/pamsignal.8`: man page
 
 Để cài toàn hệ thống theo bố cục giống package (`/usr/bin`, `/usr/lib/systemd/system`, `/etc/pamsignal`), cấu hình lại với `meson setup build --prefix=/usr --sysconfdir=/etc`.
 
-Source build **không** tạo system user `pamsignal` hay khóa quyền file config — hãy tự thực hiện các bước đó trước khi khởi động service:
+Source build **không** tạo system user `pamsignal` hay khóa quyền file config. Hãy tự thực hiện các bước đó trước khi khởi động service:
 
 ```bash
 sudo useradd -r -s /usr/sbin/nologin pamsignal
@@ -88,7 +88,7 @@ Chỉnh sửa file config. Đường dẫn tùy thuộc vào cách bạn đã c�
 sudo editor /etc/pamsignal/pamsignal.conf
 ```
 
-Tất cả các giá trị đều tùy chọn — mặc định đã hợp lý. Để bật cảnh báo, thêm thông tin xác thực kênh của bạn (ví dụ: Telegram, Slack):
+Tất cả các giá trị đều tùy chọn; mặc định đã hợp lý. Để bật cảnh báo, thêm thông tin xác thực kênh của bạn (ví dụ: Telegram, Slack):
 
 ```ini
 telegram_bot_token = <bot_token>
@@ -99,7 +99,7 @@ Xem [Configuration](./configuration.md) để biết tất cả các tùy chọn
 
 ### Xác thực custom webhook
 
-Nếu bạn trỏ `webhook_url` đến SIEM hoặc receiver của riêng mình, hãy cấu hình xác thực với `webhook_auth_header` (Bearer token, API key, v.v.) hoặc — với môi trường đã có PKI — `webhook_client_cert` + `webhook_client_key` cho mTLS:
+Nếu bạn trỏ `webhook_url` đến SIEM hoặc receiver của riêng mình, hãy cấu hình xác thực với `webhook_auth_header` (Bearer token, API key, v.v.) hoặc, với môi trường đã có PKI, `webhook_client_cert` + `webhook_client_key` cho mTLS:
 
 ```bash
 # Đặt client cert + key trong thư mục config của daemon.
@@ -108,7 +108,7 @@ sudo install -o root -g pamsignal -m 0644 webhook-client.crt /etc/pamsignal/
 sudo install -o root -g pamsignal -m 0640 webhook-client.key /etc/pamsignal/
 ```
 
-Daemon sẽ từ chối khởi động nếu `webhook_client_key` có quyền đọc cho group hoặc other; mode `0640` với group `pamsignal` là bố cục chuẩn (khớp với chính `pamsignal.conf`). Nếu cert manager của bạn (cert-manager, certbot, `systemd-creds`) triển khai key ở nơi khác, hãy trỏ `webhook_client_key` đến đường dẫn đó — pamsignal mở file với `O_NOFOLLOW` và xác thực quyền sở hữu cùng mode khi mỗi lần load config. Xem [Configuration → Xác thực custom webhook](./configuration.md#xác-thực-custom-webhook) để biết tham chiếu đầy đủ.
+Daemon sẽ từ chối khởi động nếu `webhook_client_key` có quyền đọc cho group hoặc other; mode `0640` với group `pamsignal` là bố cục chuẩn (khớp với chính `pamsignal.conf`). Nếu cert manager của bạn (cert-manager, certbot, `systemd-creds`) triển khai key ở nơi khác, hãy trỏ `webhook_client_key` đến đường dẫn đó; pamsignal mở file với `O_NOFOLLOW` và xác thực quyền sở hữu cùng mode khi mỗi lần load config. Xem [Configuration → Xác thực custom webhook](./configuration.md#xác-thực-custom-webhook) để biết tham chiếu đầy đủ.
 
 ## Khởi động service
 
@@ -138,7 +138,7 @@ Sau khi chỉnh sửa `/etc/pamsignal/pamsignal.conf`:
 sudo systemctl reload pamsignal
 ```
 
-Lệnh này gửi SIGHUP — không có downtime, không cần restart.
+Lệnh này gửi SIGHUP: không có downtime, không cần restart.
 
 ## Dừng
 
@@ -165,7 +165,7 @@ sudo apt remove pamsignal
 sudo apt purge pamsignal
 ```
 
-Các maintainer script đi kèm package (`debian/pamsignal.{prerm,postrm}`) xử lý `systemctl stop`, `systemctl disable` và `daemon-reload`. System user `pamsignal` **được cố ý giữ lại** qua cả `remove` và `purge` — nếu có bất kỳ file nào trên hệ thống được tạo với UID đó (artifact runtime, file sót lại bất ngờ) mà user bị xóa, file sẽ bị orphan với UID số mà kernel có thể sau này tái sử dụng cho một user khác. Chỉ xóa user thủ công sau khi bạn đã xác nhận không có gì trên hệ thống thuộc sở hữu của nó:
+Các maintainer script đi kèm package (`debian/pamsignal.{prerm,postrm}`) xử lý `systemctl stop`, `systemctl disable` và `daemon-reload`. System user `pamsignal` **được cố ý giữ lại** qua cả `remove` và `purge`. Nếu có bất kỳ file nào trên hệ thống được tạo với UID đó (artifact runtime, file sót lại bất ngờ) mà user bị xóa, file sẽ bị orphan với UID số mà kernel có thể sau này tái sử dụng cho một user khác. Chỉ xóa user thủ công sau khi bạn đã xác nhận không có gì trên hệ thống thuộc sở hữu của nó:
 
 ```bash
 sudo find / -user pamsignal 2>/dev/null
@@ -180,13 +180,13 @@ rpm chỉ có một lệnh gỡ cài đặt:
 sudo dnf remove pamsignal
 ```
 
-Không có tương đương với `apt purge` — `dnf remove` đã xóa mọi thứ package đặt trên đĩa. Một điểm tinh tế: nếu bạn đã chỉnh sửa `/etc/pamsignal/pamsignal.conf` sau khi cài đặt, `rpm` sẽ lưu bản sửa đổi của bạn dưới tên `/etc/pamsignal/pamsignal.conf.rpmsave` thay vì xóa nó (chỉ thị `%config(noreplace)` trong `pamsignal.spec`). Xóa file `.rpmsave` bằng tay nếu bạn không còn cần cấu hình cũ.
+Không có tương đương với `apt purge`: `dnf remove` đã xóa mọi thứ package đặt trên đĩa. Một điểm tinh tế: nếu bạn đã chỉnh sửa `/etc/pamsignal/pamsignal.conf` sau khi cài đặt, `rpm` sẽ lưu bản sửa đổi của bạn dưới tên `/etc/pamsignal/pamsignal.conf.rpmsave` thay vì xóa nó (chỉ thị `%config(noreplace)` trong `pamsignal.spec`). Xóa file `.rpmsave` bằng tay nếu bạn không còn cần cấu hình cũ.
 
 Các block `%preun` / `%postun` trong spec xử lý vòng đời systemd. User `pamsignal` được giữ lại khi gỡ cài đặt vì lý do tương tự giải thích ở trên.
 
 ### Source build (`meson install`)
 
-Nếu bạn đã chạy `sudo meson install -C build` thay vì cài package, không có cơ sở dữ liệu package manager nào theo dõi những gì đã được đặt ở đâu — bạn phải hoàn tác thủ công:
+Nếu bạn đã chạy `sudo meson install -C build` thay vì cài package, không có cơ sở dữ liệu package manager nào theo dõi những gì đã được đặt ở đâu, nên bạn phải hoàn tác thủ công:
 
 ```bash
 sudo systemctl stop pamsignal
@@ -204,7 +204,7 @@ sudo userdel pamsignal
 sudo systemctl daemon-reload
 ```
 
-`/run/pamsignal/` không cần dọn dẹp thủ công — `RuntimeDirectory=pamsignal` tự xóa nó khi service dừng.
+`/run/pamsignal/` không cần dọn dẹp thủ công: `RuntimeDirectory=pamsignal` tự xóa nó khi service dừng.
 
 Nếu bạn đã cấu hình lại build với `--prefix=/usr --sysconfdir=/etc` để phản chiếu bố cục package, hãy thay `/usr/local/bin`, `/usr/local/lib/systemd/system`, `/usr/local/share/man/man8` và `/usr/local/etc/pamsignal` bằng các đối tương `/usr/...` và `/etc/...` tương ứng.
 

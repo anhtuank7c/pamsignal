@@ -1,4 +1,4 @@
-# PAMSignal — Grafana-native alert rules
+# PAMSignal: Grafana-native alert rules
 #
 # Apply via:   grafana-cli admin provision-folders --path ./provisioning
 # Or import:   Grafana → Alerting → Alert rules → Import (this YAML)
@@ -18,12 +18,12 @@ groups:
     interval: 1m
     rules:
       # ----------------------------------------------------------------------
-      # 1. Brute-force detected — fire on every PAMSignal-validated detection.
+      # 1. Brute-force detected: fire on every PAMSignal-validated detection.
       #    Severity: critical. PAMSignal already validated the threshold, so
       #    one detection is enough.
       # ----------------------------------------------------------------------
       - uid: pamsignal-brute-force
-        title: PAMSignal — brute-force detected
+        title: PAMSignal - brute-force detected
         condition: B
         data:
           - refId: A
@@ -61,12 +61,12 @@ groups:
           source: pamsignal
 
       # ----------------------------------------------------------------------
-      # 2. Successful root login over SSH — fire on every match.
+      # 2. Successful root login over SSH: fire on every match.
       #    Severity: high. Direct root SSH is the canonical "investigate" event.
       #    Disable PermitRootLogin in sshd_config to silence permanently.
       # ----------------------------------------------------------------------
       - uid: pamsignal-root-ssh-login
-        title: PAMSignal — root login over ssh
+        title: PAMSignal - root login over ssh
         condition: B
         data:
           - refId: A
@@ -110,12 +110,12 @@ groups:
           source: pamsignal
 
       # ----------------------------------------------------------------------
-      # 3. Failed-login spike from one IP — safety net if `fail_threshold`
+      # 3. Failed-login spike from one IP: safety net if `fail_threshold`
       #    is tuned higher than the host's tolerance.
       #    Severity: high. Tune the threshold to your fleet's baseline.
       # ----------------------------------------------------------------------
       - uid: pamsignal-ip-fail-spike
-        title: PAMSignal — ≥10 failed logins from one IP in 5 min
+        title: PAMSignal - ≥10 failed logins from one IP in 5 min
         condition: B
         data:
           - refId: A
@@ -163,12 +163,12 @@ groups:
           source: pamsignal
 
       # ----------------------------------------------------------------------
-      # 4. Host stopped reporting — heartbeat alert.
+      # 4. Host stopped reporting: heartbeat alert.
       #    Severity: medium. Fires if a host emitted events in the prior hour
       #    but nothing in the last 10 minutes.
       # ----------------------------------------------------------------------
       - uid: pamsignal-host-silent
-        title: PAMSignal — host stopped reporting
+        title: PAMSignal - host stopped reporting
         condition: B
         data:
           - refId: A

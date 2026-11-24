@@ -1,6 +1,6 @@
-# who-did-what — ai đã đăng nhập, ai đã lên root, họ đã chạy gì
+# who-did-what: ai đã đăng nhập, ai đã lên root, họ đã chạy gì
 
-> 🌐 [English](../../../examples/who-did-what/README.md) · **Tiếng Việt**
+> [English](../../../examples/who-did-what/README.md) · **Tiếng Việt**
 
 Một báo cáo chỉ đọc dành cho server có nhiều người cùng quản trị. Chỉ một lệnh trả lời những câu hỏi bạn sẽ hỏi khi có sự cố:
 
@@ -79,15 +79,15 @@ Từ VM test (`--user alice`, đã rút gọn):
 
 Cách đọc:
 
-- **`WHO alice` / `AS root`** — alice, đang hành động với quyền root. Audit log ghi login ID được đặt khi alice đăng nhập, và `sudo` hay `su` đều không đổi được nó, nên các lệnh gõ trong `sudo -i` vẫn mang tên cô ấy.
+- **`WHO alice` / `AS root`**: alice, đang hành động với quyền root. Audit log ghi login ID được đặt khi alice đăng nhập, và `sudo` hay `su` đều không đổi được nó, nên các lệnh gõ trong `sudo -i` vẫn mang tên cô ấy.
 - **`SES`** gom mọi thứ thuộc một phiên đăng nhập; **`TSID`** là ID phiên sudo mà bạn có thể phát lại bằng `sudo sudoreplay <TSID>` nếu đã bật [ghi lại phiên](../ssh-hardening.md#23-họ-đã-gõ-gì-bên-trong-shell-root).
-- **`(not in any authorized_keys)`** — key dùng cho lần đăng nhập đó không còn nằm trong file `authorized_keys` nào. Bình thường nếu bạn vừa gỡ key của ai đó; đáng điều tra nếu bạn không làm việc đó.
-- **`/etc/nginx/nginx.conf` được ghi qua `bash`** — thay đổi đến từ một lệnh chuyển hướng của shell (`echo … >> file`), nên nó chỉ hiện ở phần files chứ không ở phần commands: lệnh có sẵn của shell không khởi chạy chương trình nào.
+- **`(not in any authorized_keys)`**: key dùng cho lần đăng nhập đó không còn nằm trong file `authorized_keys` nào. Bình thường nếu bạn vừa gỡ key của ai đó; đáng điều tra nếu bạn không làm việc đó.
+- **`/etc/nginx/nginx.conf` được ghi qua `bash`**: thay đổi đến từ một lệnh chuyển hướng của shell (`echo … >> file`), nên nó chỉ hiện ở phần files chứ không ở phần commands: lệnh có sẵn của shell không khởi chạy chương trình nào.
 
 ## Những điều cần biết
 
 - **Chỉ bản ghi nền của lúc đăng nhập mới được ẩn theo mặc định.** Mỗi lần đăng nhập tự chạy một số chương trình: message of the day, phiên systemd của user, các bước kiểm tra lúc shell khởi động. Báo cáo ẩn những chương trình chạy với quyền root *trước khi* shell của chính người đó khởi động, trong các phiên đăng nhập nằm trong khoảng thời gian đang xem (người đó chưa thể chạy gì vào lúc ấy), cùng với vài chương trình hỗ trợ của systemd được nhận diện qua đường dẫn binary thật do kernel ghi. Không có gì bị ẩn chỉ vì nội dung dòng lệnh, nên đặt tên lệnh là `update-motd` cũng không giấu được nó. Báo cáo cho biết đã ẩn bao nhiêu bản ghi; `--raw` hiện tất cả.
-- **Dòng log giả bị bỏ qua.** User nào cũng có thể dùng `logger` để ghi một dòng gắn nhãn `sshd` hay `sudo`. Báo cáo chỉ đọc entry do sshd chạy bằng root và do chính binary `sudo`/`su` thật ghi (các trường `_UID` và `_EXE` của journald, lấy từ kernel). journald đọc `_EXE` ngay sau khi nhận message, nên entry từ một chương trình thoát ngay lập tức (một lần `sudo` bị từ chối, nhưng cũng có thể là `logger`) có thể thiếu trường này; những entry đó vẫn được hiện, gắn nhãn `[UNVERIFIED]`, để không lần từ chối nào bị mất và không dòng nào chưa kiểm chứng được coi là đã kiểm chứng, và chỉ coi một message của sshd là lần đăng nhập khi nó *bắt đầu* bằng `Accepted` — một lần thử thất bại với username `Accepted password for root from …` không được tính.
+- **Dòng log giả bị bỏ qua.** User nào cũng có thể dùng `logger` để ghi một dòng gắn nhãn `sshd` hay `sudo`. Báo cáo chỉ đọc entry do sshd chạy bằng root và do chính binary `sudo`/`su` thật ghi (các trường `_UID` và `_EXE` của journald, lấy từ kernel). journald đọc `_EXE` ngay sau khi nhận message, nên entry từ một chương trình thoát ngay lập tức (một lần `sudo` bị từ chối, nhưng cũng có thể là `logger`) có thể thiếu trường này; những entry đó vẫn được hiện, gắn nhãn `[UNVERIFIED]`, để không lần từ chối nào bị mất và không dòng nào chưa kiểm chứng được coi là đã kiểm chứng, và chỉ coi một message của sshd là lần đăng nhập khi nó *bắt đầu* bằng `Accepted`; một lần thử thất bại với username `Accepted password for root from …` không được tính.
 - **Dòng sudo nhập nhằng được đánh dấu, không đoán.** sudo ghi thư mục làm việc trước `USER=` và lệnh sau `COMMAND=`, mà cả hai đều do người dùng chọn. Một thư mục tên `/tmp/x ; USER=nobody ; COMMAND=/bin/true` khiến dòng log có hai cách đọc, nên dòng đó hiện ra dưới dạng `[AMBIGUOUS …]` với `?` ở cột user và TSID. Phần `commands` (auditd) không bị ảnh hưởng và cho thấy lệnh thực sự đã chạy.
 - **Output an toàn cho terminal của bạn.** Entry log chứa chuỗi do người khác chọn (username, tham số lệnh). Ký tự điều khiển được thay bằng `?`, nên không dòng log nào có thể xóa màn hình hay sửa những gì bạn đang thấy.
 - **Nó chỉ đọc những gì có trên server này.** Ai đó đã chiếm được root có thể xóa log cục bộ. Hãy giữ một bản sao ngoài server ([Bảo mật SSH, mục 2.6](../ssh-hardening.md#26-giữ-dấu-vết-ở-nơi-kẻ-xâm-nhập-không-xóa-được)) và điều tra trên bản sao đó khi chuyện quan trọng.
@@ -95,7 +95,7 @@ Cách đọc:
 
 ## Test
 
-`tests/e2e.sh` dựng một kịch bản nhỏ trên máy thật — hai user có SSH key, ghi lại phiên sudo và các audit rule trong hướng dẫn, một shell root, sửa file, một lần `sudo` bị từ chối, một tham số lệnh chứa chuỗi escape của terminal, và các lần thử giả mạo hay che giấu dấu vết — rồi kiểm tra từng dòng của báo cáo.
+`tests/e2e.sh` dựng một kịch bản nhỏ trên máy thật (hai user có SSH key, ghi lại phiên sudo và các audit rule trong hướng dẫn, một shell root, sửa file, một lần `sudo` bị từ chối, một tham số lệnh chứa chuỗi escape của terminal, và các lần thử giả mạo hay che giấu dấu vết) rồi kiểm tra từng dòng của báo cáo.
 
 Nó **cài openssh-server và auditd, tạo user, và thay đổi cấu hình sudo và audit**, nên chỉ chạy trên VM dùng xong bỏ hoặc CI runner:
 

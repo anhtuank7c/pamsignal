@@ -31,7 +31,7 @@ jobs:
   # --- Sanity gate: tag, meson.build, debian/changelog, pamsignal.spec
   # must all agree on the version. Without this, dpkg-buildpackage /
   # rpmbuild silently produce packages stamped with whatever the metadata
-  # says — which is how v0.2.4 shipped with 0.2.3 .debs.
+  # says, which is how v0.2.4 shipped with 0.2.3 .debs.
   verify-versions:
     name: Verify version consistency
     runs-on: ubuntu-24.04
@@ -52,12 +52,12 @@ jobs:
         run: |
           # Tag version: strip leading "refs/tags/" + "v". For
           # workflow_dispatch with ref=v0.2.4 this is "0.2.4". For a
-          # branch (workflow_dispatch with ref=main) we skip the gate —
+          # branch (workflow_dispatch with ref=main) we skip the gate;
           # branch builds aren't shipped, they're for testing.
           ref="${{ github.event.inputs.ref || github.ref_name }}"
           case "$ref" in
             v*) tag_version="${ref#v}" ;;
-            *)  echo "::notice::Non-tag ref '$ref' — skipping version gate."
+            *)  echo "::notice::Non-tag ref '$ref', skipping version gate."
                 exit 0 ;;
           esac
 
@@ -99,7 +99,7 @@ jobs:
 
       # Cache the .deb archives apt downloads. On cache hit, apt-get install
       # below reuses them instead of re-downloading from the mirror. We cache
-      # FILES (not installed state), then always run apt-get install — this
+      # FILES (not installed state), then always run apt-get install. This
       # is more robust than third-party "cache + install" actions that try
       # to skip apt entirely on cache hit.
       - name: Restore apt archive cache
@@ -194,7 +194,7 @@ jobs:
             out/*.ddeb
             out/*.asc
 
-  # --- Debian / Ubuntu 20.04 LTS (Focal) — release artifact only ---
+  # --- Debian / Ubuntu 20.04 LTS (Focal): release artifact only ---
   #
   # Ubuntu 20.04 entered ESM-only support on 2025-04-30. We don't maintain a
   # focal apt pocket on gh-pages (the per-distroseries repo infrastructure
@@ -222,7 +222,7 @@ jobs:
         shell: bash
     steps:
       - name: Install base tooling inside the focal container
-        # ubuntu:20.04 is minimal — git/curl/gnupg/ca-certificates aren't
+        # ubuntu:20.04 is minimal: git/curl/gnupg/ca-certificates aren't
         # preinstalled. checkout, signing, and gh-release upload all need them.
         run: |
           apt-get update -qq
@@ -262,7 +262,7 @@ jobs:
           #        pamsignal_<ver>-<rev>_focal_amd64.deb
           # so the asset is distinguishable from the noble .deb on the GitHub
           # release page. Package internals (control fields, version) are
-          # unchanged — only the asset filename gets the focal qualifier.
+          # unchanged; only the asset filename gets the focal qualifier.
           for f in ../pamsignal_*_amd64.deb ../pamsignal_*_amd64.ddeb; do
             [ -f "$f" ] || continue
             base=$(basename "$f")
@@ -329,8 +329,8 @@ jobs:
   # --- RPM builds (Fedora + EL9) ---
   #
   # Matrix produces:
-  #   - pamsignal-X.Y.Z-1.fcNN.* — Fedora N
-  #   - pamsignal-X.Y.Z-1.el9.* — installs on AlmaLinux 9, Rocky Linux 9, RHEL 9
+  #   - pamsignal-X.Y.Z-1.fcNN.*: Fedora N
+  #   - pamsignal-X.Y.Z-1.el9.*: installs on AlmaLinux 9, Rocky Linux 9, RHEL 9
   #     (RHEL clones are bit-for-bit binary compatible at the .el9 dist tag, so
   #     a single el9 build covers all three).
   build-rpm:
@@ -458,7 +458,7 @@ jobs:
                             --local-user "$GPG_KEY_ID" \
                             --sign --output /dev/null
 
-          # Minimal rpmmacros — just point rpm at the key. Macro lines must
+          # Minimal rpmmacros: just point rpm at the key. Macro lines must
           # start at column 0 (rpm ignores indented lines) so we use echo
           # rather than a heredoc that would inherit YAML indentation.
           {
@@ -482,7 +482,7 @@ jobs:
           rm -f /tmp/.gpg-pass
 
           # Verify each rpm's embedded sig. Modern rpm -K prints things like
-          # "Header V4 RSA/SHA256 Signature, key ID xxxxxxxx: OK" — we look
+          # "Header V4 RSA/SHA256 Signature, key ID xxxxxxxx: OK", so we look
           # for 'NOT OK' / 'BAD' as the failure markers and assume any other
           # output is a successful verification.
           # Process substitution `<(...)` is a bashism; the EL9 minimal
@@ -528,7 +528,7 @@ jobs:
   # job into a strategy.matrix over runs-on: [ubuntu-22.04, ubuntu-24.04,
   # ubuntu-26.04 (when available)] and ensuring the deb's libsystemd
   # dependency string is satisfiable on each (which probably means
-  # building a separate .deb per target — see the build-deb-focal /
+  # building a separate .deb per target; see the build-deb-focal /
   # test-deb-focal pair below for a working precedent that uses a
   # container per distroseries on a single host runner). Tracked in
   # docs/distros.md under "Adding a distribution to Tier 1".
@@ -718,7 +718,7 @@ jobs:
       - name: Configure pamsignal for the test webhook
         run: |
           sudo tee /etc/pamsignal/pamsignal.conf >/dev/null <<'CONF'
-          # Test config — points at the local mock webhook.
+          # Test config: points at the local mock webhook.
           webhook_url = https://localhost:8443/events
           fail_threshold = 3
           fail_window_sec = 60
@@ -848,7 +848,7 @@ jobs:
   # run the full e2e suite here because containers don't run systemd as PID 1
   # (no `systemctl is-active`, no `systemd-analyze security`, no real sshd
   # service to drive auth events through). The full daemon behavior is
-  # already verified by the test-deb job above on 24.04 — the source code
+  # already verified by the test-deb job above on 24.04; the source code
   # is identical, only the libsystemd0 dependency pin differs. This job
   # exists to catch packaging-level regressions specific to Focal (wrong
   # paths, broken postinst, missing man page, dependency string that doesn't
@@ -863,7 +863,7 @@ jobs:
       DEBIAN_FRONTEND: noninteractive
     defaults:
       run:
-        # Match build-deb-focal — keep bash as the default shell so future
+        # Match build-deb-focal: keep bash as the default shell so future
         # edits with bash idioms don't silently break on ubuntu:20.04's dash.
         shell: bash
     steps:
@@ -884,7 +884,7 @@ jobs:
           # /etc/dpkg/dpkg.cfg.d/excludes with
           #   path-exclude=/usr/share/man/*
           #   path-exclude=/usr/share/doc/*
-          # to keep the image small. Real focal hosts have no such rule —
+          # to keep the image small. Real focal hosts have no such rule,
           # so on a real install, /usr/share/man/man8/pamsignal.8.gz and
           # /usr/share/man/man5/pamsignal.conf.5.gz both land on disk. We
           # want the verify step below to exercise the real-host path, not
@@ -901,7 +901,7 @@ jobs:
 
       - name: CLI smoke (--version / --help)
         # Mirror of the noble test-deb job. Catches the failure mode where
-        # an installed binary produces no output for --version or --help —
+        # an installed binary produces no output for --version or --help,
         # a real operator-facing breakage that systemctl-status checks
         # would miss.
         run: |
@@ -928,7 +928,7 @@ jobs:
         # Verbose / instrumented form so any future failure pinpoints itself
         # in the CI log. The first iteration of this step on the 0.6.0
         # release failed somewhere between `Config perms` and the final
-        # zcat, with no marker in between — we never want to debug that
+        # zcat, with no marker in between. We never want to debug that
         # blind again.
         run: |
           fail() { echo "FAIL: $*" >&2; exit 1; }
@@ -985,7 +985,7 @@ jobs:
           # confirm the binary starts and exits cleanly on its safe flag
           # paths. `--foreground` would try to open the journal; in a
           # container journald isn't running, so we expect a non-zero exit
-          # within ~2s, which is fine — the test is "doesn't crash before
+          # within ~2s, which is fine: the test is "doesn't crash before
           # arg parsing".
           pamsignal --version
           timeout 2 pamsignal --foreground 2>&1 | head -5 || true
@@ -1025,7 +1025,7 @@ jobs:
       - name: Install runtime deps
         run: |
           ${{ matrix.repo_setup }}
-          # Don't pre-install `curl` — AlmaLinux ships curl-minimal which
+          # Don't pre-install `curl`: AlmaLinux ships curl-minimal which
           # conflicts with full curl, and pamsignal.spec already declares
           # Requires: curl so dnf install of the .rpm pulls whatever curl
           # variant is on the box.
@@ -1045,7 +1045,7 @@ jobs:
                         | grep -v debugsource | head -1)
           echo "Installing $binary_rpm"
           # Override tsflags=nodocs which fedora:latest sets in
-          # /etc/dnf/dnf.conf to keep the container minimal — without this
+          # /etc/dnf/dnf.conf to keep the container minimal. Without this
           # override, man pages (and any %doc/%license files) get stripped
           # at install time, breaking the man-page presence check in the
           # next step. Real Fedora desktops/servers don't ship with this
@@ -1056,7 +1056,7 @@ jobs:
       - name: Verify file layout and metadata
         run: |
           # Read the binary path from rpm's own file list rather than
-          # hardcoding it — robust against any future packaging-layout
+          # hardcoding it; that is robust against any future packaging-layout
           # changes (e.g. EL10's planned bin/sbin merge).
           binpath=$(rpm -ql pamsignal | grep -E '^/usr/(s?bin)/pamsignal$' | head -1)
           [ -n "$binpath" ]
@@ -1085,11 +1085,11 @@ jobs:
         run: |
           # Containers don't run systemd, so we can't exercise the full
           # daemon. Just confirm the binary starts and the foreground arg
-          # is recognised — it'll exit shortly after on missing journal.
+          # is recognised; it'll exit shortly after on missing journal.
           mkdir -p /run/pamsignal
           chown pamsignal:pamsignal /run/pamsignal
           chmod 0750 /run/pamsignal
-          # Resolve the binary path from rpm rather than hardcoding — varies
+          # Resolve the binary path from rpm rather than hardcoding, since it varies
           # by distro (sbin on EL9, bin on Fedora 42+).
           binpath=$(rpm -ql pamsignal | grep -E '^/usr/(s?bin)/pamsignal$' | head -1)
           # `runuser` is preferred over `sudo` in minimal containers.
@@ -1177,7 +1177,7 @@ jobs:
           if git ls-remote --exit-code --heads origin gh-pages >/dev/null; then
             # `git clone --depth 1` only sets up the origin/main remote-tracking
             # ref, so a plain `git fetch origin gh-pages` updates FETCH_HEAD
-            # without creating origin/gh-pages — which makes a subsequent
+            # without creating origin/gh-pages, which makes a subsequent
             # `git checkout gh-pages` fail with "pathspec did not match". Use a
             # refspec that materializes a local branch directly.
             git fetch origin gh-pages:gh-pages

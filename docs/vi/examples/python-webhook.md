@@ -1,6 +1,6 @@
 # PAMSignal Python Webhook Receiver
 
-> 🌐 [English](../../../examples/python-webhook/README.md) · **Tiếng Việt**
+> [English](../../../examples/python-webhook/README.md) · **Tiếng Việt**
 
 Đây là ví dụ sẵn dùng về một Custom Webhook receiver được xây dựng bằng **Python** và **Flask**. Receiver nhận các ECS JSON alert có cấu trúc từ PAMSignal và xử lý chúng. Đây là phiên bản Python tương đương với ví dụ `examples/nodejs-webhook/` và cung cấp cùng endpoint contract, env var, và hành vi mTLS.
 
@@ -10,7 +10,7 @@ Ví dụ này bao gồm:
 - Tùy chọn **HTTPS / mutual TLS** khi kết hợp với `webhook_client_cert` / `webhook_client_key` trong `pamsignal.conf`
 - **[uv](https://docs.astral.sh/uv/)** để quản lý dependency và virtualenv
 
-## 🚀 Bắt đầu
+## Bắt đầu
 
 ### 1. Cài đặt uv
 
@@ -51,9 +51,9 @@ uv run python src/server.py
 
 Server sẽ bắt đầu lắng nghe tại `http://localhost:3000/webhook/pamsignal`.
 
-## ⚙️ Tích hợp với PAMSignal
+## Tích hợp với PAMSignal
 
-Flask app này bắt buộc sử dụng `Authorization: Bearer <token>` để tránh lộ secret qua access log của URL. PAMSignal hỗ trợ điều này trực tiếp thông qua config key `webhook_auth_header` — không cần reverse proxy.
+Flask app này bắt buộc sử dụng `Authorization: Bearer <token>` để tránh lộ secret qua access log của URL. PAMSignal hỗ trợ điều này trực tiếp thông qua config key `webhook_auth_header`, không cần reverse proxy.
 
 ### Cấu hình trực tiếp (khuyến nghị)
 
@@ -103,7 +103,7 @@ EOF
 uv run python src/server.py
 ```
 
-Bạn sẽ thấy `🔐 PAMSignal Webhook Receiver listening on https://localhost:3000/webhook/pamsignal (mTLS — client cert required)`.
+Bạn sẽ thấy `PAMSignal Webhook Receiver listening on https://localhost:3000/webhook/pamsignal (mTLS, client cert required)`.
 
 #### Cấu hình pamsignal
 
@@ -118,17 +118,17 @@ webhook_client_key  = /absolute/path/to/certs/client.key
 webhook_ca_bundle   = /absolute/path/to/certs/ca.crt
 ```
 
-Reload pamsignal (`sudo systemctl reload pamsignal`) và kích hoạt một event — receiver sẽ ghi log nó. Một request từ bất kỳ client nào không có cert hợp lệ (ví dụ: `curl https://localhost:3000/webhook/pamsignal`) sẽ bị từ chối ngay tại TLS handshake, trước khi đến được Flask.
+Reload pamsignal (`sudo systemctl reload pamsignal`) và kích hoạt một event; receiver sẽ ghi log nó. Một request từ bất kỳ client nào không có cert hợp lệ (ví dụ: `curl https://localhost:3000/webhook/pamsignal`) sẽ bị từ chối ngay tại TLS handshake, trước khi đến được Flask.
 
 #### Cấu hình cho môi trường production
 
-Cho các deployment trên môi trường production, hãy thay `./certs/*` bằng các đường dẫn được quản lý bởi cert pipeline của bạn (cert-manager, certbot, `systemd-creds`, internal CA + ACME, v.v.). Bốn env var và các config key `webhook_*` không thay đổi. `gen-test-certs.sh` chỉ dùng cho kiểm thử local/CI — không đưa output của nó lên production.
+Cho các deployment trên môi trường production, hãy thay `./certs/*` bằng các đường dẫn được quản lý bởi cert pipeline của bạn (cert-manager, certbot, `systemd-creds`, internal CA + ACME, v.v.). Bốn env var và các config key `webhook_*` không thay đổi. `gen-test-certs.sh` chỉ dùng cho kiểm thử local/CI, không đưa output của nó lên production.
 
 mTLS kết hợp cộng thêm với `webhook_auth_header` nếu receiver muốn cả hai (mTLS để xác minh danh tính service ở transport layer, Bearer để ủy quyền từng request). Flask middleware trong ví dụ này kiểm tra Bearer token bất kể transport, vì vậy một deployment chỉ dùng mTLS có thể đơn giản để `WEBHOOK_SECRET` trống (hoặc đặt cả hai để tăng cường bảo mật theo chiều sâu).
 
-## 🛠️ Triển khai như Systemd Daemon
+## Triển khai như Systemd Daemon
 
-Để chạy trên production, bạn nên chạy webhook receiver này như một background service để nó tự động khởi động khi boot và khởi động lại nếu bị crash. Server tích hợp sẵn của Werkzeug phù hợp cho webhook khối lượng thấp, nhưng với tải cao hơn bạn có thể muốn đặt một WSGI server thực (gunicorn, uWSGI) phía trước — điều chỉnh `ExecStart` cho phù hợp.
+Để chạy trên production, bạn nên chạy webhook receiver này như một background service để nó tự động khởi động khi boot và khởi động lại nếu bị crash. Server tích hợp sẵn của Werkzeug phù hợp cho webhook khối lượng thấp, nhưng với tải cao hơn bạn có thể muốn đặt một WSGI server thực (gunicorn, uWSGI) phía trước, rồi điều chỉnh `ExecStart` cho phù hợp.
 
 1. Cài đặt dependencies vào `.venv/` của project:
    ```bash
@@ -183,7 +183,7 @@ mTLS kết hợp cộng thêm với `webhook_auth_header` nếu receiver muốn 
    journalctl -u pamsignal-webhook -f
    ```
 
-## 🧪 Kiểm thử thủ công
+## Kiểm thử thủ công
 
 ### Dùng Curl
 
@@ -205,19 +205,19 @@ Bạn sẽ thấy event được parse và ghi log đẹp trong stream `journalc
 
 ### Dùng Bruno API Client
 
-Một **Bruno** collection dùng chung nằm tại [`../../../examples/bruno-collection/`](../../../examples/bruno-collection/) và hoạt động với bất kỳ receiver nào triển khai PAMSignal webhook contract — ví dụ Python này và ví dụ Node.js đều đủ điều kiện. Collection đi kèm hai environment:
+Một **Bruno** collection dùng chung nằm tại [`../../../examples/bruno-collection/`](../../../examples/bruno-collection/) và hoạt động với bất kỳ receiver nào triển khai PAMSignal webhook contract. Ví dụ Python này và ví dụ Node.js đều đủ điều kiện. Collection đi kèm hai environment:
 
-- **Local** — plain HTTP, chỉ dùng Bearer token
-- **Local-mTLS** — HTTPS với client cert (kết hợp với `TLS_REQUIRE_CLIENT_CERT=true` ở đây)
+- **Local**: plain HTTP, chỉ dùng Bearer token
+- **Local-mTLS**: HTTPS với client cert (kết hợp với `TLS_REQUIRE_CLIENT_CERT=true` ở đây)
 
 Xem [`bruno-collection.md`](bruno-collection.md) để biết cách thiết lập cert symlink. Bắt đầu nhanh:
 
 1. Tải [Bruno](https://www.usebruno.com/).
-2. Click **Open Collection** (không phải *Import Collection* — đường dẫn đó dùng cho Postman/OpenAPI JSON) và chọn thư mục `examples/bruno-collection`.
-3. Chọn environment từ dropdown (góc trên bên phải) — `Local` hoặc `Local-mTLS`.
+2. Click **Open Collection** (không phải *Import Collection*, vốn dùng cho Postman/OpenAPI JSON) và chọn thư mục `examples/bruno-collection`.
+3. Chọn environment từ dropdown (góc trên bên phải): `Local` hoặc `Local-mTLS`.
 4. Cập nhật `WEBHOOK_SECRET` của environment đã chọn để khớp với `.env` của bạn và click **Send**.
 
-## ✅ Unit Tests
+## Unit Tests
 
 Project này bao gồm một bộ `pytest` test kiểm tra xác thực (Bearer token), payload validation và đường dẫn mTLS handshake.
 

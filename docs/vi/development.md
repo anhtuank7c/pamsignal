@@ -1,6 +1,6 @@
 # Development Guide
 
-> 🌐 [English](../development.md) · **Tiếng Việt**
+> [English](../development.md) · **Tiếng Việt**
 
 ## Điều kiện tiên quyết
 
@@ -67,7 +67,7 @@ CC=clang-21 meson setup -Dfuzz=enabled build-fuzz
 meson compile -C build-fuzz fuzz_parse_message
 
 # Chạy trong 60 giây. Đối số vị trí đầu tiên là corpus làm việc của libFuzzer
-# (có thể ghi — các phát hiện được lưu ở đây); đối số thứ hai là seed
+# (có thể ghi: các phát hiện được lưu ở đây); đối số thứ hai là seed
 # corpus read-only. build-fuzz/ được gitignore nên các phát hiện không vào repo.
 mkdir -p build-fuzz/corpus
 ./build-fuzz/fuzz_parse_message build-fuzz/corpus \

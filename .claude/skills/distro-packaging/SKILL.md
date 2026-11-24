@@ -5,7 +5,7 @@ description: Generate Linux distribution package specs (deb and rpm) for the pam
 
 # Distro Packaging for pamsignal
 
-Generate correct, lintian/rpmlint-clean package specs for pamsignal — a meson-built C daemon with a single library dependency (libsystemd), a systemd unit, and a config file containing credentials.
+Generate correct, lintian/rpmlint-clean package specs for pamsignal, a meson-built C daemon with a single library dependency (libsystemd), a systemd unit, and a config file containing credentials.
 
 ## Project Facts
 
@@ -26,12 +26,12 @@ These are the current values from the source tree. Read `meson.build` to confirm
 
 ## Critical Path Corrections
 
-The source tree's `meson.build` uses default prefix (`/usr/local`) and installs the service file to `/etc/systemd/system/`. Both are wrong for distro packages. The package build must fix these at build time — not just document them:
+The source tree's `meson.build` uses default prefix (`/usr/local`) and installs the service file to `/etc/systemd/system/`. Both are wrong for distro packages. The package build must fix these at build time, not just document them:
 
 1. **Prefix**: pass `--prefix=/usr` so binary lands in `/usr/bin/`, not `/usr/local/bin/`
 2. **Systemd unit dir**: the service file must end up in `/usr/lib/systemd/system/` (vendor unit path), not `/etc/systemd/system/` (admin override path). Since meson.build hardcodes the path, the package build must relocate it: `mv` the file from the wrong location to the correct one in the staging/install step.
-3. **ExecStart path**: the service file contains `ExecStart=/usr/local/bin/pamsignal`. The package build must `sed` this to `/usr/bin/pamsignal` during the install phase — this is a build-time fix, not something to punt to the user.
-4. **Config file**: `/etc/pamsignal/pamsignal.conf` — mark as conffile (deb) or `%config(noreplace)` (rpm) so user edits survive upgrades.
+3. **ExecStart path**: the service file contains `ExecStart=/usr/local/bin/pamsignal`. The package build must `sed` this to `/usr/bin/pamsignal` during the install phase. This is a build-time fix, not something to punt to the user.
+4. **Config file**: `/etc/pamsignal/pamsignal.conf`: mark as conffile (deb) or `%config(noreplace)` (rpm) so user edits survive upgrades.
 
 ## System User Handling
 
@@ -87,7 +87,7 @@ The config file contains alert credentials (Telegram tokens, webhook URLs). The 
 
 ## What NOT to Include
 
-- No GPG signing setup — that's environment-specific
-- No repository upload instructions — varies per org
-- No AppImage/Flatpak/Snap — this project targets servers with systemd
-- No cross-compilation — native builds only
+- No GPG signing setup (that's environment-specific)
+- No repository upload instructions (varies per org)
+- No AppImage/Flatpak/Snap: this project targets servers with systemd
+- No cross-compilation; native builds only

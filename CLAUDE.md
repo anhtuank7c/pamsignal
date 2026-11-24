@@ -33,13 +33,13 @@ journalctl -t pamsignal -f
 
 ## Project Structure
 
-- `src/` — 6 C modules: main, config, init, journal_watch, notify, utils
-- `include/` — corresponding headers
-- `docs/` — architecture, configuration, alerts, development, deployment guides
-- `docs/vi/` — Vietnamese mirror of all user-facing docs (see Documentation rule)
-- `meson.build` — build configuration
-- `pamsignal.service` — systemd unit file
-- `pamsignal.conf.example` — config template
+- `src/`: 6 C modules (main, config, init, journal_watch, notify, utils)
+- `include/`: corresponding headers
+- `docs/`: architecture, configuration, alerts, development, deployment guides
+- `docs/vi/`: Vietnamese mirror of all user-facing docs (see Documentation rule)
+- `meson.build`: build configuration
+- `pamsignal.service`: systemd unit file
+- `pamsignal.conf.example`: config template
 
 ## Code Conventions
 
@@ -50,7 +50,8 @@ journalctl -t pamsignal -f
 - **Constants/Macros:** UPPER_SNAKE_CASE with `PS_` prefix (e.g., `PS_DEFAULT_FAIL_THRESHOLD`)
 - **Types:** `_t` suffix for structs and enums (e.g., `ps_pam_event_t`, `ps_event_type_t`)
 - **Error handling:** Return code enums (`PS_OK`, `PS_ERR_*`), early returns
-- **Logging:** `sd_journal_print()` / `sd_journal_send()` — not printf/syslog
+- **Logging:** `sd_journal_print()` / `sd_journal_send()`, not printf/syslog
+- **Writing style:** no em dashes (U+2014) and no decorative emoji in docs, code comments, or commit messages. Use a colon, comma, parentheses, or a new sentence instead. Emoji belong only where they are real product output, such as the `pretty` alert style examples in `docs/alerts.md`.
 
 ## Documentation (Bilingual EN/VI)
 
@@ -58,17 +59,17 @@ Every user-facing Markdown doc exists in **both English and Vietnamese**. Englis
 
 **Rule: whenever you add or edit any English doc, update its Vietnamese counterpart in the same change.** The two must never drift. When you add a brand-new English doc, create the matching `docs/vi/` file and wire up the language switcher both ways.
 
-- **Layout** — the Vietnamese tree mirrors the English one under `docs/vi/`:
+- **Layout**: the Vietnamese tree mirrors the English one under `docs/vi/`:
   - `README.md` → `docs/vi/README.md`, `SECURITY.md` → `docs/vi/SECURITY.md`, `CONTRIBUTING.md` → `docs/vi/CONTRIBUTING.md`
   - `docs/<name>.md` → `docs/vi/<name>.md`
   - `docs/notes/<name>.md` → `docs/vi/notes/<name>.md`
   - `examples/<name>/README.md` → `docs/vi/examples/<name>.md`
-- **Language switcher** — first line after the H1 of every doc (both EN and VI), as a blockquote:
-  - EN file: `> 🌐 **English** · [Tiếng Việt](<relative-path-to-vi>)`
-  - VI file: `> 🌐 [English](<relative-path-to-en>) · **Tiếng Việt**`
-- **Translation style** — natural Vietnamese for a sysadmin/developer audience, not stiff machine translation. Keep ALL technical terms, identifiers, config keys, CLI flags, file paths, code blocks, shell commands, URLs, and Mermaid/ASCII diagrams in English / verbatim. Translate only prose, heading text, and table prose. Structure stays 1:1 (same heading levels, section count, anchors).
-- **Links inside VI docs** — links to other translated docs point to their VI counterparts; links to non-translated files (source, `CHANGELOG.md`, `LICENSE`, `assets/`, `.claude/`) point to the real file with the relative depth recomputed for the deeper `docs/vi/` location. Cross-document anchor links must target the **translated heading's slug** (a Vietnamese heading produces a Vietnamese, diacritics-included slug).
-- **Not mirrored** — `CHANGELOG.md`, `LICENSE`, source code. `docs/launch-posts/` is already bilingual by design.
+- **Language switcher**: first line after the H1 of every doc (both EN and VI), as a blockquote:
+  - EN file: `> **English** · [Tiếng Việt](<relative-path-to-vi>)`
+  - VI file: `> [English](<relative-path-to-en>) · **Tiếng Việt**`
+- **Translation style**: natural Vietnamese for a sysadmin/developer audience, not stiff machine translation. Keep ALL technical terms, identifiers, config keys, CLI flags, file paths, code blocks, shell commands, URLs, and Mermaid/ASCII diagrams in English / verbatim. Translate only prose, heading text, and table prose. Structure stays 1:1 (same heading levels, section count, anchors).
+- **Links inside VI docs**: links to other translated docs point to their VI counterparts; links to non-translated files (source, `CHANGELOG.md`, `LICENSE`, `assets/`, `.claude/`) point to the real file with the relative depth recomputed for the deeper `docs/vi/` location. Cross-document anchor links must target the **translated heading's slug** (a Vietnamese heading produces a Vietnamese, diacritics-included slug).
+- **Not mirrored**: `CHANGELOG.md`, `LICENSE`, source code. `docs/launch-posts/` is already bilingual by design.
 
 ## Security Requirements
 
@@ -79,19 +80,19 @@ This is a security monitoring tool. All code changes must maintain:
 - JSON escaping for alert payloads
 - File operations: `O_NOFOLLOW | O_EXCL` for PID file, explicit umask
 - Compiler hardening flags must remain in meson.build (`-fstack-protector-strong`, `-D_FORTIFY_SOURCE=2`, full RELRO, PIE)
-- Alert dispatch stays isolated via fork+exec — no network code in parent process
+- Alert dispatch stays isolated via fork+exec; no network code in parent process
 
 ## Pre-Commit Workflow
 
 Before every commit, complete these checks in order:
 
-1. **Write/update unit tests** — every new function or changed behavior must have corresponding CMocka tests in `tests/`. Add tests for new parsing patterns, config keys, edge cases, and error paths. Tests go in the matching test file (e.g., `tests/test_utils.c` for `src/utils.c`).
-2. **Format code** — run `clang-format -i src/*.c include/*.h tests/*.c` (config in `.clang-format`)
-3. **Lint** — run `clang-tidy src/*.c -- $(pkg-config --cflags libsystemd) -I include` (config in `.clang-tidy`). Fix all warnings.
-4. **Build** — run `meson compile -C build` and confirm zero errors and zero warnings
-5. **Run tests** — run `meson test -C build -v` and confirm all tests pass
-6. **OWASP security review** — use the `/owasp-asvs` skill to audit changed files for vulnerabilities, memory leaks, buffer overflows, use-after-free, and other C-specific issues. Fix all findings before committing.
-7. **Update CHANGELOG.md** — add or update entries under `## Unreleased` to reflect what changed. Use `- [x]` for completed items, `- [ ]` for planned. Move items between sections as appropriate.
+1. **Write/update unit tests**: every new function or changed behavior must have corresponding CMocka tests in `tests/`. Add tests for new parsing patterns, config keys, edge cases, and error paths. Tests go in the matching test file (e.g., `tests/test_utils.c` for `src/utils.c`).
+2. **Format code**: run `clang-format -i src/*.c include/*.h tests/*.c` (config in `.clang-format`)
+3. **Lint**: run `clang-tidy src/*.c -- $(pkg-config --cflags libsystemd) -I include` (config in `.clang-tidy`). Fix all warnings.
+4. **Build**: run `meson compile -C build` and confirm zero errors and zero warnings
+5. **Run tests**: run `meson test -C build -v` and confirm all tests pass
+6. **OWASP security review**: use the `/owasp-asvs` skill to audit changed files for vulnerabilities, memory leaks, buffer overflows, use-after-free, and other C-specific issues. Fix all findings before committing.
+7. **Update CHANGELOG.md**: add or update entries under `## Unreleased` to reflect what changed. Use `- [x]` for completed items, `- [ ]` for planned. Move items between sections as appropriate.
 
 Install tools if missing: `sudo apt-get install clang-format clang-tidy libcmocka-dev`
 
@@ -104,18 +105,18 @@ Follow [Conventional Commits](https://www.conventionalcommits.org/):
 ```
 
 Types:
-- `feat:` — new feature or capability
-- `fix:` — bug fix
-- `security:` — security hardening or vulnerability fix
-- `refactor:` — code restructuring with no behavior change
-- `docs:` — documentation only
-- `chore:` — build system, CI, tooling, dependencies
-- `test:` — adding or updating tests
-- `perf:` — performance improvement
+- `feat:` new feature or capability
+- `fix:` bug fix
+- `security:` security hardening or vulnerability fix
+- `refactor:` code restructuring with no behavior change
+- `docs:` documentation only
+- `chore:` build system, CI, tooling, dependencies
+- `test:` adding or updating tests
+- `perf:` performance improvement
 
 Rules:
 - Subject line under 72 characters
-- Imperative mood ("add", "fix", "update" — not "added", "fixes", "updated")
+- Imperative mood ("add", "fix", "update", not "added", "fixes", "updated")
 - No period at the end of the subject line
 - Body (optional) explains **why**, not what
 
@@ -146,7 +147,7 @@ rpmbuild -ba pamsignal.spec
 
 ## Key Design Decisions
 
-- Alerts are fire-and-forget via fork+exec curl — child process failures cannot crash the daemon
+- Alerts are fire-and-forget via fork+exec curl; child process failures cannot crash the daemon
 - SIGHUP reloads config into a temp struct first, swaps on success, keeps current on failure
 - Signal-safe flags use `atomic_bool` (`running`, `reload_requested`)
 - Runs as unprivileged `pamsignal` user, not root

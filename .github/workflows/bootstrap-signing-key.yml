@@ -8,14 +8,14 @@ name: Bootstrap signing key (ONE-TIME ONLY)
 # Run from the Actions tab once. Type the literal word BOOTSTRAP in the
 # confirmation field. Download the artifact, copy each value into a repo
 # secret, then delete the artifact and the run history. After that you can
-# delete this workflow file too — re-running it would generate a different
+# delete this workflow file too. Re-running it would generate a different
 # key and break verification of every previously-signed release.
 
 on:
   workflow_dispatch:
     inputs:
       confirm:
-        description: 'Type BOOTSTRAP to confirm. This generates a NEW signing key — only run once.'
+        description: 'Type BOOTSTRAP to confirm. This generates a NEW signing key. Only run once.'
         required: true
         type: string
 
@@ -56,11 +56,11 @@ jobs:
           FPR=$(gpg --list-secret-keys --with-colons \
                   | awk -F: '/^fpr/ {print $10; exit}')
 
-          # Armored private key — NEVER print to stdout / log.
+          # Armored private key: NEVER print to stdout / log.
           gpg --batch --pinentry-mode loopback --passphrase "$PASSPHRASE" \
               --armor --export-secret-keys "$FPR" > out/GPG_PRIVATE_KEY.asc
 
-          # Armored public key — safe to commit to the repo.
+          # Armored public key: safe to commit to the repo.
           gpg --armor --export "$FPR" > out/GPG_PUBLIC_KEY.asc
 
           # Passphrase + key id as plain files (single line, no trailing nl)
@@ -71,7 +71,7 @@ jobs:
           # Permissions: armored key files should be 0600 inside the artifact
           chmod 0600 out/GPG_PRIVATE_KEY.asc out/GPG_PASSPHRASE.txt
 
-          # Public key fingerprint (safe to log — it identifies which key was made)
+          # Public key fingerprint (safe to log; it identifies which key was made)
           echo "::notice::Generated key with fingerprint: $FPR"
           echo "::notice::Key ID: $KEYID"
 
@@ -79,10 +79,10 @@ jobs:
         run: |
           cat > out/README.txt <<'INSTR'
           ============================================================
-          pamsignal release signing key — bundle from CI bootstrap
+          pamsignal release signing key: bundle from CI bootstrap
           ============================================================
 
-          ⚠ The files in this artifact are SECURITY-CRITICAL.
+          WARNING: The files in this artifact are SECURITY-CRITICAL.
           The artifact auto-deletes in 1 day; do the steps below NOW.
 
           1. Open the repo on GitHub:
@@ -108,7 +108,7 @@ jobs:
              You should see GPG_PRIVATE_KEY, GPG_PASSPHRASE, GPG_KEY_ID
              (each shown without its value).
 
-          3. Save GPG_PUBLIC_KEY.asc somewhere — the publishing workflow
+          3. Save GPG_PUBLIC_KEY.asc somewhere; the publishing workflow
              will commit it to gh-pages/key.asc so users can import it
              with:
                  sudo install -d -m 0755 /etc/apt/keyrings

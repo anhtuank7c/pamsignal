@@ -1,13 +1,13 @@
 # Fail2ban Integration Guide
 
-> 🌐 **English** · [Tiếng Việt](../../docs/vi/examples/fail2ban.md)
+> **English** · [Tiếng Việt](../../docs/vi/examples/fail2ban.md)
 
 This guide walks you through setting up [Fail2ban](https://github.com/fail2ban/fail2ban) so that whenever PAMSignal detects a brute-force attack, the attacker's IP is automatically blocked at the firewall. Examples cover **Ubuntu 22.04+ / Debian 12+** and **CentOS Stream 9 / AlmaLinux 9 / Rocky Linux 9** (same commands work on Fedora 40+ too).
 
-If you've never used Fail2ban before — that's fine. The guide explains every concept as it introduces it.
+If you've never used Fail2ban before, that's fine. The guide explains every concept as it introduces it.
 
 > **Time required:** ~10 minutes.
-> **Prerequisite:** PAMSignal is already installed and you have seen at least one `pamsignal:` line in `journalctl -t pamsignal` (i.e., the daemon is alive). If not, finish the [Quickstart](../../README.md#-quick-start) first.
+> **Prerequisite:** PAMSignal is already installed and you have seen at least one `pamsignal:` line in `journalctl -t pamsignal` (i.e., the daemon is alive). If not, finish the [Quickstart](../../README.md#quick-start) first.
 
 ---
 
@@ -36,7 +36,7 @@ No log-parsing regex to maintain, no thresholds to keep in sync between two tool
 
 ## What is Fail2ban?
 
-Fail2ban is a small Python daemon that watches log files (or the systemd journal) for patterns that indicate an attack, and then runs a command — typically a firewall rule — to block the source. It's been the de-facto Linux intrusion-prevention tool for over a decade.
+Fail2ban is a small Python daemon that watches log files (or the systemd journal) for patterns that indicate an attack, and then runs a command (typically a firewall rule) to block the source. It's been the de-facto Linux intrusion-prevention tool for over a decade.
 
 Key terms you'll see in this guide:
 
@@ -44,12 +44,12 @@ Key terms you'll see in this guide:
 |---|---|
 | **Filter** | A regex that identifies an attack line in a log (`/etc/fail2ban/filter.d/*.conf`) |
 | **Jail** | A configuration that ties a filter to a firewall action (`/etc/fail2ban/jail.d/*.conf`) |
-| **Backend** | How Fail2ban reads logs — for us, the `systemd` journal |
-| **Action** | What Fail2ban does when triggered — for us, "ban this IP at the firewall" |
+| **Backend** | How Fail2ban reads logs. For us, the `systemd` journal |
+| **Action** | What Fail2ban does when triggered. For us, "ban this IP at the firewall" |
 | **`bantime`** | How long a ban lasts (default: 10 minutes; we set 24 hours) |
 | **`findtime`** | The window over which `maxretry` matches must occur |
-| **`maxretry`** | Matches in `findtime` that trigger a ban — we set this to **1** because PAMSignal has already done the counting |
-| **`ignoreip`** | Your safety net — IPs that are never banned (set this to your home/office IP!) |
+| **`maxretry`** | Matches in `findtime` that trigger a ban. We set this to **1** because PAMSignal has already done the counting |
+| **`ignoreip`** | Your safety net: IPs that are never banned (set this to your home/office IP!) |
 
 For a complete reference, see [Fail2ban's MANUAL on the official wiki](https://github.com/fail2ban/fail2ban/wiki/MANUAL).
 
@@ -62,11 +62,11 @@ PAMSignal and Fail2ban are complementary, not redundant:
 - **PAMSignal observes.** It parses every PAM event from the journal, tracks failed-login counts per IP, calculates brute-force thresholds, and notifies you over chat (Telegram, Slack, etc.). It does **not** touch the firewall.
 - **Fail2ban acts.** When PAMSignal emits a `BRUTE_FORCE_DETECTED` event, Fail2ban sees it and installs a firewall rule blocking that IP.
 
-The handoff is a single structured log line. You don't need to maintain a complex `failregex` against `sshd` output — PAMSignal already understands `sshd`, `sshd-session`, `sudo`, `su`, and `login` formats across distros.
+The handoff is a single structured log line. You don't need to maintain a complex `failregex` against `sshd` output. PAMSignal already understands `sshd`, `sshd-session`, `sudo`, `su`, and `login` formats across distros.
 
 ---
 
-## Step 1 — Install Fail2ban
+## Step 1: Install Fail2ban
 
 ### Ubuntu / Debian
 
@@ -95,11 +95,11 @@ fail2ban-client --version
 sudo systemctl status fail2ban
 ```
 
-The service is installed but not enabled yet — we'll start it after configuration.
+The service is installed but not enabled yet; we'll start it after configuration.
 
 ---
 
-## Step 2 — Install the PAMSignal filter and jail
+## Step 2: Install the PAMSignal filter and jail
 
 The two configuration files in this directory tell Fail2ban *what* to watch for and *how* to react. Copy them into the system locations:
 
@@ -111,7 +111,7 @@ sudo cp jail.d/pamsignal.conf   /etc/fail2ban/jail.d/pamsignal.conf
 
 ### What each file does
 
-**`/etc/fail2ban/filter.d/pamsignal.conf`** — the regex that recognizes a PAMSignal brute-force event:
+**`/etc/fail2ban/filter.d/pamsignal.conf`**: the regex that recognizes a PAMSignal brute-force event:
 
 ```ini
 [Definition]
@@ -119,9 +119,9 @@ failregex = pamsignal: BRUTE_FORCE_DETECTED ip=<HOST> attempts=\d+ window=\d+s u
 ignoreregex =
 ```
 
-The `<HOST>` token is special — Fail2ban substitutes it with a regex that matches IPv4, IPv6, or DNS names, and then extracts the matched address as the "offender" to ban. See the [Filter Files wiki page](https://github.com/fail2ban/fail2ban/wiki/Developing-Fail2Ban-Filters) for the full filter DSL.
+The `<HOST>` token is special: Fail2ban substitutes it with a regex that matches IPv4, IPv6, or DNS names, and then extracts the matched address as the "offender" to ban. See the [Filter Files wiki page](https://github.com/fail2ban/fail2ban/wiki/Developing-Fail2Ban-Filters) for the full filter DSL.
 
-**`/etc/fail2ban/jail.d/pamsignal.conf`** — the jail that connects the filter to a firewall action:
+**`/etc/fail2ban/jail.d/pamsignal.conf`**: the jail that connects the filter to a firewall action:
 
 ```ini
 [pamsignal]
@@ -134,14 +134,14 @@ maxretry = 1
 bantime = 24h
 ```
 
-- `backend = systemd` — read from the journal instead of a log file.
-- `journalmatch = SYSLOG_IDENTIFIER=pamsignal` — only look at lines emitted by the PAMSignal daemon. This is more efficient than tailing the whole journal.
-- `maxretry = 1` — ban immediately on a single match. PAMSignal has already counted to the threshold; one `BRUTE_FORCE_DETECTED` line **is** the alert.
-- `bantime = 24h` — block the IP for 24 hours. Change to `1h`, `7d`, or `-1` (permanent) to taste.
+- `backend = systemd`: read from the journal instead of a log file.
+- `journalmatch = SYSLOG_IDENTIFIER=pamsignal`: only look at lines emitted by the PAMSignal daemon. This is more efficient than tailing the whole journal.
+- `maxretry = 1`: ban immediately on a single match. PAMSignal has already counted to the threshold; one `BRUTE_FORCE_DETECTED` line **is** the alert.
+- `bantime = 24h`: block the IP for 24 hours. Change to `1h`, `7d`, or `-1` (permanent) to taste.
 
 ---
 
-## Step 3 — Pick the right firewall backend
+## Step 3: Pick the right firewall backend
 
 The `banaction` line in the jail decides *how* the IP gets blocked. The right choice depends on which firewall your distro uses. Edit `/etc/fail2ban/jail.d/pamsignal.conf` and set `banaction` accordingly:
 
@@ -153,7 +153,7 @@ The `banaction` line in the jail decides *how* the IP gets blocked. The right ch
 | You use `ufw` to manage your firewall | `ufw` |
 | You use `nftables` directly | `nftables-allports` |
 
-If you're on Ubuntu 22.04+ and have ever run `sudo ufw enable`, use the `ufw` action — otherwise Fail2ban and `ufw` will fight over the rule set.
+If you're on Ubuntu 22.04+ and have ever run `sudo ufw enable`, use the `ufw` action. Otherwise Fail2ban and `ufw` will fight over the rule set.
 
 ### CentOS / AlmaLinux / Rocky / Fedora
 
@@ -163,13 +163,13 @@ If you're on Ubuntu 22.04+ and have ever run `sudo ufw enable`, use the `ufw` ac
 | You use plain `iptables` (older setups) | `iptables-allports` |
 | You use `nftables` directly | `nftables-allports` |
 
-Most RHEL-9-derivative installs run `firewalld` — use `firewallcmd-allports`.
+Most RHEL-9-derivative installs run `firewalld`; use `firewallcmd-allports`.
 
 The complete list of bundled actions lives in `/etc/fail2ban/action.d/`; see the [Actions wiki page](https://github.com/fail2ban/fail2ban/wiki/Actions) for the description of each.
 
 ---
 
-## Step 4 — Whitelist your own IP (do this before starting!)
+## Step 4: Whitelist your own IP (do this before starting!)
 
 **This is the single most important step.** If you don't whitelist yourself and you ever mistype a password from your management workstation, Fail2ban will lock you out for 24 hours. To be clear: you will not be able to SSH back in to lift the ban.
 
@@ -185,18 +185,18 @@ banaction = iptables-allports
 maxretry = 1
 bantime = 24h
 
-# Never ban these — your home/office IP and any LAN ranges you trust.
+# Never ban these: your home/office IP and any LAN ranges you trust.
 # Add one or more IPs / CIDRs separated by spaces.
 ignoreip = 127.0.0.1/8 ::1 203.0.113.42 10.0.0.0/8
 ```
 
 Replace `203.0.113.42` with your actual public IP (find it via `curl ifconfig.me` from the machine you'll SSH from). Include `10.0.0.0/8`, `192.168.0.0/16`, or `172.16.0.0/12` only if you trust everything on those LAN ranges.
 
-You can also set a *global* whitelist in `/etc/fail2ban/jail.local` that applies to every jail you ever create — that's the safer pattern if you'll add more jails later. See [the `ignoreip` documentation](https://github.com/fail2ban/fail2ban/wiki/MANUAL_0_8#jails) for the full syntax (it accepts CIDR, DNS names, and shell-glob patterns).
+You can also set a *global* whitelist in `/etc/fail2ban/jail.local` that applies to every jail you ever create. That's the safer pattern if you'll add more jails later. See [the `ignoreip` documentation](https://github.com/fail2ban/fail2ban/wiki/MANUAL_0_8#jails) for the full syntax (it accepts CIDR, DNS names, and shell-glob patterns).
 
 ---
 
-## Step 5 — Start Fail2ban
+## Step 5: Start Fail2ban
 
 ```bash
 sudo systemctl enable --now fail2ban
@@ -207,7 +207,7 @@ sudo systemctl status fail2ban
 
 ---
 
-## Step 6 — Verify the integration
+## Step 6: Verify the integration
 
 ### 6a. Confirm the jail is loaded
 
@@ -247,7 +247,7 @@ Status for the jail: pamsignal
 
 ### 6c. Dry-run the filter against your existing journal
 
-This is the quickest sanity check — it scans your real PAMSignal history and reports how many lines the filter would have matched:
+This is the quickest sanity check. It scans your real PAMSignal history and reports how many lines the filter would have matched:
 
 ```bash
 sudo fail2ban-regex systemd-journal /etc/fail2ban/filter.d/pamsignal.conf
@@ -266,7 +266,7 @@ If matched is 0 and you know you've had brute-force events, see [Troubleshooting
 From a different machine you can throw away (or your laptop on cellular so you can switch off mobile data if the test misfires), make several failed SSH attempts to the host:
 
 ```bash
-# From the test machine — replace your.server.example.com with the host running PAMSignal
+# From the test machine: replace your.server.example.com with the host running PAMSignal
 for i in {1..6}; do
   ssh -o PasswordAuthentication=yes -o PreferredAuthentications=password \
       -o PubkeyAuthentication=no -o StrictHostKeyChecking=no \
@@ -298,8 +298,8 @@ Once the integration is working, you might want to tune behavior. Edit `/etc/fai
 | Setting | Default we ship | Common alternatives | When to change |
 |---|---|---|---|
 | `bantime` | `24h` | `1h`, `7d`, `-1` (forever) | Lower for noisy IPs that are mostly residential dynamic; higher for hosts on the public internet that should be aggressive |
-| `maxretry` | `1` | Keep at `1` | Don't raise this — PAMSignal already counted. Raising to 2+ requires N×PAMSignal-thresholds of failures before a ban |
-| `findtime` | `10m` (Fail2ban default) | Match `fail_window_sec` from `pamsignal.conf` | Only matters if `maxretry > 1`, which you shouldn't do — see above |
+| `maxretry` | `1` | Keep at `1` | Don't raise this; PAMSignal already counted. Raising to 2+ requires N×PAMSignal-thresholds of failures before a ban |
+| `findtime` | `10m` (Fail2ban default) | Match `fail_window_sec` from `pamsignal.conf` | Only matters if `maxretry > 1`, which you shouldn't do (see above) |
 | `banaction` | `iptables-allports` | `ufw`, `firewallcmd-allports`, `nftables-allports` | Match your distro's firewall (Step 3) |
 
 ### Escalating bans for repeat offenders
@@ -345,7 +345,7 @@ On Ubuntu the dependency is usually pulled in automatically; if not:
 sudo apt install python3-systemd
 ```
 
-### "I locked myself out" — emergency recovery
+### "I locked myself out": emergency recovery
 
 If you have console access (cloud provider's serial console, hypervisor, physical keyboard):
 
@@ -356,7 +356,7 @@ sudo systemctl stop fail2ban                        # prevent re-ban while you f
 sudo systemctl start fail2ban
 ```
 
-If you have no console access — wait out the `bantime` (24h by default) or contact your cloud provider for an out-of-band reset.
+If you have no console access, wait out the `bantime` (24h by default) or contact your cloud provider for an out-of-band reset.
 
 ### `firewalld` and `iptables-allports` are fighting
 
@@ -401,7 +401,7 @@ The two daemons are completely decoupled: PAMSignal doesn't know Fail2ban exists
 
 ### Why we don't ban local-actor brute-force events
 
-PAMSignal emits brute-force events for both remote attacks (keyed by IP) and local-actor attacks (keyed by username, when someone is hammering `sudo` from a local session). Fail2ban can only block IPs — it can't disable a local UNIX account — so our filter intentionally matches only the IP-keyed events. The local-actor events still appear in the journal and your chat alerts, but they don't trigger Fail2ban.
+PAMSignal emits brute-force events for both remote attacks (keyed by IP) and local-actor attacks (keyed by username, when someone is hammering `sudo` from a local session). Fail2ban can only block IPs (it can't disable a local UNIX account), so our filter intentionally matches only the IP-keyed events. The local-actor events still appear in the journal and your chat alerts, but they don't trigger Fail2ban.
 
 If you need to lock out local actors, that's a job for `pam_tally2` / `pam_faillock` in your PAM stack, not Fail2ban.
 
@@ -409,8 +409,8 @@ If you need to lock out local actors, that's a job for `pam_tally2` / `pam_faill
 
 ## Further reading
 
-- [Fail2ban project README](https://github.com/fail2ban/fail2ban) — install matrix, supported distros, source
-- [Fail2ban MANUAL (official wiki)](https://github.com/fail2ban/fail2ban/wiki/MANUAL) — every directive, every backend, every action explained
-- [Filter Files reference](https://github.com/fail2ban/fail2ban/wiki/Developing-Fail2Ban-Filters) — the regex DSL and tag table (`<HOST>`, `<ADDR>`, `<F-USER>`, etc.)
-- [Actions reference](https://github.com/fail2ban/fail2ban/wiki/Actions) — every bundled `banaction` and how to write your own
-- [PAMSignal threat model — Operator guidance §7](../../docs/threat-model.md#operator-guidance) — why we recommend pairing observation with action
+- [Fail2ban project README](https://github.com/fail2ban/fail2ban): install matrix, supported distros, source
+- [Fail2ban MANUAL (official wiki)](https://github.com/fail2ban/fail2ban/wiki/MANUAL): every directive, every backend, every action explained
+- [Filter Files reference](https://github.com/fail2ban/fail2ban/wiki/Developing-Fail2Ban-Filters): the regex DSL and tag table (`<HOST>`, `<ADDR>`, `<F-USER>`, etc.)
+- [Actions reference](https://github.com/fail2ban/fail2ban/wiki/Actions): every bundled `banaction` and how to write your own
+- [PAMSignal threat model, Operator guidance §7](../../docs/threat-model.md#operator-guidance): why we recommend pairing observation with action

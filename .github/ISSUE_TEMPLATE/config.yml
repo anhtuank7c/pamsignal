@@ -9,12 +9,12 @@ contact_links:
   - name: Question or usage discussion
     url: https://github.com/anhtuank7c/pamsignal/issues?q=is%3Aissue+label%3Aquestion
     about: |
-      Check existing issues with the "question" label first — many usage
+      Check existing issues with the "question" label first; many usage
       questions are already answered. If yours isn't, open a feature-request
       issue and add the "question" label.
   - name: Documentation
-    url: https://github.com/anhtuank7c/pamsignal#-documentation
+    url: https://github.com/anhtuank7c/pamsignal#documentation
     about: |
       Read README.md, docs/configuration.md, docs/deployment.md,
-      docs/alerts.md, and docs/threat-model.md before filing — they
+      docs/alerts.md, and docs/threat-model.md before filing. They
       cover most "how do I..." cases.

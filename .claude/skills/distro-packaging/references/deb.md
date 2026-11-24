@@ -50,10 +50,10 @@ Description: Real-time PAM login monitor with multi-channel alerts
 ```
 
 Key decisions:
-- `Section: admin` — security/admin monitoring tool
-- `Pre-Depends: adduser` — needed in postinst before the daemon can run
-- `Rules-Requires-Root: no` — the build itself doesn't need root; fakeroot handles ownership
-- `debhelper-compat (= 13)` — current stable compat level, replaces the `compat` file
+- `Section: admin`: security/admin monitoring tool
+- `Pre-Depends: adduser`: needed in postinst before the daemon can run
+- `Rules-Requires-Root: no`: the build itself doesn't need root; fakeroot handles ownership
+- `debhelper-compat (= 13)`: current stable compat level, replaces the `compat` file
 
 ## debian/rules
 
@@ -88,8 +88,8 @@ override_dh_auto_test:
 ```
 
 Key points:
-- `--prefix=/usr` — binary goes to `/usr/bin/`, not `/usr/local/bin/`
-- `DEB_BUILD_MAINT_OPTIONS = hardening=+all` — enables all dpkg-buildflags hardening (stack protector, FORTIFY_SOURCE, RELRO, PIE)
+- `--prefix=/usr`: binary goes to `/usr/bin/`, not `/usr/local/bin/`
+- `DEB_BUILD_MAINT_OPTIONS = hardening=+all`: enables all dpkg-buildflags hardening (stack protector, FORTIFY_SOURCE, RELRO, PIE)
 - The `mv` and `sed` in `dh_auto_install` fix the two meson.build issues at build time: wrong service file path and wrong ExecStart binary path
 
 ## debian/changelog
@@ -169,7 +169,7 @@ esac
 exit 0
 ```
 
-The `#DEBHELPER#` token is required — debhelper inserts systemd enable/start commands there.
+The `#DEBHELPER#` token is required: debhelper inserts systemd enable/start commands there.
 
 ## debian/pamsignal.prerm
 
@@ -194,7 +194,7 @@ case "$1" in
     purge)
         # Remove config directory on purge
         rm -rf /etc/pamsignal
-        # Do NOT remove the pamsignal user — it may own journal entries
+        # Do NOT remove the pamsignal user; it may own journal entries
     ;;
     remove|upgrade|failed-upgrade|abort-install|abort-upgrade|disappear)
     ;;
@@ -239,9 +239,9 @@ lintian ../pamsignal_0.0.1-1_amd64.deb
 ```
 
 Common issues to watch for:
-- `binary-without-manpage` — pamsignal doesn't ship a man page yet; add `debian/pamsignal.manpages` when one exists
-- `no-upstream-changelog` — acceptable for initial release
-- `systemd-service-file-refers-to-unusual-wantedby-target` — `multi-user.target` is fine
+- `binary-without-manpage`: pamsignal doesn't ship a man page yet; add `debian/pamsignal.manpages` when one exists
+- `no-upstream-changelog`: acceptable for initial release
+- `systemd-service-file-refers-to-unusual-wantedby-target`: `multi-user.target` is fine
 
 ## Distro-Specific Notes
 

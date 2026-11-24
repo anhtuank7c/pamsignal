@@ -5,7 +5,7 @@
 // the production journald pipeline uses.
 //
 // This config is NOT for production hosts. The production config is
-// examples/grafana/alloy.river — that one reads systemd journald directly.
+// examples/grafana/alloy.river, which reads systemd journald directly.
 
 logging {
 	level  = "warn"

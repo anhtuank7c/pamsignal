@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 320" width="1280" height="320" role="img" aria-labelledby="t d">
   <title id="t">PAMSignal</title>
-  <desc id="d">PAMSignal — real-time login and brute-force alerts for Linux servers</desc>
+  <desc id="d">PAMSignal: real-time login and brute-force alerts for Linux servers</desc>
 
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
@@ -28,7 +28,7 @@
       <path d="M 104 8 A 116 116 0 0 1 268 8" stroke-width="2" opacity="0.14"/>
     </g>
 
-    <!-- reflection — the journal stream beneath the surface -->
+    <!-- reflection: the journal stream beneath the surface -->
     <g opacity="0.22">
       <polygon fill="#0E7490" points="80,198 134,272 188,198"/>
       <polygon fill="#0E7490" points="198,198 252,276 306,198"/>
@@ -40,7 +40,7 @@
     <polygon fill="#0E7490" points="198,198 252,96 306,198"/>
     <polygon fill="#22D3EE" points="112,198 186,46 260,198"/>
 
-    <!-- apex markers — each detected PAM event -->
+    <!-- apex markers: each detected PAM event -->
     <circle cx="134" cy="92" r="5"   fill="#FBBF24"/>
     <circle cx="252" cy="96" r="5"   fill="#FBBF24"/>
     <circle cx="186" cy="46" r="7.5" fill="#FBBF24"/>

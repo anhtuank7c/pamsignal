@@ -65,7 +65,7 @@ pamsignal (0.6.1-1) unstable; urgency=medium
     and pointers to pamsignal(8) and pamsignal.conf(5). Goes to
     stdout, exits 0. Runs before any privilege/journal-access check,
     so it works under root, dpkg/rpm post-install scripts, or a plain
-    operator. Long-overdue baseline — GNU coding standards require
+    operator. Long-overdue baseline: GNU coding standards require
     both --help and --version for command-line tools; pamsignal had
     --version since 0.4.1 but --help was missing. The pamsignal(8)
     man page now also documents both flags in the OPTIONS section
@@ -108,7 +108,7 @@ pamsignal (0.6.0-1) unstable; urgency=medium
     config key, value range, mTLS and webhook_auth_header validation
     rules, reload semantics, and security notes. Installed to
     <mandir>/man5/ via meson configure_file. The forward references in
-    pamsignal.8 that pointed at "pamsignal.conf(5) — or, until that
+    pamsignal.8 that pointed at "pamsignal.conf(5), or, until that
     page exists" have been cleaned up.
   * Documentation: README quickstart "Configure Alerts" section now
     surfaces the two tuning keys operators want on day one
@@ -119,7 +119,7 @@ pamsignal (0.6.0-1) unstable; urgency=medium
     docs/configuration.md.
   * Documentation: Fail2ban integration guide
     (examples/fail2ban/README.md) expanded from a 39-line stub into a
-    417-line walkthrough for first-time fail2ban users — install
+    417-line walkthrough for first-time fail2ban users: install
     commands for Ubuntu/Debian and CentOS Stream 9 / AlmaLinux 9 /
     Rocky Linux 9 / Fedora, per-distro banaction selection, the
     critical whitelist-yourself-first step, verification flow
@@ -145,7 +145,7 @@ pamsignal (0.6.0-1) unstable; urgency=medium
 
 pamsignal (0.5.0-1) unstable; urgency=medium
 
-  * Feature: new `enable_notification_type` config key — comma-separated
+  * Feature: new `enable_notification_type` config key: a comma-separated
     list of event categories (`login_success`, `login_failed`,
     `session_open`, `session_close`, `brute_force`, or `all`) that
     selects which categories produce chat alerts (#22, requested by
@@ -175,7 +175,7 @@ pamsignal (0.5.0-1) unstable; urgency=medium
     receiver's transitive `qs`. Pinned via pnpm `overrides` so both
     6.14.2 (express 4.x) and 6.15.1 (body-parser / formidable)
     collapse to the patched 6.15.2.
-  * Docs: README acknowledgments corrected — Hong Quan (not "Hong
+  * Docs: README acknowledgments corrected: Hong Quan (not "Hong
     Quang"), FHS contribution (not ECS). Avatars added.
 
  -- Tuan Nguyen <anhtuank7c@hotmail.com>  Tue, 26 May 2026 10:40:00 +0000
@@ -184,7 +184,7 @@ pamsignal (0.4.1-1) unstable; urgency=medium
 
   * Feature: pamsignal --version / -V flag. The man page synopsis and
     the package post-install smoke check both assumed this flag
-    existed, but parse_args only handled --foreground and --config —
+    existed, but parse_args only handled --foreground and --config, so
     passing --version fell through to the non-root invariant and
     exit-1'd with the "should not run as root" message under every
     dpkg / rpm / container-RUN post-install context. The new branch
@@ -206,7 +206,7 @@ pamsignal (0.4.1-1) unstable; urgency=medium
     correlation as a stop-gap).
   * Examples: bundled Node.js webhook receiver gains an HTTPS + mTLS
     server variant (#12). Implementation now matches what the
-    README's "Mutual TLS (advanced)" section promised — the server
+    README's "Mutual TLS (advanced)" section promised: the server
     branches on TLS_KEY_PATH / TLS_CERT_PATH env vars, with optional
     TLS_CLIENT_CA_PATH and TLS_REQUIRE_CLIENT_CERT. scripts/
     gen-test-certs.sh produces a runnable end-to-end demo cert
@@ -224,7 +224,7 @@ pamsignal (0.4.1-1) unstable; urgency=medium
     type-name "login_failed" instead of the actual ECS action string
     "login_failure". meson test under ASAN + UBSAN passes 5/5 suites.
   * Tests: test_install_docker.sh default matrix narrowed to Tier 1
-    (ubuntu:24.04 + fedora:40 — the two distros the bundled packages
+    (ubuntu:24.04 + fedora:40, the two distros the bundled packages
     are actually built against). The full seven-distro matrix
     remains opt-in via positional distro-name args. Eliminates the
     false-negative install failures on older glibc targets that
@@ -239,18 +239,18 @@ pamsignal (0.4.0-1) unstable; urgency=medium
     (Bearer token, X-API-Key, Splunk HEC, Datadog DD-API-KEY, HMAC,
     etc.) with each webhook POST. Previously the only authenticated
     path was a reverse proxy in front of the receiver injecting the
-    header — the bundled examples/nodejs-webhook/ reference receiver
+    header; the bundled examples/nodejs-webhook/ reference receiver
     explicitly required this setup. The header value is rendered into
     the existing memfd-backed curl -K config, so the secret never
     appears in argv or /proc/<pid>/cmdline. Validator rejects CRLF /
     quote / backslash injection at config-load time; setting the
     header without webhook_url is also rejected.
   * Feature: optional mTLS client authentication for the custom
-    webhook channel (#8). Three new config keys —
-    webhook_client_cert, webhook_client_key, webhook_ca_bundle —
+    webhook channel (#8). Three new config keys
+    (webhook_client_cert, webhook_client_key, webhook_ca_bundle)
     target the operator profile that already runs PKI (internal CA,
     cert-manager, SPIFFE, service-mesh issuance). Combines additively
-    with webhook_auth_header — the corporate-SIEM / Wazuh pattern
+    with webhook_auth_header, the corporate-SIEM / Wazuh pattern
     (mTLS for service identity, Bearer for per-request authorization).
     Cert/key/CA paths flow through the same memfd-backed curl config
     as the auth header, so argv stays byte-identical regardless of
@@ -295,7 +295,7 @@ pamsignal (0.3.4-1) unstable; urgency=medium
     (sshd-session). On Ubuntu 26.04, Fedora 41+, and Debian
     Trixie, all PAM auth events on sshd are recorded with
     _EXE=/usr/{sbin,lib}/openssh/sshd-session and were dropped
-    by pamsignal's anti-spoofing allowlist — the daemon ran fine,
+    by pamsignal's anti-spoofing allowlist. The daemon ran fine,
     journald accumulated events fine, the daemon just didn't
     see them. Fix is a one-line addition to the basename
     allowlist. Refactored into a testable ps_is_trusted_exe
@@ -324,7 +324,7 @@ pamsignal (0.3.4-1) unstable; urgency=medium
   * Repository hygiene: CONTRIBUTING.md, GitHub issue templates
     (bug + feature + config) rewritten as Linux-daemon reports
     rather than generic open-source forms, pull-request
-    template — these accumulated under "Unreleased" since
+    template. These accumulated under "Unreleased" since
     v0.3.3 and ship now alongside the security fix.
 
  -- Tuan Nguyen <anhtuank7c@hotmail.com>  Sun, 03 May 2026 23:30:00 +0000
@@ -484,7 +484,7 @@ pamsignal (0.2.2-1) unstable; urgency=medium
 
   * Republish signed apt repository on the canonical GitHub Pages URL
     (https://anhtuank7c.github.io/pamsignal/) after the custom domain was
-    removed from the gh-pages site. No source or packaging logic changes —
+    removed from the gh-pages site. No source or packaging logic changes:
     the .deb binary is identical to v0.2.1; this release simply triggers
     the publish-repo workflow against the github.io origin so users
     following the install instructions in README.md get a working repo.
@@ -503,7 +503,7 @@ pamsignal (0.2.1-1) unstable; urgency=medium
 pamsignal (0.2.0-1) unstable; urgency=medium
 
   * Align alert payloads with Elastic Common Schema (ECS). Breaking change
-    to the chat text and JSON webhook formats — see CHANGELOG.md for the
+    to the chat text and JSON webhook formats; see CHANGELOG.md for the
     new schema and migration notes.
   * Chat text: severity-prefixed key=value (`[NOTICE] auth.login_success
     user=… pid=… ts=…`), with a new pid= field for direct `kill <pid>`.

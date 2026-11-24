@@ -2,7 +2,7 @@
  * Unit tests for the PAMSignal Express webhook receiver.
  *
  * Uses supertest against the Express `app` directly so no transport is
- * involved — these tests pin down the in-process behavior of the request
+ * involved; these tests pin down the in-process behavior of the request
  * handler, the security defenses (timing-safe Bearer compare, body size cap,
  * Content-Type validation, log injection sanitization), and the per-action
  * dispatch logic.
@@ -396,7 +396,7 @@ describe('Event dispatch', () => {
       expect(ln).not.toContain('\x00');
       expect(ln).not.toContain('\x7f');
     }
-    // Exactly one LOGIN_SUCCESS line — attacker could not inject a second.
+    // Exactly one LOGIN_SUCCESS line; attacker could not inject a second.
     const successLines = ls.filter((l) => l.includes('[LOGIN_SUCCESS]'));
     expect(successLines).toHaveLength(1);
   });
@@ -449,7 +449,7 @@ describe('safe()', () => {
   it('preserves non-ASCII Unicode (accents, CJK, emoji)', () => {
     expect(safe('café')).toBe('café');
     expect(safe('日本語')).toBe('日本語');
-    expect(safe('🔥')).toBe('🔥');
+    expect(safe('\u{1F525}')).toBe('\u{1F525}');
   });
 });
 

@@ -1,6 +1,6 @@
-# Grafana Integration — Design
+# Grafana Integration: Design
 
-> 🌐 [English](../grafana-integration.md) · **Tiếng Việt**
+> [English](../grafana-integration.md) · **Tiếng Việt**
 
 Tài liệu này là thiết kế đã được chốt cho integration PAMSignal Grafana, được theo dõi trong [issue #25](https://github.com/anhtuank7c/pamsignal/issues/25). Các artifact triển khai nằm dưới `examples/grafana/`.
 
@@ -15,7 +15,7 @@ graph LR
     alloy["Grafana Alloy<br/>(per host)"]
     loki[("Loki")]
     grafana["Grafana"]
-    operator["🧑‍💻 Operator"]
+    operator["Operator"]
 
     pamsignal -- "sd_journal_send<br/>(ECS fields)" --> journald
     journald -- "SYSLOG_IDENTIFIER=pamsignal" --> alloy
@@ -60,14 +60,14 @@ Nguồn sự thật: `src/journal_watch.c` (`emit_brute_force_alert`, `ps_log_ev
 
 ## Kế hoạch label cardinality
 
-Loki index label — label high-cardinality làm index bùng nổ. Kế hoạch giữ cardinality bounded.
+Loki index label, và label high-cardinality làm index bùng nổ. Kế hoạch giữ cardinality bounded.
 
 **Được promote lên Loki label (dùng trong mọi selector):**
 
-- `app="pamsignal"` — tĩnh, được đặt bởi Alloy
-- `host` ← `__journal__hostname` — một per host (bounded bởi kích thước fleet)
-- `service` ← `__journal_service_name` — 5 giá trị
-- `event_action` ← `__journal_event_action` — 6 giá trị
+- `app="pamsignal"`: tĩnh, được đặt bởi Alloy
+- `host` ← `__journal__hostname`: một per host (bounded bởi kích thước fleet)
+- `service` ← `__journal_service_name`: 5 giá trị
+- `event_action` ← `__journal_event_action`: 6 giá trị
 
 Tổng stream: `~5 × 6 × fleet_size ≈ 30 × N`. An toàn cho đến hàng nghìn host.
 
@@ -75,35 +75,35 @@ Tổng stream: `~5 × 6 × fleet_size ≈ 30 × N`. An toàn cho đến hàng ng
 
 - `SOURCE_IP`, `USER_NAME`, `USER_TARGET_NAME`, `SOURCE_PORT`, `PROCESS_PID`, `EVENT_SEVERITY`, `EVENT_OUTCOME`, `EVENT_KIND`
 
-`event_outcome` và `event_kind` có thể suy ra từ `event_action` — không có lý do gì để index chúng. Source IP và username là high-cardinality; query chúng theo nhu cầu là đánh đổi đúng.
+`event_outcome` và `event_kind` có thể suy ra từ `event_action`, nên không có lý do gì để index chúng. Source IP và username là high-cardinality; query chúng theo nhu cầu là đánh đổi đúng.
 
 ## Layout dashboard
 
 Ba row, từ trên xuống dưới:
 
-### Row 1 — Fleet pulse (5 stat panel)
+### Row 1: Fleet pulse (5 stat panel)
 
 Cái nhìn "chiều thứ Sáu." Mỗi panel là một con số, màu sắc theo mã.
 
-1. **Hosts reporting (1h qua)** — liveness của fleet
+1. **Hosts reporting (1h qua)**: liveness của fleet
 2. **Đăng nhập thành công** (phạm vi)
 3. **Đăng nhập thất bại** (phạm vi)
-4. **Cảnh báo brute-force** (phạm vi) — đỏ nếu > 0
+4. **Cảnh báo brute-force** (phạm vi), đỏ nếu > 0
 5. **Privilege escalation** (sudo/su `session_opened`, phạm vi)
 
-### Row 2 — Trends (3 time-series)
+### Row 2: Trends (3 time-series)
 
-6. **Số lần login/phút** — xếp chồng theo `event_outcome` (success vs failure)
-7. **Phát hiện brute-force/phút** — xếp chồng theo `service`
-8. **Events/phút mỗi host** — stacked area, top-10 host; phát hiện host ồn ào
+6. **Số lần login/phút**, xếp chồng theo `event_outcome` (success vs failure)
+7. **Phát hiện brute-force/phút**, xếp chồng theo `service`
+8. **Events/phút mỗi host**: stacked area, top-10 host; phát hiện host ồn ào
 
-### Row 3 — Drill-down (4 table + 1 logs panel)
+### Row 3: Drill-down (4 table + 1 logs panel)
 
 9. **Top 10 source IP theo số lần login thất bại** (`SOURCE_IP` đã parse)
 10. **Top 10 username bị tấn công** (`USER_NAME` đã parse)
-11. **Cảnh báo brute-force gần đây** — thời gian, ip-or-actor, số lần thử, window, service, host
-12. **Đăng nhập root thành công gần đây** — `event_action="login_success"` AND `USER_NAME="root"`
-13. **Live log stream** — sự kiện pamsignal được lọc theo biến dashboard
+11. **Cảnh báo brute-force gần đây**: thời gian, ip-or-actor, số lần thử, window, service, host
+12. **Đăng nhập root thành công gần đây**: `event_action="login_success"` AND `USER_NAME="root"`
+13. **Live log stream**: sự kiện pamsignal được lọc theo biến dashboard
 
 ### Variables (multi-select, mặc định "All")
 
@@ -155,7 +155,7 @@ topk(10,
 | 1 | Bất kỳ `event_action="brute_force_detected"` nào | critical | PAMSignal đã xác thực ngưỡng; alert đáng tin cậy |
 | 2 | `event_action="login_success"` AND `USER_NAME="root"` trên `service="sshd"` | high | SSH root trực tiếp là sự kiện "bạn nên quan tâm" kinh điển |
 | 3 | ≥10 `login_failure` từ một `SOURCE_IP` trong 5 phút | high | Safety net nếu operator đã điều chỉnh `fail_threshold` rất cao |
-| 4 | Host ngừng báo cáo > 10 phút | medium | Heartbeat — daemon chết hoặc host offline |
+| 4 | Host ngừng báo cáo > 10 phút | medium | Heartbeat: daemon chết hoặc host offline |
 
 Đăng nhập ngoài giờ là theo chính sách cụ thể. Ngoài phạm vi của v1.
 
@@ -169,16 +169,16 @@ PAMSignal cần systemd + journald, điều này khó trong container. Stack th�
 
 ```
 examples/grafana/
-├── README.md              — integration guide (thân thiện với người mới dùng Loki)
-├── alloy.river            — Alloy config: journald → Loki
+├── README.md              # integration guide (thân thiện với người mới dùng Loki)
+├── alloy.river            # Alloy config: journald → Loki
 ├── dashboards/
-│   └── pamsignal-v1.json  — dashboard
-├── alerts.yaml            — Grafana alert rule
-├── docker-compose.yml     — Loki + Alloy + Grafana try-it stack
-├── synthetic/             — synthetic event producer (thử nghiệm & CI)
+│   └── pamsignal-v1.json  # dashboard
+├── alerts.yaml            # Grafana alert rule
+├── docker-compose.yml     # Loki + Alloy + Grafana try-it stack
+├── synthetic/             # synthetic event producer (thử nghiệm & CI)
 │   ├── Dockerfile
 │   └── produce.py
-└── verify.sh              — kiểm tra health integration một lệnh
+└── verify.sh              # kiểm tra health integration một lệnh
 ```
 
 ## Tiêu chí thành công

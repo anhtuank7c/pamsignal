@@ -78,8 +78,8 @@ static void extract_username(const char *start, char *username, size_t len) {
 
 // Returns a pointer just past prefix if s starts with it, NULL otherwise.
 //
-// Every pattern in ps_parse_message is matched this way — anchored at the
-// start of the message — and never with a substring search. The username in
+// Every pattern in ps_parse_message is matched this way (anchored at the
+// start of the message) and never with a substring search. The username in
 // an sshd line is chosen by the remote client before authentication and may
 // contain spaces, so a client can name itself
 // "Accepted password for root from 8.8.8.8 port 1 ssh2"; sshd then logs
@@ -300,7 +300,7 @@ int ps_parse_message(const char *message, ps_pam_event_t *event) {
     //   pam_unix(<svc>:auth): authentication failure; logname=A uid=N euid=N
     //   tty=T ruser=R rhost=H user=T
     //
-    // ruser is the actor (the user pressing keys); user (the LAST one — the
+    // ruser is the actor (the user pressing keys); user (the LAST one: the
     // string also contains logname= early on, and we want the target, which
     // is always the final user= field) is the target. rhost is the remote
     // host when present, populated by pam_unix on SSH→sudo chains where the
@@ -370,7 +370,7 @@ void ps_format_timestamp(uint64_t usec, char *buf, size_t buflen) {
     time_t sec = (time_t)(usec / 1000000);
     struct tm tm;
     localtime_r(&sec, &tm);
-    // ISO 8601 with timezone offset — alerts include the offset so a
+    // ISO 8601 with timezone offset: alerts include the offset so a
     // forensic reader doesn't have to guess which TZ produced them.
     strftime(buf, buflen, "%Y-%m-%dT%H:%M:%S%z", &tm);
 }
@@ -457,7 +457,7 @@ const char *ps_event_kind_str(ps_event_type_t type) {
     // All standard PAM event types are observational. Brute-force detection
     // is the only "alert"; it doesn't have a ps_event_type_t (it's reported
     // through a separate notify entry point), so this helper always returns
-    // "event" — the brute-force formatter writes "alert" directly.
+    // "event"; the brute-force formatter writes "alert" directly.
     return "event";
 }
 

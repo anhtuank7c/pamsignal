@@ -1,6 +1,6 @@
 # Bước 1 - Khởi Tạo (Project Initialization)
 
-> 🌐 [English](../../notes/project-initialization.md) · **Tiếng Việt**
+> [English](../../notes/project-initialization.md) · **Tiếng Việt**
 
 - **Trạng thái**: Hoàn thành
 - **Ngày bắt đầu**: 26/12/2025

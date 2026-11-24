@@ -1,6 +1,6 @@
-# who-did-what — who logged in, who became root, what they ran
+# who-did-what: who logged in, who became root, what they ran
 
-> 🌐 **English** · [Tiếng Việt](../../docs/vi/examples/who-did-what.md)
+> **English** · [Tiếng Việt](../../docs/vi/examples/who-did-what.md)
 
 A read-only report for a server that several people administer. One command answers the questions you ask after something goes wrong:
 
@@ -79,15 +79,15 @@ From the test VM (`--user alice`, trimmed):
 
 How to read it:
 
-- **`WHO alice` / `AS root`** — alice, acting as root. The audit log records the login ID set when alice logged in, which `sudo` and `su` do not change, so commands typed inside `sudo -i` still carry her name.
+- **`WHO alice` / `AS root`**: alice, acting as root. The audit log records the login ID set when alice logged in, which `sudo` and `su` do not change, so commands typed inside `sudo -i` still carry her name.
 - **`SES`** groups everything from one login session; **`TSID`** is the sudo session ID you can replay with `sudo sudoreplay <TSID>` if [session recording](../../docs/ssh-hardening.md#23-what-they-typed-inside-a-root-shell) is on.
-- **`(not in any authorized_keys)`** — the key used for that login is no longer in any `authorized_keys` file. Expected after you remove someone's key; worth investigating if you didn't.
-- **`/etc/nginx/nginx.conf` written via `bash`** — the change came from a shell redirection (`echo … >> file`), which is why it shows up only under files and not under commands: shell built-ins don't start a program.
+- **`(not in any authorized_keys)`**: the key used for that login is no longer in any `authorized_keys` file. Expected after you remove someone's key; worth investigating if you didn't.
+- **`/etc/nginx/nginx.conf` written via `bash`**: the change came from a shell redirection (`echo … >> file`), which is why it shows up only under files and not under commands: shell built-ins don't start a program.
 
 ## Things to know
 
 - **Login background is hidden by default, and only that.** Every login runs programs of its own: the message of the day, the systemd user session, shell start-up checks. The report hides programs run as root *before* the person's own shell started, in sessions that logged in inside the window (the person could not have run anything yet), plus a few systemd helpers recognised by the real executable path the kernel records. Nothing is hidden because of what a command line says, so naming a command `update-motd` does not hide it. The report says how many records it hid; `--raw` shows everything.
-- **Forged log lines are ignored.** Any user can write a line tagged `sshd` or `sudo` with `logger`. The report reads only entries written by sshd running as root and by the real `sudo`/`su` binaries (journald's `_UID` and `_EXE` fields, which come from the kernel). journald reads `_EXE` just after the message arrives, so an entry from a program that exits at once (a refused `sudo`, but also `logger`) can lack it; such entries are still shown, marked `[UNVERIFIED]`, so a refusal is never lost and an unchecked line never passes as checked, and only treats an sshd message as a login when it *starts* with `Accepted` — a failed attempt with the username `Accepted password for root from …` is not one.
+- **Forged log lines are ignored.** Any user can write a line tagged `sshd` or `sudo` with `logger`. The report reads only entries written by sshd running as root and by the real `sudo`/`su` binaries (journald's `_UID` and `_EXE` fields, which come from the kernel). journald reads `_EXE` just after the message arrives, so an entry from a program that exits at once (a refused `sudo`, but also `logger`) can lack it; such entries are still shown, marked `[UNVERIFIED]`, so a refusal is never lost and an unchecked line never passes as checked, and only treats an sshd message as a login when it *starts* with `Accepted`; a failed attempt with the username `Accepted password for root from …` is not one.
 - **Ambiguous sudo lines are flagged, not guessed.** sudo writes the working directory before `USER=` and the command after `COMMAND=`, and both are chosen by the user. A directory named `/tmp/x ; USER=nobody ; COMMAND=/bin/true` makes the line readable two ways, so such a line is shown as `[AMBIGUOUS …]` with `?` for the user and TSID. The `commands` section (auditd) is not affected and shows what really ran.
 - **Output is made safe for your terminal.** Log entries contain text other people chose (usernames, command arguments). Control characters are replaced with `?`, so nothing in a log line can clear your screen or rewrite what you see.
 - **It only reads what is on this server.** Someone who gained root can delete local logs. Keep a copy off the server ([SSH hardening, section 2.6](../../docs/ssh-hardening.md#26-keep-the-trail-where-an-intruder-cant-erase-it)) and run your investigation there when it matters.
@@ -95,7 +95,7 @@ How to read it:
 
 ## Tests
 
-`tests/e2e.sh` builds a small scenario on a real machine — two users with SSH keys, sudo session recording and the audit rules from the guide, a root shell, file edits, a refused `sudo`, a command argument carrying a terminal escape sequence, and attempts to forge or hide entries — and checks the report line by line.
+`tests/e2e.sh` builds a small scenario on a real machine (two users with SSH keys, sudo session recording and the audit rules from the guide, a root shell, file edits, a refused `sudo`, a command argument carrying a terminal escape sequence, and attempts to forge or hide entries) and checks the report line by line.
 
 It **installs openssh-server and auditd, creates users, and changes the sudo and audit configuration**, so run it only on a throwaway VM or a CI runner:
 

@@ -1,6 +1,6 @@
 # Architecture
 
-> 🌐 [English](../architecture.md) · **Tiếng Việt**
+> [English](../architecture.md) · **Tiếng Việt**
 
 PAMSignal được thiết kế xung quanh một nguyên tắc cốt lõi: **làm tốt một việc với ít thành phần chuyển động nhất có thể.**
 
@@ -55,31 +55,31 @@ Sơ đồ [luồng sự kiện](#luồng-sự-kiện) thể hiện điều này 
 
 **Tại sao thiết kế này an toàn:**
 
-1. Tiến trình cha **luôn ghi vào journal trước** — bản ghi cốt lõi được lưu trữ trước khi có bất kỳ nỗ lực cảnh báo nào
-2. `fork()` tạo ra một tiến trình con copy-on-write — nhẹ trên Linux, không có trạng thái chia sẻ
-3. Tiến trình cha **không chờ** tiến trình con — nó tiếp tục vòng lặp sự kiện ngay lập tức
-4. Nếu tiến trình con bị crash, segfault hoặc treo — tiến trình cha hoàn toàn không bị ảnh hưởng
-5. Nếu Telegram/Slack/Discord bị sập — tiến trình con timeout và thoát, pamsignal tiếp tục giám sát
+1. Tiến trình cha **luôn ghi vào journal trước**: bản ghi cốt lõi được lưu trữ trước khi có bất kỳ nỗ lực cảnh báo nào
+2. `fork()` tạo ra một tiến trình con copy-on-write: nhẹ trên Linux, không có trạng thái chia sẻ
+3. Tiến trình cha **không chờ** tiến trình con; nó tiếp tục vòng lặp sự kiện ngay lập tức
+4. Nếu tiến trình con bị crash, segfault hoặc treo, tiến trình cha hoàn toàn không bị ảnh hưởng
+5. Nếu Telegram/Slack/Discord bị sập, tiến trình con timeout và thoát, pamsignal tiếp tục giám sát
 6. `SIGCHLD` bị bỏ qua (`SA_NOCLDWAIT`) nên các zombie process được tự động thu dọn
-7. Tiến trình con `exec` `curl` — không có HTTP library nào được link vào tiến trình cha
+7. Tiến trình con `exec` `curl`; không có HTTP library nào được link vào tiến trình cha
 
 ### Cách gọi curl (config dùng memfd)
 
-Mỗi sender theo kênh — Telegram, Slack/Teams/Discord, WhatsApp, custom webhook — đều đi qua một điểm vào nội bộ duy nhất (`post_alert` trong `src/notify.c`) — điểm này ghi cấu hình per-request vào một file được tạo bởi `memfd_create()` trong bộ nhớ và truyền cho curl dưới dạng `-K /dev/fd/9`. Memfd có bit CLOEXEC được xóa bằng `dup2`; mọi file descriptor kế thừa khác đều được đóng trong tiến trình con trước khi `execv`.
+Mỗi sender theo kênh (Telegram, Slack/Teams/Discord, WhatsApp, custom webhook) đều đi qua một điểm vào nội bộ duy nhất (`post_alert` trong `src/notify.c`). Điểm này ghi cấu hình per-request vào một file được tạo bởi `memfd_create()` trong bộ nhớ và truyền cho curl dưới dạng `-K /dev/fd/9`. Memfd có bit CLOEXEC được xóa bằng `dup2`; mọi file descriptor kế thừa khác đều được đóng trong tiến trình con trước khi `execv`.
 
 Nội dung trong memfd config:
 
-- `url = "<endpoint>"` — luôn có mặt.
-- `header = "<full Name: value>"` — có khi kênh cần auth header. WhatsApp dùng nội bộ cho Meta Cloud API Bearer; kênh custom-webhook dùng cho `webhook_auth_header`.
-- `cert = "<path>"`, `key = "<path>"`, `cacert = "<path>"` — có khi kênh custom-webhook được cấu hình mTLS. Bản thân các đường dẫn không phải bí mật (nội dung file mới là bí mật, và nằm trên đĩa trong ranh giới tin cậy của daemon), nhưng việc định tuyến chúng qua cùng memfd config giúp `argv` của tiến trình con curl tối giản và nhất quán bất kể có bao nhiêu tùy chọn xác thực được cấu hình.
+- `url = "<endpoint>"`: luôn có mặt.
+- `header = "<full Name: value>"`: có khi kênh cần auth header. WhatsApp dùng nội bộ cho Meta Cloud API Bearer; kênh custom-webhook dùng cho `webhook_auth_header`.
+- `cert = "<path>"`, `key = "<path>"`, `cacert = "<path>"`: có khi kênh custom-webhook được cấu hình mTLS. Bản thân các đường dẫn không phải bí mật (nội dung file mới là bí mật, và nằm trên đĩa trong ranh giới tin cậy của daemon), nhưng việc định tuyến chúng qua cùng memfd config giúp `argv` của tiến trình con curl tối giản và nhất quán bất kể có bao nhiêu tùy chọn xác thực được cấu hình.
 
 Hiệu ứng trên `/proc/<pid>/cmdline` của tiến trình con curl: mỗi lần gửi cảnh báo đều tạo ra một `argv` là `curl -s -S --max-time 10 --proto =https --proto-redir =https -H "Content-Type: application/json" -K /dev/fd/9 -d <body>`, byte-identical dù là kênh nào hay chế độ xác thực nào đang được dùng. Một người dùng không có đặc quyền đọc `/proc/*/cmdline` không thể biết từ command line liệu có token, client cert, hay cả hai được cấu hình, chứ chưa nói đến việc thu thập các giá trị đó.
 
-Các flag `--proto =https` / `--proto-redir =https` vẫn ở trên `argv` (không nằm trong file config) để có thể kiểm tra từ bên ngoài như một đảm bảo hardening — bất kỳ ai xem xét tiến trình đang chạy đều có thể xác nhận rằng các scheme cleartext / non-HTTPS bị từ chối ngay cả trước cổng validator.
+Các flag `--proto =https` / `--proto-redir =https` vẫn ở trên `argv` (không nằm trong file config) để có thể kiểm tra từ bên ngoài như một đảm bảo hardening: bất kỳ ai xem xét tiến trình đang chạy đều có thể xác nhận rằng các scheme cleartext / non-HTTPS bị từ chối ngay cả trước cổng validator.
 
 ## Các trường journal có cấu trúc
 
-PAMSignal ghi sự kiện bằng `sd_journal_send()` với tên trường được căn chỉnh theo [Elastic Common Schema (ECS)] để các công cụ SIEM hiện có có thể ingest journal trực tiếp qua tên trường ECS chuẩn thay vì một từ điển riêng của nhà cung cấp. (Từ series v0.2.x, PAMSignal cũng phát ra song song bộ trường `PAMSIGNAL_*`; các trường legacy đó đã bị loại bỏ trong v0.3.0 — hãy cập nhật mọi query `journalctl PAMSIGNAL_EVENT=…` sang các dạng ECS bên dưới.)
+PAMSignal ghi sự kiện bằng `sd_journal_send()` với tên trường được căn chỉnh theo [Elastic Common Schema (ECS)] để các công cụ SIEM hiện có có thể ingest journal trực tiếp qua tên trường ECS chuẩn thay vì một từ điển riêng của nhà cung cấp. (Từ series v0.2.x, PAMSignal cũng phát ra song song bộ trường `PAMSIGNAL_*`; các trường legacy đó đã bị loại bỏ trong v0.3.0, vì vậy hãy cập nhật mọi query `journalctl PAMSIGNAL_EVENT=…` sang các dạng ECS bên dưới.)
 
 Cho các sự kiện login / session:
 
@@ -99,7 +99,7 @@ Cho các sự kiện login / session:
 | `PROCESS_PID` | `12345` | PID của sshd / sudo / su liên quan đến sự kiện |
 | `PAMSIGNAL_ACTOR` | `alice` | Chỉ với sự kiện session: tài khoản đã đăng nhập vào phiên mà `sudo`/`su` chạy từ đó. Để trống khi trùng với `USER_NAME` (một lần đăng nhập SSH), với đăng nhập console (`LOGIN`), hoặc khi pam_unix không ghi tên |
 
-Với các sự kiện brute-force, bộ `EVENT_*` tương tự được áp dụng, thêm vào đó — chỉ với biến thể local-actor — là `USER_TARGET_NAME` (ví dụ: `root`) — người dùng mà actor đang cố leo thang đặc quyền đến.
+Với các sự kiện brute-force, bộ `EVENT_*` tương tự được áp dụng, thêm vào đó (chỉ với biến thể local-actor) là `USER_TARGET_NAME` (ví dụ: `root`), tức người dùng mà actor đang cố leo thang đặc quyền đến.
 
 Ví dụ query:
 
@@ -142,7 +142,7 @@ Daemon chỉ cần đọc journal. Chạy bằng root sẽ mở rộng bề mặ
 Bảng bị giới hạn ở `max_tracked_ips` mục (mặc định 256). Một mảng phẳng với linear scan đơn giản hơn, không có overhead từ allocator, và đủ nhanh cho quy mô này. Nếu bạn theo dõi 100.000 IP, bạn cần một công cụ khác.
 
 **Tại sao dùng INI config (không phải YAML/JSON)?**
-Không cần dependency. Config có khoảng 10 key — thư viện phân tích YAML/JSON thêm độ phức tạp mà không mang lại lợi ích gì. Quản trị viên có thể chỉnh sửa nó bằng `vi` trong 10 giây.
+Không cần dependency. Config có khoảng 10 key, và thư viện phân tích YAML/JSON thêm độ phức tạp mà không mang lại lợi ích gì. Quản trị viên có thể chỉnh sửa nó bằng `vi` trong 10 giây.
 
 **Tại sao không có network code trong tiến trình cha?**
 Mọi dependency mạng (libcurl, socket, TLS) đều là bề mặt tấn công. Một công cụ giám sát bảo mật nên tối thiểu hóa bề mặt tấn công của chính nó. Tiến trình cha đọc từ journal, ghi vào journal, và fork các tiến trình con cho cảnh báo. Các tiến trình con exec `curl` và thoát. Tiến trình cha không bao giờ thực hiện cuộc gọi mạng.

@@ -1,4 +1,4 @@
-"""PAMSignal webhook receiver — Flask application.
+"""PAMSignal webhook receiver: Flask application.
 
 Mirrors the behavior of the Node.js example:
   - Bearer-token authentication (Authorization header).
@@ -95,48 +95,48 @@ def webhook():
 
         if action == "login_success":
             print(
-                f"✅ [LOGIN_SUCCESS] User '{_safe(user.get('name'))}' logged in via "
+                f"[LOGIN_SUCCESS] User '{_safe(user.get('name'))}' logged in via "
                 f"{_safe(source.get('ip'))} on {_safe(host.get('hostname'))} "
                 f"(PID: {_safe(proc.get('pid'))})",
                 flush=True,
             )
         elif action == "login_failure":
             print(
-                f"❌ [LOGIN_FAILED] Failed login attempt for user "
+                f"[LOGIN_FAILED] Failed login attempt for user "
                 f"'{_safe(user.get('name'))}' from {_safe(source.get('ip'))} on "
                 f"{_safe(host.get('hostname'))}",
                 flush=True,
             )
         elif action == "brute_force_detected":
             print(
-                f"🚨 [BRUTE_FORCE] {_safe(ps.get('attempts'))} failed attempts "
+                f"[BRUTE_FORCE] {_safe(ps.get('attempts'))} failed attempts "
                 f"detected from IP {_safe(source.get('ip'))} in "
                 f"{_safe(ps.get('window_sec'))}s!",
                 flush=True,
             )
         elif action == "login_after_failures":
             print(
-                f"🔥 [LOGIN_AFTER_FAILURES] User '{_safe(user.get('name'))}' "
+                f"[LOGIN_AFTER_FAILURES] User '{_safe(user.get('name'))}' "
                 f"logged in from {_safe(source.get('ip'))} after "
                 f"{_safe(ps.get('failures'))} failed attempts on "
-                f"{_safe(host.get('hostname'))} — possible guessed password!",
+                f"{_safe(host.get('hostname'))}: possible guessed password!",
                 flush=True,
             )
         elif action == "test_alert":
             print(
-                f"🔔 [TEST_ALERT] Test alert received from "
-                f"{_safe(host.get('hostname'))} — webhook channel is working",
+                f"[TEST_ALERT] Test alert received from "
+                f"{_safe(host.get('hostname'))}, webhook channel is working",
                 flush=True,
             )
         elif action == "session_opened":
             print(
-                f"ℹ️ [SESSION_OPEN] Session opened for user "
+                f"[SESSION_OPEN] Session opened for user "
                 f"'{_safe(user.get('name'))}' on {_safe(host.get('hostname'))}",
                 flush=True,
             )
         elif action == "session_closed":
             print(
-                f"ℹ️ [SESSION_CLOSE] Session closed for user "
+                f"[SESSION_CLOSE] Session closed for user "
                 f"'{_safe(user.get('name'))}' on {_safe(host.get('hostname'))}",
                 flush=True,
             )

@@ -1,6 +1,6 @@
 #!/bin/bash
 # Generate a self-signed CA, server cert, and client cert for local end-to-end
-# testing of the mTLS path. NOT FOR PRODUCTION — production deployments use
+# testing of the mTLS path. NOT FOR PRODUCTION. Production deployments use
 # cert-manager, certbot, systemd-creds, or whatever cert pipeline the operator
 # already runs.
 #
@@ -16,12 +16,12 @@
 #
 # After running, this directory will contain:
 #
-#   - ca.crt        — root CA the server uses to validate clients
-#   - ca.key        — root CA private key (don't ship this anywhere)
-#   - server.crt    — server cert with CN=localhost, SAN=DNS:localhost,IP:127.0.0.1
-#   - server.key    — server private key (mode 0600)
-#   - client.crt    — client cert with CN=pamsignal-client
-#   - client.key    — client private key (mode 0600)
+#   - ca.crt        root CA the server uses to validate clients
+#   - ca.key        root CA private key (don't ship this anywhere)
+#   - server.crt    server cert with CN=localhost, SAN=DNS:localhost,IP:127.0.0.1
+#   - server.key    server private key (mode 0600)
+#   - client.crt    client cert with CN=pamsignal-client
+#   - client.key    client private key (mode 0600)
 #
 # Then in either example's .env:
 #   TLS_KEY_PATH=./certs/server.key
@@ -37,7 +37,7 @@
 
 set -euo pipefail
 
-# Default to writing into the directory this script lives in — that is the
+# Default to writing into the directory this script lives in; that is the
 # `examples/shared-certs/` dir consumed via symlinks by the three example
 # projects.
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -52,12 +52,12 @@ fi
 mkdir -p "$out"
 cd "$out"
 
-# Internal CA — self-signed, used to issue both server and client certs below.
+# Internal CA: self-signed, used to issue both server and client certs below.
 openssl req -x509 -newkey rsa:2048 -nodes -days "$days" \
   -keyout ca.key -out ca.crt \
   -subj "/CN=PAMSignal Demo Internal CA" 2>/dev/null
 
-# Server cert — CN=localhost so https clients accept the SAN.
+# Server cert: CN=localhost so https clients accept the SAN.
 openssl req -newkey rsa:2048 -nodes \
   -keyout server.key -out server.csr \
   -subj "/CN=localhost" 2>/dev/null
@@ -65,14 +65,14 @@ openssl x509 -req -in server.csr -CA ca.crt -CAkey ca.key \
   -CAcreateserial -out server.crt -days "$days" \
   -extfile <(printf "subjectAltName=DNS:localhost,IP:127.0.0.1") 2>/dev/null
 
-# Client cert — what pamsignal (and Bruno) presents in the TLS handshake.
+# Client cert: what pamsignal (and Bruno) presents in the TLS handshake.
 openssl req -newkey rsa:2048 -nodes \
   -keyout client.key -out client.csr \
   -subj "/CN=pamsignal-client" 2>/dev/null
 openssl x509 -req -in client.csr -CA ca.crt -CAkey ca.key \
   -CAcreateserial -out client.crt -days "$days" 2>/dev/null
 
-# Clean up CSRs and serial — only the .crt and .key files matter to operators.
+# Clean up CSRs and serial; only the .crt and .key files matter to operators.
 rm -f server.csr client.csr ca.srl
 
 # Tighten permissions on private keys. pamsignal will additionally refuse to
@@ -89,5 +89,5 @@ echo "  Server:  $out/server.crt + $out/server.key (CN=localhost, SAN=127.0.0.1)
 echo "  Client:  $out/client.crt + $out/client.key (CN=pamsignal-client)"
 echo ""
 echo "Both example receivers and the Bruno collection consume this directory"
-echo "via the certs/ symlink — restart any running receiver to pick up the"
+echo "via the certs/ symlink. Restart any running receiver to pick up the"
 echo "new server.crt / server.key."

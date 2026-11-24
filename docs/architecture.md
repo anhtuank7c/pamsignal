@@ -1,6 +1,6 @@
 # Architecture
 
-> 🌐 **English** · [Tiếng Việt](vi/architecture.md)
+> **English** · [Tiếng Việt](vi/architecture.md)
 
 PAMSignal is designed around one core principle: **do one thing well with minimal moving parts.**
 
@@ -55,31 +55,31 @@ The [event flow](#event-flow) diagram shows this as step ②: the parent forks, 
 
 **Why this is safe:**
 
-1. The parent **always writes to the journal first** — the core record is persisted before any alert attempt
-2. `fork()` creates a copy-on-write child — cheap on Linux, no shared state
-3. The parent **does not wait** for the child — it continues the event loop immediately
-4. If the child crashes, segfaults, or hangs — the parent is completely unaffected
-5. If Telegram/Slack/Discord is down — the child times out and exits, pamsignal keeps monitoring
+1. The parent **always writes to the journal first**: the core record is persisted before any alert attempt
+2. `fork()` creates a copy-on-write child: cheap on Linux, no shared state
+3. The parent **does not wait** for the child; it continues the event loop immediately
+4. If the child crashes, segfaults, or hangs, the parent is completely unaffected
+5. If Telegram/Slack/Discord is down, the child times out and exits, pamsignal keeps monitoring
 6. `SIGCHLD` is ignored (`SA_NOCLDWAIT`) so zombie processes are automatically reaped
-7. The child `exec`s `curl` — no HTTP library linked into the parent process at all
+7. The child `exec`s `curl`; no HTTP library linked into the parent process at all
 
 ### Curl invocation (memfd-backed config)
 
-Every per-channel sender — Telegram, Slack/Teams/Discord, WhatsApp, custom webhook — funnels through one internal entry point (`post_alert` in `src/notify.c`) that writes the per-request configuration to an in-memory `memfd_create()`-backed file and passes it to curl as `-K /dev/fd/9`. The memfd has its CLOEXEC bit cleared via `dup2`; every other inherited file descriptor is closed in the child before `execv`.
+Every per-channel sender (Telegram, Slack/Teams/Discord, WhatsApp, custom webhook) funnels through one internal entry point (`post_alert` in `src/notify.c`) that writes the per-request configuration to an in-memory `memfd_create()`-backed file and passes it to curl as `-K /dev/fd/9`. The memfd has its CLOEXEC bit cleared via `dup2`; every other inherited file descriptor is closed in the child before `execv`.
 
 What lands in the memfd config:
 
-- `url = "<endpoint>"` — always present.
-- `header = "<full Name: value>"` — present when the channel needs an auth header. WhatsApp uses this internally for its Meta Cloud API Bearer; the custom-webhook channel uses it for `webhook_auth_header`.
-- `cert = "<path>"`, `key = "<path>"`, `cacert = "<path>"` — present when the custom-webhook channel has mTLS configured. The paths are not themselves secret (the file *contents* are, and stay on disk under the daemon's trust boundary), but routing them through the same memfd config keeps the curl child's `argv` minimal and uniform regardless of how many auth options are configured.
+- `url = "<endpoint>"`: always present.
+- `header = "<full Name: value>"`: present when the channel needs an auth header. WhatsApp uses this internally for its Meta Cloud API Bearer; the custom-webhook channel uses it for `webhook_auth_header`.
+- `cert = "<path>"`, `key = "<path>"`, `cacert = "<path>"`: present when the custom-webhook channel has mTLS configured. The paths are not themselves secret (the file *contents* are, and stay on disk under the daemon's trust boundary), but routing them through the same memfd config keeps the curl child's `argv` minimal and uniform regardless of how many auth options are configured.
 
 Effect on the curl child's `/proc/<pid>/cmdline`: every alert dispatch produces an `argv` of `curl -s -S --max-time 10 --proto =https --proto-redir =https -H "Content-Type: application/json" -K /dev/fd/9 -d <body>`, byte-identical no matter which channel it's for or which authentication mode is in use. A local unprivileged user reading `/proc/*/cmdline` cannot tell from the command line whether a token, a client cert, or both are configured, let alone harvest the values.
 
-The `--proto =https` / `--proto-redir =https` flags stay on `argv` (not in the config file) so they're externally inspectable as a hardening guarantee — anyone reviewing the running process can confirm cleartext / non-HTTPS schemes are refused even before the validator gate.
+The `--proto =https` / `--proto-redir =https` flags stay on `argv` (not in the config file) so they're externally inspectable as a hardening guarantee: anyone reviewing the running process can confirm cleartext / non-HTTPS schemes are refused even before the validator gate.
 
 ## Structured journal fields
 
-PAMSignal writes events using `sd_journal_send()` with [Elastic Common Schema (ECS)] aligned field names so existing SIEM tooling can ingest the journal directly via the standard ECS field names rather than a vendor-specific dictionary. (Through the v0.2.x series PAMSignal also emitted a parallel `PAMSIGNAL_*` field set; those legacy fields were retired in v0.3.0 — update any `journalctl PAMSIGNAL_EVENT=…` queries to the ECS forms below.)
+PAMSignal writes events using `sd_journal_send()` with [Elastic Common Schema (ECS)] aligned field names so existing SIEM tooling can ingest the journal directly via the standard ECS field names rather than a vendor-specific dictionary. (Through the v0.2.x series PAMSignal also emitted a parallel `PAMSIGNAL_*` field set; those legacy fields were retired in v0.3.0, so update any `journalctl PAMSIGNAL_EVENT=…` queries to the ECS forms below.)
 
 For login / session events:
 
@@ -99,7 +99,7 @@ For login / session events:
 | `PROCESS_PID` | `12345` | The sshd / sudo / su PID associated with the event |
 | `PAMSIGNAL_ACTOR` | `alice` | Session events only: the account that logged in to the session `sudo`/`su` ran from. Empty when it equals `USER_NAME` (an SSH login), for a console login (`LOGIN`), or when pam_unix logs no name |
 
-For brute-force events the same `EVENT_*` set applies plus, for the local-actor variant only, `USER_TARGET_NAME` (e.g. `root`) — the user the actor was trying to elevate to.
+For brute-force events the same `EVENT_*` set applies plus, for the local-actor variant only, `USER_TARGET_NAME` (e.g. `root`), the user the actor was trying to elevate to.
 
 Query examples:
 
@@ -142,7 +142,7 @@ The daemon only needs to read the journal. Running as root would widen the attac
 The table is bounded at `max_tracked_ips` entries (default 256). A flat array with linear scan is simpler, has no allocator overhead, and is fast enough for this scale. If you're tracking 100,000 IPs, you need a different tool.
 
 **Why INI config (not YAML/JSON)?**
-Zero dependencies. The config has ~10 keys — YAML/JSON parsing libraries add complexity for no benefit. Sysadmins can edit it with `vi` in 10 seconds.
+Zero dependencies. The config has ~10 keys, and YAML/JSON parsing libraries add complexity for no benefit. Sysadmins can edit it with `vi` in 10 seconds.
 
 **Why no network code in the parent process?**
 Every network dependency (libcurl, sockets, TLS) is an attack surface. A security monitoring tool should minimize its own attack surface. The parent reads from the journal, writes to the journal, and forks children for alerts. The children exec `curl` and exit. The parent never makes a network call.

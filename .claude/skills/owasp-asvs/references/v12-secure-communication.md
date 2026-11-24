@@ -1,4 +1,4 @@
-# V12 — Secure Communication
+# V12: Secure Communication
 
 > Upstream: <https://github.com/OWASP/ASVS/blob/master/5.0/en/0x21-V12-Secure-Communication.md>
 
@@ -20,22 +20,22 @@ The chapter covers TLS configuration, cipher suites, HSTS, certificate pinning, 
 
 ---
 
-## V12.1 — TLS for outbound calls
+## V12.1: TLS for outbound calls
 
 | V-ID | Requirement | Level | Project evaluation |
 |---|---|---|---|
 | V12.1.1 | Verify outbound HTTPS uses TLS 1.2+ with strong cipher suites. | L1 | Delegated to curl/OpenSSL system defaults. Modern distributions ship TLS 1.2/1.3 only. Document in `docs/architecture.md`. |
-| V12.1.2 | Verify the client refuses to fall back to HTTP. | L1 | `--proto =https --proto-redir =https` at `src/notify.c:237-240`. ✓ Any future code that omits these is 🔴. |
-| V12.1.3 | Verify certificate validation is enabled — i.e., no `-k`, `--insecure`, or environment override that disables it. | L1 | Grep `src/notify.c` for `"-k"`, `"--insecure"`, `"SSL_VERIFY"` — none present. ✓ |
+| V12.1.2 | Verify the client refuses to fall back to HTTP. | L1 | `--proto =https --proto-redir =https` at `src/notify.c:237-240`. ✓ Any future code that omits these is Critical. |
+| V12.1.3 | Verify certificate validation is enabled, i.e., no `-k`, `--insecure`, or environment override that disables it. | L1 | Grep `src/notify.c` for `"-k"`, `"--insecure"`, `"SSL_VERIFY"`: none present. ✓ |
 | V12.1.4 | Verify the request has a reasonable timeout (DoS / slowloris defence on the client side). | L1 | `--max-time 10` at `src/notify.c:236`. ✓ |
 
-## V12.2 — Server-side TLS
+## V12.2: Server-side TLS
 
 | V-ID | Requirement | Level | Project evaluation |
 |---|---|---|---|
-| V12.2.* | All server-side TLS requirements (HSTS, cipher policy, ALPN). | L1 | N/A — PAMSignal has no inbound TLS listener. |
+| V12.2.* | All server-side TLS requirements (HSTS, cipher policy, ALPN). | L1 | N/A: PAMSignal has no inbound TLS listener. |
 
-## V12.3 — Mutual TLS
+## V12.3: Mutual TLS
 
 | V-ID | Requirement | Level | Project evaluation |
 |---|---|---|---|
@@ -43,11 +43,11 @@ The chapter covers TLS configuration, cipher suites, HSTS, certificate pinning, 
 | V12.3.2 | Verify the cert and key are paired and validated at load. | L2 | `validate_webhook_tls()` rejects cert-without-key and key-without-cert at config load. ✓ |
 | V12.3.3 | Verify mTLS material is not exposed in `argv` / `/proc/<pid>/cmdline`. | L1 | Cert / key paths flow through the memfd `-K` config; they reach curl as `--cert <path>\n--key <path>\n` config lines, not argv. ✓ See `src/notify.c:112+`. |
 
-## V12.4 — Cert pinning / public-key pinning
+## V12.4: Cert pinning / public-key pinning
 
 | V-ID | Requirement | Level | Project evaluation |
 |---|---|---|---|
-| V12.4.1 | Verify pinning is used where appropriate, or that the decision not to pin is documented. | L2 | Not pinned — relies on system CA bundle. Operator can override with `webhook_ca_bundle`. Acceptable for L1; document the rationale (alert destinations like Slack/Telegram rotate certs frequently). |
+| V12.4.1 | Verify pinning is used where appropriate, or that the decision not to pin is documented. | L2 | Not pinned; relies on system CA bundle. Operator can override with `webhook_ca_bundle`. Acceptable for L1; document the rationale (alert destinations like Slack/Telegram rotate certs frequently). |
 
 ---
 
@@ -74,12 +74,12 @@ The chapter covers TLS configuration, cipher suites, HSTS, certificate pinning, 
 ## Report row template
 
 ```markdown
-| 5 | V12.1.3 | 🔴 | src/notify.c:412 | New retry path adds "--insecure" to argv for self-signed test endpoints [L1] | Disables certificate validation in production code | Remove --insecure; for self-signed test endpoints, set webhook_ca_bundle to a CA file (config.h:28) |
+| 5 | V12.1.3 | Critical | src/notify.c:412 | New retry path adds "--insecure" to argv for self-signed test endpoints [L1] | Disables certificate validation in production code | Remove --insecure; for self-signed test endpoints, set webhook_ca_bundle to a CA file (config.h:28) |
 ```
 
 ---
 
 ## Cross-references
 
-- Root `/CLAUDE.md` §Security Requirements — "Alert dispatch stays isolated via fork+exec — no network code in parent process".
-- `docs/alerts.md` — operator-facing TLS config documentation (cert / key / CA bundle keys).
+- Root `/CLAUDE.md` §Security Requirements: "Alert dispatch stays isolated via fork+exec, no network code in parent process".
+- `docs/alerts.md`: operator-facing TLS config documentation (cert / key / CA bundle keys).

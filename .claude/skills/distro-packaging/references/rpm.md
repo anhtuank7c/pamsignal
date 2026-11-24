@@ -77,7 +77,7 @@ fi
 
 %postun
 %systemd_postun_with_restart pamsignal.service
-# Do NOT remove pamsignal user — it may own journal entries
+# Do NOT remove pamsignal user; it may own journal entries
 
 %files
 %license LICENSE
@@ -92,7 +92,7 @@ fi
 - Initial package
 ```
 
-Use `%{_sysconfdir}` instead of hardcoded `/etc/pamsignal` — it's the standard RPM way and respects distro overrides.
+Use `%{_sysconfdir}` instead of hardcoded `/etc/pamsignal`; it's the standard RPM way and respects distro overrides.
 
 The `%changelog` section is required by rpmlint and expected by Fedora/EPEL review. Use `date +"%a %b %d %Y"` format for the date (e.g., `Mon Mar 30 2026`).
 
@@ -108,8 +108,8 @@ The config file is marked `%config(noreplace)` so rpm preserves user modificatio
 
 ### %attr Directives
 
-- Config dir: `0750 root:pamsignal` — only root and the daemon can access
-- Config file: `0640 root:pamsignal` — contains credentials, no world-read
+- Config dir: `0750 root:pamsignal` (only root and the daemon can access)
+- Config file: `0640 root:pamsignal` (contains credentials, no world-read)
 - These are also set in `%post` for first-install scenarios where the user is created in `%pre`
 
 ### shadow-utils Dependency
@@ -187,8 +187,8 @@ rpmlint ~/rpmbuild/RPMS/x86_64/pamsignal-*.rpm
 ```
 
 Common issues:
-- `no-manual-page-for-binary` — no man page yet; add when available
-- `spelling-error` — verify any flagged terms are intentional
+- `no-manual-page-for-binary`: no man page yet; add when available
+- `spelling-error`: verify any flagged terms are intentional
 
 ## Distro-Specific Notes
 
@@ -203,6 +203,6 @@ Common issues:
 - CentOS Stream 9+ has meson in base repos
 
 ### AlmaLinux / Rocky Linux
-- Binary-compatible with RHEL — same `%{?dist}` tags
+- Binary-compatible with RHEL, same `%{?dist}` tags
 - Same EPEL requirement as CentOS for meson
 - Build with mock using `alma-9-x86_64` or `rocky-9-x86_64` configs

@@ -1,8 +1,8 @@
 # Alerts
 
-> 🌐 **English** · [Tiếng Việt](vi/alerts.md)
+> **English** · [Tiếng Việt](vi/alerts.md)
 
-PAMSignal sends best-effort alerts to messaging platforms when login events or brute-force patterns are detected. Alerts are sent via `fork()+exec(curl)` — a short-lived child process that cannot affect the core monitoring.
+PAMSignal sends best-effort alerts to messaging platforms when login events or brute-force patterns are detected. Alerts are sent via `fork()+exec(curl)`, a short-lived child process that cannot affect the core monitoring.
 
 If an alert fails (network down, API error, timeout), pamsignal logs a warning and continues. The event is always persisted in the journal first.
 
@@ -32,7 +32,7 @@ This means the webhook output drops directly into Elastic SIEM and Wazuh without
 
 ### Chat text format
 
-Severity bracket is fixed-width (8 chars) so columns align in monospace renderings. Field order is severity → action → identity → location → metadata → `pid` → `ts`. The `pid=` field is the live process for `session_opened` and `login_success` events (you can `kill <pid>` to disconnect the user) and the failing-auth child for failures (already reaped — useful as forensic context only). On `session_opened`, `actor=` names the account that logged in to the session `sudo`/`su` was run from (pam_unix's `by <name>(uid=N)`). That is usually the person who ran it, but if alice ran `su - bob` and bob then ran `sudo`, the actor is still `alice`; sudo's own log names the account that typed `sudo`. `actor=` is left out when it would just repeat `user=` (an SSH login is logged `alice(uid=1001) by alice(uid=0)`), for a console login (`by LOGIN(uid=0)`, where `LOGIN` is a placeholder) and when pam_unix logs no name (`by (uid=0)`, sudo run outside a login session, e.g. from cron).
+Severity bracket is fixed-width (8 chars) so columns align in monospace renderings. Field order is severity → action → identity → location → metadata → `pid` → `ts`. The `pid=` field is the live process for `session_opened` and `login_success` events (you can `kill <pid>` to disconnect the user) and the failing-auth child for failures (already reaped, so useful as forensic context only). On `session_opened`, `actor=` names the account that logged in to the session `sudo`/`su` was run from (pam_unix's `by <name>(uid=N)`). That is usually the person who ran it, but if alice ran `su - bob` and bob then ran `sudo`, the actor is still `alice`; sudo's own log names the account that typed `sudo`. `actor=` is left out when it would just repeat `user=` (an SSH login is logged `alice(uid=1001) by alice(uid=0)`), for a console login (`by LOGIN(uid=0)`, where `LOGIN` is a placeholder) and when pam_unix logs no name (`by (uid=0)`, sudo run outside a login session, e.g. from cron).
 
 ```
 [INFO]   auth.session_opened user=root actor=alice host=web-01 service=sudo pid=12345 ts=2026-03-29T14:23:01+0000 provider=aws service_name=web-api
@@ -44,7 +44,7 @@ Severity bracket is fixed-width (8 chars) so columns align in monospace renderin
 [CRIT]   auth.login_after_failures user=root src=203.0.113.50:40112 failures=7 window=300s host=web-01 service=sshd auth=password pid=12360 ts=2026-03-29T14:24:10+0000
 ```
 
-The last form is emitted when a local user (`alice`) repeatedly fails `sudo`/`su` authentication on the host. There is no `src=` because the attempt has no remote endpoint; ECS `user.name` carries the actor and `user.target.name` the elevation target. Per-event `auth.login_failure` alerts are **not** emitted for sudo/su — only the brute-force aggregate fires, so a mistyped password does not page the operator. The journal entry from `pamsignal` is still written for every individual failure.
+The last form is emitted when a local user (`alice`) repeatedly fails `sudo`/`su` authentication on the host. There is no `src=` because the attempt has no remote endpoint; ECS `user.name` carries the actor and `user.target.name` the elevation target. Per-event `auth.login_failure` alerts are **not** emitted for sudo/su. Only the brute-force aggregate fires, so a mistyped password does not page the operator. The journal entry from `pamsignal` is still written for every individual failure.
 
 The `[CRIT]` line is the login-after-failures alert: a login **succeeded** from an IP that had just failed `failures` times, which is what a guessed password looks like. It is sent in addition to the normal `auth.login_success` line, and fires even for `trusted_sources`; repeats for the same IP are spaced by `alert_cooldown_sec`. See [Configuration → Login-after-failures detection](./configuration.md#login-after-failures-detection).
 
@@ -157,7 +157,7 @@ Sent as plain text via [Discord webhook](https://support.discord.com/hc/en-us/ar
 
 Sent as a `POST` request with `Content-Type: application/json`. Conforms to ECS so it can be ingested into Elastic Stack, Wazuh, or any pipeline that speaks ECS without field remapping.
 
-> 💡 **Want to build your own receiver?** Check out the ready-to-deploy **[Node.js Express Webhook Example](../examples/nodejs-webhook/README.md)**! It demonstrates how to authenticate, parse the ECS JSON payload, and route PAMSignal events.
+> **Want to build your own receiver?** Check out the ready-to-deploy **[Node.js Express Webhook Example](../examples/nodejs-webhook/README.md)**! It demonstrates how to authenticate, parse the ECS JSON payload, and route PAMSignal events.
 
 **Login event:**
 
@@ -213,7 +213,7 @@ Sent as a `POST` request with `Content-Type: application/json`. Conforms to ECS 
 }
 ```
 
-**Brute-force detection — remote (sshd, or sudo/su with `rhost=` set)**: keyed by source IP, `event.kind=alert`, severity 8:
+**Brute-force detection, remote (sshd, or sudo/su with `rhost=` set)**: keyed by source IP, `event.kind=alert`, severity 8:
 
 ```json
 {
@@ -239,7 +239,7 @@ Sent as a `POST` request with `Content-Type: application/json`. Conforms to ECS 
 }
 ```
 
-**Brute-force detection — local (sudo/su without remote endpoint)**: keyed by actor (`ruser=`), no `source.*`. `user.name` is the actor; `user.target.name` is the elevation target:
+**Brute-force detection, local (sudo/su without remote endpoint)**: keyed by actor (`ruser=`), no `source.*`. `user.name` is the actor; `user.target.name` is the elevation target:
 
 ```json
 {
@@ -306,7 +306,7 @@ webhook_client_key  = /etc/pamsignal/webhook-client.key
 webhook_ca_bundle   = /etc/pamsignal/webhook-ca.pem
 ```
 
-mTLS combines additively with `webhook_auth_header` — operators with receivers like Wazuh API or corporate SIEM gateways often require both (mTLS for transport-layer service identity, Bearer for app-layer rate-limit / multi-tenancy).
+mTLS combines additively with `webhook_auth_header`. Operators with receivers like Wazuh API or corporate SIEM gateways often require both (mTLS for transport-layer service identity, Bearer for app-layer rate-limit / multi-tenancy).
 
 **Operational requirements:**
 
@@ -315,7 +315,7 @@ mTLS combines additively with `webhook_auth_header` — operators with receivers
 - All three paths are opened with `O_NOFOLLOW` (symlinks rejected) and must be regular files owned by `root` or the daemon user.
 - Path values containing `\r`, `\n`, `"`, or `\` are rejected at config load.
 - Encrypted (passphrase-protected) keys are not supported. Use filesystem permissions, `systemd-creds`, or your cert manager's secret-injection model instead.
-- The cert/key paths flow through the same memfd-backed curl config as the auth header, so they don't appear in `argv` either — keeps the alert child's process listing minimal.
+- The cert/key paths flow through the same memfd-backed curl config as the auth header, so they don't appear in `argv` either, which keeps the alert child's process listing minimal.
 
 ### Event types
 
@@ -325,11 +325,11 @@ mTLS combines additively with `webhook_auth_header` — operators with receivers
 | `session_closed` | `SESSION_CLOSE` | A PAM session closes | 3 (info) | `session_close` |
 | `login_success` | `LOGIN_SUCCESS` | Successful SSH auth (password, public key, or keyboard-interactive) | 4 (notice) | `login_success` |
 | `login_failure` | `LOGIN_FAILED` | Failed SSH auth | 5 (warning) | `login_failed` |
-| `login_failure` (sudo/su) | `LOGIN_FAILED` | Failed sudo/su attempt — **journal-only** (no per-event chat alert; tracked toward the brute-force threshold) | 5 (warning) | `login_failed` (suppression is independent and still applies) |
+| `login_failure` (sudo/su) | `LOGIN_FAILED` | Failed sudo/su attempt, **journal-only** (no per-event chat alert; tracked toward the brute-force threshold) | 5 (warning) | `login_failed` (suppression is independent and still applies) |
 | `brute_force_detected` | `BRUTE_FORCE_DETECTED` | Failed attempts from one IP **or** from one local actor (sudo/su) exceeded the threshold within the window | 8 (alert) | `brute_force` |
-| `login_after_failures` | `LOGIN_AFTER_FAILURES` | A login succeeds from an IP with at least `success_after_fail_threshold` recent failures — a likely guessed password | 9 (critical) | `login_after_failures` |
+| `login_after_failures` | `LOGIN_AFTER_FAILURES` | A login succeeds from an IP with at least `success_after_fail_threshold` recent failures: a likely guessed password | 9 (critical) | `login_after_failures` |
 
-The last column is the token to list in `enable_notification_type` to receive that category as a chat alert. The default (`all`, or the key omitted) enables every category. The filter only gates chat dispatch — `journalctl -t pamsignal` records every event regardless. See [Configuration → Notification-type filter](./configuration.md#notification-type-filter) for the full reference.
+The last column is the token to list in `enable_notification_type` to receive that category as a chat alert. The default (`all`, or the key omitted) enables every category. The filter only gates chat dispatch; `journalctl -t pamsignal` records every event regardless. See [Configuration → Notification-type filter](./configuration.md#notification-type-filter) for the full reference.
 
 `pamsignal --test-alert` sends one extra payload that is not a detection: `event.action` = `test_alert`, `pamsignal.event_type` = `TEST_ALERT`, severity 3, with only `@timestamp`, `event.*`, `host.hostname` and any `labels`. Receivers can ignore it or use it as a connectivity check.
 
@@ -350,10 +350,10 @@ The last column is the token to list in `enable_notification_type` to receive th
 | `service.name` | string | Login/Session | PAM service: `sshd`, `sudo`, `su`, `login`, `other` |
 | `source.ip` | string | Login + Brute + Login-after-failures | Remote IP (validated via `inet_pton`) |
 | `source.port` | integer | Login + Login-after-failures | Remote port |
-| `process.pid` | integer | All | Process ID — the live sshd session for `login_success`/`session_opened`, the (already reaped) auth child for failures and brute-force |
+| `process.pid` | integer | All | Process ID: the live sshd session for `login_success`/`session_opened`, the (already reaped) auth child for failures and brute-force |
 | `process.user.id` | string | Login/Session | UID of the PAM-handled process |
 | `pamsignal.event_type` | string | All | Legacy uppercase enum (kept for backward compat through v0.2.x; retired in v0.3.0) |
-| `pamsignal.actor` | string | Session opened (when known) | Account that logged in to the session `sudo`/`su` ran from — usually who ran it (see the chat text format above for the `su` caveat). `user.name` stays the session's user. Absent when it equals `user.name` (an SSH login), for a console login (`LOGIN`), or when pam_unix logs no name |
+| `pamsignal.actor` | string | Session opened (when known) | Account that logged in to the session `sudo`/`su` ran from, usually who ran it (see the chat text format above for the `su` caveat). `user.name` stays the session's user. Absent when it equals `user.name` (an SSH login), for a console login (`LOGIN`), or when pam_unix logs no name |
 | `pamsignal.auth_method` | string | Login + Login-after-failures | `password`, `publickey`, `keyboard-interactive`, or `unknown` |
 | `pamsignal.attempts` | integer | Brute-force | Number of failed attempts that breached the threshold |
 | `pamsignal.failures` | integer | Login-after-failures | Length of the run of failed attempts that preceded the successful login |
@@ -363,15 +363,15 @@ The last column is the token to list in `enable_notification_type` to receive th
 
 The ECS payload is drop-in for:
 
-- **Elastic SIEM** — schema is native; no remapping
-- **Wazuh** — the wazuh-indexer template ingests ECS-shaped events directly
-- **Sumo Logic, Datadog, Graylog, Loki** — schema-flexible; index whatever JSON you send
+- **Elastic SIEM**: schema is native; no remapping
+- **Wazuh**: the wazuh-indexer template ingests ECS-shaped events directly
+- **Sumo Logic, Datadog, Graylog, Loki**: schema-flexible; index whatever JSON you send
 
 It needs a one-time mapping (Vector / Logstash / Filebeat processor, or the SIEM's own pipeline) for:
 
-- **Splunk** — install the [Add-on for Elastic Common Schema] which maps ECS to Splunk CIM, or POST to HEC and write a CIM-compliant Splunk macro
-- **Microsoft Sentinel** — write a [KQL parse function](https://learn.microsoft.com/azure/sentinel/normalization-about-parsers) translating ECS to ASIM
-- **AWS Security Hub** — translate to [ASFF] before forwarding
+- **Splunk**: install the [Add-on for Elastic Common Schema] which maps ECS to Splunk CIM, or POST to HEC and write a CIM-compliant Splunk macro
+- **Microsoft Sentinel**: write a [KQL parse function](https://learn.microsoft.com/azure/sentinel/normalization-about-parsers) translating ECS to ASIM
+- **AWS Security Hub**: translate to [ASFF] before forwarding
 
 For legacy enterprise SIEMs that prefer CEF (ArcSight) or LEEF (IBM QRadar), use Vector or Logstash to remap the ECS fields. (A native CEF output mode is on the roadmap if there's demand.)
 
@@ -401,15 +401,15 @@ endpoints = ["https://es.example.com:9200"]
 api_version = "v8"
 ```
 
-The same pattern works for any non-ECS SIEM — add a `transforms.remap` step between the source and sink to rename fields.
+The same pattern works for any non-ECS SIEM: add a `transforms.remap` step between the source and sink to rename fields.
 
 ## How alert isolation works
 
-See [Architecture — Alert isolation model](./architecture.md#alert-isolation-model) for the full explanation. In short:
+See [Architecture: Alert isolation model](./architecture.md#alert-isolation-model) for the full explanation. In short:
 
 1. Event is **always written to journal first** (core record persisted)
 2. Parent `fork()`s a child process
 3. Child `exec("curl", ...)` sends the HTTP request
-4. Parent continues the event loop immediately — does not wait
-5. If child crashes or network is down — parent is unaffected
+4. Parent continues the event loop immediately and does not wait
+5. If child crashes or network is down, the parent is unaffected
 6. No HTTP library exists in the parent process

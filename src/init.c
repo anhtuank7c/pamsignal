@@ -136,7 +136,7 @@ static int read_pidfile_pid(int dirfd, pid_t *pid_out) {
 static int pidfile_is_stale(int dirfd, pid_t *stale_pid_out) {
     pid_t pid;
     if (read_pidfile_pid(dirfd, &pid) < 0) {
-        // Unparseable / unreadable — treat as stale and remove on retry.
+        // Unparseable / unreadable: treat as stale and remove on retry.
         *stale_pid_out = 0;
         return 1;
     }
@@ -144,7 +144,7 @@ static int pidfile_is_stale(int dirfd, pid_t *stale_pid_out) {
     if (kill(pid, 0) == 0)
         return 0; // alive
     if (errno == EPERM)
-        return 0; // exists but owned by another user — assume alive
+        return 0; // exists but owned by another user: assume alive
     return 1;     // ESRCH or anything else: gone
 }
 

@@ -1,8 +1,8 @@
 # Security Policy
 
-> 🌐 **English** · [Tiếng Việt](docs/vi/SECURITY.md)
+> **English** · [Tiếng Việt](docs/vi/SECURITY.md)
 
-PAMSignal is a security-monitoring daemon. A vulnerability in the daemon itself — bypass of the brute-force tracker, alert spoofing, log injection, privilege escalation, memory corruption — is treated as a high-priority defect. This document describes how to report one privately and what to expect once you do.
+PAMSignal is a security-monitoring daemon. A vulnerability in the daemon itself (bypass of the brute-force tracker, alert spoofing, log injection, privilege escalation, memory corruption) is treated as a high-priority defect. This document describes how to report one privately and what to expect once you do.
 
 ## Reporting a Vulnerability
 
@@ -10,7 +10,7 @@ PAMSignal is a security-monitoring daemon. A vulnerability in the daemon itself 
 
 Use one of the private channels below:
 
-1. **Preferred — GitHub Security Advisories.** Open a private advisory on the repository:
+1. **Preferred: GitHub Security Advisories.** Open a private advisory on the repository:
    <https://github.com/anhtuank7c/pamsignal/security/advisories/new>
    This thread stays private until both reporter and maintainer agree to publish, and CVE assignment can be requested through the same UI.
 
@@ -36,21 +36,21 @@ When reporting, please include:
 
 Two axes:
 
-**Release line.** Only the most recent **minor** release line receives security fixes. Patch releases for older minors are case-by-case and only when the fix is one-line obvious — anyone running the project should expect to upgrade to the latest minor for security work.
+**Release line.** Only the most recent **minor** release line receives security fixes. Patch releases for older minors are case-by-case and only when the fix is one-line obvious; anyone running the project should expect to upgrade to the latest minor for security work.
 
 | Version | Supported |
 |---------|-----------|
-| `0.3.x` | ✅ |
-| `0.2.x` | ❌ (use `0.3.x`) |
-| `0.1.x` | ❌ |
+| `0.3.x` | Yes |
+| `0.2.x` | No (use `0.3.x`) |
+| `0.1.x` | No |
 
 The recommended install path is the signed apt or dnf repository documented in [`README.md`](./README.md#1-install); `apt upgrade` / `dnf upgrade` keeps you on the supported line automatically.
 
-**Operating system / distribution.** Pamsignal supports modern systemd-native Linux only. The full distribution matrix — CI-tested distributions, expected-to-work distributions with their per-row caveats, and explicit unsupported releases with the technical reason for each cutoff — lives in [`docs/distros.md`](./docs/distros.md). A vulnerability report against a Tier 3 distribution will be closed with a pointer to that document; vulnerabilities affecting Tier 1 or Tier 2 distributions are in scope for security review per this policy.
+**Operating system / distribution.** Pamsignal supports modern systemd-native Linux only. The full distribution matrix (CI-tested distributions, expected-to-work distributions with their per-row caveats, and explicit unsupported releases with the technical reason for each cutoff) lives in [`docs/distros.md`](./docs/distros.md). A vulnerability report against a Tier 3 distribution will be closed with a pointer to that document; vulnerabilities affecting Tier 1 or Tier 2 distributions are in scope for security review per this policy.
 
 ## Scope
 
-The full in-scope / out-of-scope breakdown — including adversary capabilities the daemon assumes, the trust boundaries inside the codebase, and the design choices that produce the current security posture — lives in [`docs/threat-model.md`](./docs/threat-model.md). Read that before reporting; in particular, the "Out of scope" section there is comprehensive about the non-goals (compromised journald / libsystemd / curl, root-already-on-host, alert-provider compromise, multi-host correlation, durable alert delivery, admin misconfiguration).
+The full in-scope / out-of-scope breakdown, including adversary capabilities the daemon assumes, the trust boundaries inside the codebase, and the design choices that produce the current security posture, lives in [`docs/threat-model.md`](./docs/threat-model.md). Read that before reporting; in particular, the "Out of scope" section there is comprehensive about the non-goals (compromised journald / libsystemd / curl, root-already-on-host, alert-provider compromise, multi-host correlation, durable alert delivery, admin misconfiguration).
 
 The summary, sufficient for most reports:
 
@@ -68,4 +68,4 @@ Reviewing the existing defenses before reporting saves time on both sides:
 - systemd unit hardening: `NoNewPrivileges`, `ProtectSystem=strict`, `MemoryDenyWriteExecute`, `RestrictNamespaces`, `SystemCallFilter=@system-service ~@privileged @resources`, `CapabilityBoundingSet=` (empty). Verifiable with `systemd-analyze security pamsignal.service`.
 - Continuous fuzzing: `tests/fuzz_parse_message.c` is an opt-in libFuzzer harness for `ps_parse_message`. Run with `meson setup -Dfuzz=enabled build-fuzz` (requires clang).
 
-If your finding is a refinement on top of one of these — e.g. a parser case the fuzz corpus didn't cover, or a syscall-filter gap — please call that out in the report so the fix can land alongside a regression test.
+If your finding is a refinement on top of one of these (e.g. a parser case the fuzz corpus didn't cover, or a syscall-filter gap), please call that out in the report so the fix can land alongside a regression test.

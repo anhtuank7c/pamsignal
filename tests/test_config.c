@@ -172,7 +172,7 @@ static void test_config_load_whitespace(void **state) {
 }
 
 // Exercises every whitespace character the locale-independent trim() treats
-// as space: \t (tab), \r (CR — common when files are saved on Windows and
+// as space: \t (tab), \r (CR, common when files are saved on Windows and
 // shipped over to a Linux host), \v (vertical tab), \f (form feed). \n is
 // the line terminator and is consumed by fgets, so it never appears as
 // surrounding whitespace in trim's input.
@@ -750,7 +750,7 @@ static void test_validate_webhook_with_backslash(void **state) {
 
 // --- webhook mTLS parse + validation ---
 //
-// Each test writes a small placeholder file as the "cert" or "key" — the
+// Each test writes a small placeholder file as the "cert" or "key"; the
 // validator only checks file metadata (existence, regular-file, perms,
 // ownership), it doesn't parse PEM. So bytes "dummy" suffice.
 
@@ -972,7 +972,7 @@ static void test_mtls_path_with_quote_rejected(void **state) {
 
 static void test_mtls_combined_with_auth_header(void **state) {
     (void)state;
-    // Bearer + mTLS together — the common Wazuh / corporate-SIEM pattern.
+    // Bearer + mTLS together: the common Wazuh / corporate-SIEM pattern.
     assert_int_equal(write_tls_file(tls_cert_path, sizeof(tls_cert_path), 0644),
                      0);
     assert_int_equal(write_tls_file(tls_key_path, sizeof(tls_key_path), 0600),
@@ -1122,7 +1122,7 @@ static void test_validate_whatsapp_token_bad_char(void **state) {
 static void test_config_rejects_world_writable(void **state) {
     (void)state;
     write_tmp_config("fail_threshold = 5\n");
-    // Re-open the path with mode 0666 — group AND world writable.
+    // Re-open the path with mode 0666 (group AND world writable).
     chmod(tmp_path, 0666);
     ps_config_t cfg;
     int ret = ps_config_load(tmp_path, &cfg);

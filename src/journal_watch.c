@@ -21,7 +21,7 @@
 // process that wrote the entry, set by the kernel via /proc/<pid>/exe at
 // write time. An unprivileged user can call logger(1) (which has
 // _EXE=/usr/bin/logger) to inject arbitrary text into the journal, but
-// they cannot forge a different _EXE — that requires being a different
+// they cannot forge a different _EXE; that requires being a different
 // process. So we accept events only when _EXE belongs to one of the
 // PAM-stack daemons whose auth-event format we know how to parse.
 //
@@ -112,7 +112,7 @@ int ps_fail_table_init(int capacity) {
 
     if (fail_table) {
         // copy_count is also the final fail_table_count. The lower clamp is
-        // defensive — fail_table_count is monotonically non-negative by
+        // defensive: fail_table_count is monotonically non-negative by
         // construction, but the explicit floor lets clang-analyzer prove
         // the post-state is in [0, capacity] and rules out a negative-index
         // path on the next write to fail_table.
@@ -241,7 +241,7 @@ static void ps_track_failed_login(const ps_pam_event_t *event) {
 
     uint64_t window_usec = (uint64_t)g_config.fail_window_sec * 1000000ULL;
 
-    // Search for existing entry. (key_type, key) is the unique tuple — an IP
+    // Search for existing entry. (key_type, key) is the unique tuple: an IP
     // and a local username with the same string never collide.
     for (int i = 0; i < fail_table_count; i++) {
         if (fail_table[i].key_type != ev_key_type ||
@@ -280,7 +280,7 @@ static void ps_track_failed_login(const ps_pam_event_t *event) {
             // forensics still see every threshold breach; only the outbound
             // notification is rate-limited.
             //
-            // last_brute_alert_usec == 0 means "never alerted for this key" —
+            // last_brute_alert_usec == 0 means "never alerted for this key";
             // treat as cooldown-elapsed so the first breach always fires
             // regardless of how recently after epoch the event arrived.
             uint64_t cooldown_usec =

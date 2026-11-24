@@ -94,7 +94,7 @@ executable('pamsignal',
   include_directories: inc,
   dependencies: libsystemd_dep,
   install: true,
-  # No install_dir override — meson defaults executable installs to
+  # No install_dir override: meson defaults executable installs to
   # bindir, which matches modern systemd-era convention. Other
   # admin-oriented systemd-stack tools (journalctl, systemctl, podman,
   # containerd) all live in /usr/bin even though they're administrator
@@ -106,7 +106,7 @@ executable('pamsignal',
 # lands in the vendor path (/usr/lib/systemd/system on Debian/Ubuntu/Fedora),
 # not the admin override path. ExecStart is templated with @bindir@ so packaged
 # builds (prefix=/usr) get /usr/bin/pamsignal and dev installs (prefix=/usr/local
-# by default) get /usr/local/bin/pamsignal — no post-install sed required.
+# by default) get /usr/local/bin/pamsignal, with no post-install sed required.
 systemd_dep = dependency('systemd', required: false)
 if systemd_dep.found()
   systemd_unitdir = systemd_dep.get_variable(pkgconfig: 'systemdsystemunitdir')
@@ -180,7 +180,7 @@ if cmocka_dep.found()
 
   # test_notify #includes ../src/notify.c so it can drive file-static
   # formatting helpers (format_event_json, format_brute_json, json_escape).
-  # Do NOT also list src/notify.c here — that would produce duplicate symbols.
+  # Do NOT also list src/notify.c here; that would produce duplicate symbols.
   test('test_notify',
     executable('test_notify',
       'tests/test_notify.c',
@@ -194,7 +194,7 @@ if cmocka_dep.found()
 
   # test_journal_watch #includes ../src/journal_watch.c so it can drive the
   # file-static fail_table state and ps_track_failed_login. Do NOT also list
-  # src/journal_watch.c here — that would produce duplicate symbols.
+  # src/journal_watch.c here; that would produce duplicate symbols.
   test('test_journal_watch',
     executable('test_journal_watch',
       'tests/test_journal_watch.c',
@@ -210,7 +210,7 @@ if cmocka_dep.found()
   # test_integration #includes BOTH ../src/journal_watch.c and ../src/notify.c
   # so it can drive the parse → track → format pipeline and assert on the
   # alert payload using file-static formatters. Do NOT also list those two
-  # sources here — that would yield duplicate symbols.
+  # sources here; that would yield duplicate symbols.
   test('test_integration',
     executable('test_integration',
       'tests/test_integration.c',
@@ -231,12 +231,12 @@ endif
 #   meson compile -C build-fuzz fuzz_parse_message
 #   ./build-fuzz/fuzz_parse_message tests/fuzz/parse_message_corpus -max_total_time=60
 #
-# The harness binary is intentionally NOT registered with `test()` — fuzzing
+# The harness binary is intentionally NOT registered with `test()`: fuzzing
 # runs for as long as you let it; CI should call it with -max_total_time.
 
 fuzz_opt = get_option('fuzz')
 # `not fuzz_opt.disabled()` is the pre-meson-0.59 equivalent of
-# `fuzz_opt.allowed()` — kept this form so the build still works on Ubuntu
+# `fuzz_opt.allowed()`. We kept this form so the build still works on Ubuntu
 # 20.04 LTS (Focal), which ships meson 0.53. Both expressions are true
 # when the feature option is `auto` or `enabled`.
 if not fuzz_opt.disabled()

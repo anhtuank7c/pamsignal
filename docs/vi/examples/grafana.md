@@ -1,6 +1,6 @@
-# PAMSignal — Tích hợp Grafana
+# PAMSignal: Tích hợp Grafana
 
-> 🌐 [English](../../../examples/grafana/README.md) · **Tiếng Việt**
+> [English](../../../examples/grafana/README.md) · **Tiếng Việt**
 
 Giám sát SSH/sudo/su/login toàn bộ fleet với PAMSignal, hiển thị trên Grafana.
 
@@ -8,14 +8,14 @@ Giám sát SSH/sudo/su/login toàn bộ fleet với PAMSignal, hiển thị trê
 
 Thư mục này cung cấp mọi thứ operator cần để đưa các sự kiện PAMSignal từ fleet Linux vào một Grafana dashboard duy nhất:
 
-- `alloy.river` — cấu hình [Grafana Alloy](https://grafana.com/docs/alloy/latest/) cho môi trường production. Cài một instance trên mỗi host. Scrape `SYSLOG_IDENTIFIER=pamsignal` từ systemd journald và đẩy lên Loki.
-- `dashboards/pamsignal-v1.json` — dashboard, sẵn sàng provisioning (datasource UID hardcode là `loki`, khớp với file provisioning đi kèm).
-- `dashboards/pamsignal-v1.grafana-com.json` — cùng dashboard, định dạng "shared externally" với placeholder `${DS_LOKI}` + các block `__inputs`/`__requires`. Upload **file này** lên grafana.com hoặc dùng tính năng UI Import của Grafana (sẽ hỏi bạn chọn datasource Loki của mình).
-- `alerts.yaml` — bốn alert rule Grafana-native.
-- `docker-compose.yml` — stack local một lệnh để bạn xem trước dashboard trước khi quyết định deploy thực sự.
-- `verify.sh` — kiểm tra sức khỏe pipeline một lần.
+- `alloy.river`: cấu hình [Grafana Alloy](https://grafana.com/docs/alloy/latest/) cho môi trường production. Cài một instance trên mỗi host. Scrape `SYSLOG_IDENTIFIER=pamsignal` từ systemd journald và đẩy lên Loki.
+- `dashboards/pamsignal-v1.json`: dashboard, sẵn sàng provisioning (datasource UID hardcode là `loki`, khớp với file provisioning đi kèm).
+- `dashboards/pamsignal-v1.grafana-com.json`: cùng dashboard, định dạng "shared externally" với placeholder `${DS_LOKI}` + các block `__inputs`/`__requires`. Upload **file này** lên grafana.com hoặc dùng tính năng UI Import của Grafana (sẽ hỏi bạn chọn datasource Loki của mình).
+- `alerts.yaml`: bốn alert rule Grafana-native.
+- `docker-compose.yml`: stack local một lệnh để bạn xem trước dashboard trước khi quyết định deploy thực sự.
+- `verify.sh`: kiểm tra sức khỏe pipeline một lần.
 
-Toàn bộ thiết kế — schema, kế hoạch label-cardinality, lý do panel — nằm trong
+Toàn bộ thiết kế (schema, kế hoạch label-cardinality, lý do panel) nằm trong
 [`docs/grafana-integration.md`](../grafana-integration.md).
 
 ---
@@ -29,7 +29,7 @@ cd examples/grafana
 docker compose up -d
 ```
 
-Mở **http://localhost:3000** — anonymous Admin, không cần đăng nhập. Dashboard nằm trong thư mục **PAMSignal**. Các sự kiện tổng hợp được stream vào với tốc độ ~2/giây; các đợt brute-force bùng phát trung bình mỗi ~25 giây.
+Mở **http://localhost:3000**: anonymous Admin, không cần đăng nhập. Dashboard nằm trong thư mục **PAMSignal**. Các sự kiện tổng hợp được stream vào với tốc độ ~2/giây; các đợt brute-force bùng phát trung bình mỗi ~25 giây.
 
 Để dừng và xóa (bao gồm cả volume):
 
@@ -49,8 +49,8 @@ docker compose down -v
 
 Producer tổng hợp đẩy sự kiện vào Loki qua hai đường đồng thời:
 
-1. **Direct push** vào `loki/api/v1/push` — mô phỏng những gì một HTTP-based agent sẽ làm.
-2. **Append vào shared file** mà `alloy` đang tail — chứng minh pipeline Alloy theo kiểu production cũng hoạt động ở local.
+1. **Direct push** vào `loki/api/v1/push`, mô phỏng những gì một HTTP-based agent sẽ làm.
+2. **Append vào shared file** mà `alloy` đang tail, chứng minh pipeline Alloy theo kiểu production cũng hoạt động ở local.
 
 Cả hai đường đều landing vào cùng một Loki instance với cùng label set, nên dashboard hoạt động như nhau với cả hai nguồn.
 
@@ -68,13 +68,13 @@ hoặc [Helm](https://grafana.com/docs/loki/latest/setup/install/helm/).
 ### 2. Cài Alloy trên mỗi host PAMSignal
 
 ```bash
-# Debian/Ubuntu — từ APT repo của grafana.com
+# Debian/Ubuntu: từ APT repo của grafana.com
 curl -fsSL https://apt.grafana.com/gpg.key | sudo gpg --dearmor -o /etc/apt/keyrings/grafana.gpg
 echo "deb [signed-by=/etc/apt/keyrings/grafana.gpg] https://apt.grafana.com stable main" \
   | sudo tee /etc/apt/sources.list.d/grafana.list
 sudo apt-get update && sudo apt-get install alloy
 
-# RHEL/Fedora/Alma/Rocky — từ RPM repo của grafana.com
+# RHEL/Fedora/Alma/Rocky: từ RPM repo của grafana.com
 # https://grafana.com/docs/alloy/latest/set-up/install/linux/
 ```
 
@@ -103,7 +103,7 @@ sudo journalctl -u alloy -f
 
 ### 4. Import dashboard
 
-**Tùy chọn A — provision** (khuyến nghị cho Grafana tự host):
+**Tùy chọn A: provision** (khuyến nghị cho Grafana tự host):
 
 ```bash
 sudo cp dashboards/pamsignal-v1.json /var/lib/grafana/dashboards/
@@ -112,7 +112,7 @@ sudo cp ../grafana/provisioning/dashboards/pamsignal.yml \
 sudo systemctl restart grafana-server
 ```
 
-**Tùy chọn B — import qua UI**: Grafana → Dashboards → New → Import → upload
+**Tùy chọn B: import qua UI**: Grafana → Dashboards → New → Import → upload
 `dashboards/pamsignal-v1.grafana-com.json` (phiên bản có placeholder `${DS_LOKI}`).
 Chọn datasource Loki của bạn khi được hỏi.
 
@@ -140,7 +140,7 @@ Từ bất kỳ máy nào có thể kết nối đến Loki và Grafana:
 LOKI_URL=https://loki.yourdomain GRAFANA_URL=https://grafana.yourdomain ./verify.sh
 ```
 
-Kết quả mong đợi kết thúc bằng `✅ Pipeline healthy`. Nếu không, script sẽ cho biết bước nào bị hỏng.
+Kết quả mong đợi kết thúc bằng `Pipeline healthy`. Nếu không, script sẽ cho biết bước nào bị hỏng.
 
 ---
 
@@ -153,7 +153,7 @@ graph LR
     alloy["Grafana Alloy<br/>(per host)"]
     loki[("Loki")]
     grafana["Grafana"]
-    operator["🧑‍💻 Operator"]
+    operator["Operator"]
 
     pamsignal -- "sd_journal_send<br/>(ECS fields)" --> journald
     journald -- "SYSLOG_IDENTIFIER=pamsignal" --> alloy
@@ -175,7 +175,7 @@ graph LR
   (`EVENT_ACTION`, `SOURCE_IP`, `USER_NAME`, ...). Không cần thay đổi gì ở daemon.
 - Alloy đọc journald với `format_as_json=true`, chuyển mỗi field thành chữ thường dạng `__journal_<field>`, và một relabel pass chỉ đẩy đúng bốn trường lên thành Loki label (`app`, `host`, `service`, `event_action`). Mọi thứ còn lại ở trong phần thân JSON và được parse lúc query. Xem
   [kế hoạch label cardinality](../grafana-integration.md#kế-hoạch-label-cardinality).
-- Loki index bốn label đó — `5 service × 6 action × fleet_size`
+- Loki index bốn label đó: `5 service × 6 action × fleet_size`
   stream. Hoạt động tốt đến hàng nghìn host.
 
 ---
@@ -190,7 +190,7 @@ Kiểm tra tên các field `__journal_*`. Journald chuyển tên field tùy ch�
 
 ### Các panel dashboard trống
 
-Kiểm tra time picker. Mặc định là "last 6h" — nếu stack vừa khởi động, hãy thu ngắn xuống "last 5m".
+Kiểm tra time picker. Mặc định là "last 6h"; nếu stack vừa khởi động, hãy thu ngắn xuống "last 5m".
 
 Mở **Explore** của Grafana với datasource Loki và chạy `{app="pamsignal"}`.
 Nếu không có kết quả, dữ liệu chưa đến được Loki. Kiểm tra log của `alloy` và `loki`.
@@ -207,20 +207,20 @@ bạn đã chạy `usermod -aG systemd-journal alloy`.
 
 ### Label `service_name` xuất hiện bên cạnh `service`
 
-Loki 3.x tự động suy ra `service_name` để theo dõi log-volume. Vô hại — dashboard query trực tiếp `service=`. Nếu muốn bỏ đi, đặt `discover_log_levels: false` và `discover_service_name: false` trong block `loki.write` của bạn.
+Loki 3.x tự động suy ra `service_name` để theo dõi log-volume. Vô hại, vì dashboard query trực tiếp `service=`. Nếu muốn bỏ đi, đặt `discover_log_levels: false` và `discover_service_name: false` trong block `loki.write` của bạn.
 
 ### Panel brute-force hiển thị 0 nhưng tôi biết đã có sự kiện brute-force
 
-PAMSignal chỉ ghi `EVENT_ACTION=brute_force_detected` khi đạt `fail_threshold` nội bộ. Nếu bạn đặt ngưỡng cao (ví dụ: 50), các host riêng lẻ sẽ không kích hoạt và panel vẫn ở 0. Rule #3 trong `alerts.yaml` là lưới an toàn cho trường hợp này — nó kích hoạt trên các đợt tăng đột biến login thất bại ngay cả khi PAMSignal chưa leo thang.
+PAMSignal chỉ ghi `EVENT_ACTION=brute_force_detected` khi đạt `fail_threshold` nội bộ. Nếu bạn đặt ngưỡng cao (ví dụ: 50), các host riêng lẻ sẽ không kích hoạt và panel vẫn ở 0. Rule #3 trong `alerts.yaml` là lưới an toàn cho trường hợp này: nó kích hoạt trên các đợt tăng đột biến login thất bại ngay cả khi PAMSignal chưa leo thang.
 
 ---
 
 ## Ghi chú tinh chỉnh
 
-- **Retention.** Mặc định trong `config/loki-config.yml` là 7 ngày. Tăng lên để phục vụ audit/compliance — xem [tài liệu retention của Loki](https://grafana.com/docs/loki/latest/operations/storage/retention/).
-- **Cardinality.** Đừng đưa `source_ip` hay `user_name` lên làm Loki label. Cả hai không giới hạn và sẽ làm bùng nổ index. Dashboard parse chúng lúc query time bằng `| json` — hãy giữ nguyên như vậy.
+- **Retention.** Mặc định trong `config/loki-config.yml` là 7 ngày. Tăng lên để phục vụ audit/compliance; xem [tài liệu retention của Loki](https://grafana.com/docs/loki/latest/operations/storage/retention/).
+- **Cardinality.** Đừng đưa `source_ip` hay `user_name` lên làm Loki label. Cả hai không giới hạn và sẽ làm bùng nổ index. Dashboard parse chúng lúc query time bằng `| json`; hãy giữ nguyên như vậy.
 - **Nhiễu session_closed.** Việc dùng sudo/su nhiều sẽ tạo ra nhiều sự kiện `session_closed`. Có một `stage.drop` đang bị comment trong `alloy.river` nếu bạn muốn bỏ chúng ở tầng Alloy.
-- **Alert ngoài giờ hành chính.** Không được ship sẵn — policy khác nhau tùy tổ chức. Thêm rule với bộ lọc kiểu CRON qua điều kiện thời gian trong ngày của Grafana nếu bạn cần.
+- **Alert ngoài giờ hành chính.** Không được ship sẵn, vì policy khác nhau tùy tổ chức. Thêm rule với bộ lọc kiểu CRON qua điều kiện thời gian trong ngày của Grafana nếu bạn cần.
 
 ---
 
@@ -228,9 +228,9 @@ PAMSignal chỉ ghi `EVENT_ACTION=brute_force_detected` khi đạt `fail_thresho
 
 PRs luôn được chào đón:
 
-- Panel mới — thêm vào `dashboards/pamsignal-v1.json`, kèm screenshot thay đổi.
-- Alert rule mới — thêm vào `alerts.yaml` với một hàng trong bảng ở trên.
-- Ghi chú cài đặt Alloy cho distro cụ thể — thêm vào phần "Deploy thực sự".
+- Panel mới: thêm vào `dashboards/pamsignal-v1.json`, kèm screenshot thay đổi.
+- Alert rule mới: thêm vào `alerts.yaml` với một hàng trong bảng ở trên.
+- Ghi chú cài đặt Alloy cho distro cụ thể: thêm vào phần "Deploy thực sự".
 
 CI (`.github/workflows/grafana-integration.yml`) dựng stack docker-compose
 trên mỗi PR chạm vào thư mục này và chạy `verify.sh`.

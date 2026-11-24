@@ -1,6 +1,6 @@
 # Journal Subscriber
 
-> 🌐 [English](../../notes/systemd-journal.md) · **Tiếng Việt**
+> [English](../../notes/systemd-journal.md) · **Tiếng Việt**
 
 - **Trạng thái**: Hoàn thành
 - **Ngày bắt đầu**: 27/12/2025
@@ -297,7 +297,7 @@ graph TD
     pam["PAM Authentication<br/>1. verify credentials (password / key / 2FA)<br/>2. check account validity<br/>3. setup session<br/>4. log auth event"]
     journald[("systemd-journald (log collector)<br/>receives from PAM · adds metadata<br/>writes binary journal · notifies subscribers")]
     pamsignal["PAMSignal subscriber<br/>1. sd_journal_wait()<br/>2. extract auth data<br/>3. determine login type<br/>4. gather context<br/>5. send notification"]
-    notify["User notification<br/>🔐 SSH login: user@192.168.1.100 → server"]
+    notify["User notification<br/>SSH login: user@192.168.1.100 → server"]
 
     login --> pam
     pam --> journald
@@ -398,11 +398,11 @@ void send_notification(LoginEvent *event) {
     // Format message
     char message[1024];
     snprintf(message, sizeof(message),
-        "🔐 %s login\n"
-        "👤 User: %s\n"
-        "🌐 From: %s\n"
-        "🖥️  Server: %s\n"
-        "⏰ Time: %s",
+        "%s login\n"
+        "User: %s\n"
+        "From: %s\n"
+        "Server: %s\n"
+        "Time: %s",
         event->type,      // "SSH", "Console", "Sudo"
         event->username,
         event->source_ip,
@@ -599,10 +599,10 @@ while (1) {
 
 **Lợi Ích cho PAMSignal:**
 
-1. ✅ **Zero polling overhead**: CPU chỉ sử dụng khi có sự kiện
-2. ✅ **Thông báo tức thì**: Độ trễ ~0ms từ sự kiện đến xử lý
-3. ✅ **Phân tích cú pháp đáng tin cậy**: Không có regex, truy cập trực tiếp theo trường
-4. ✅ **Phát hiện giả mạo**: Log được niêm phong ngăn kẻ tấn công xóa log
-5. ✅ **Tương thích đa distro**: Hoạt động trên tất cả các distro dựa trên systemd
+1. **Zero polling overhead**: CPU chỉ sử dụng khi có sự kiện
+2. **Thông báo tức thì**: Độ trễ ~0ms từ sự kiện đến xử lý
+3. **Phân tích cú pháp đáng tin cậy**: Không có regex, truy cập trực tiếp theo trường
+4. **Phát hiện giả mạo**: Log được niêm phong ngăn kẻ tấn công xóa log
+5. **Tương thích đa distro**: Hoạt động trên tất cả các distro dựa trên systemd
 
 Kiến trúc này biến PAMSignal thành một giải pháp giám sát xác thực thực sự thời gian thực, hiệu quả và đáng tin cậy.
