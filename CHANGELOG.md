@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+### CI
+- [x] **Release `.deb` test: enable sshd password auth through a drop-in.** The v0.8.0 release run failed because every test SSH login was refused before PAM was reached, so no alerts were sent and the apt/dnf repo publish was skipped. The test edited `sshd_config` directly, which a file under `sshd_config.d` can override; it now writes `sshd_config.d/00-pamsignal-test.conf` (password auth on, keyboard-interactive off), checks the effective value with `sshd -T`, and prints the ssh client and sshd output.
+
 ## 0.8.0 - 2026-11-24
 
 Minor release with a **security fix**: one login alert could silence every other login alert for a minute, so an attacker's login right after an admin's went unalerted. Upgrade. **Microsoft Teams users must act:** Microsoft retired the Office 365 connector webhooks, so create a Workflows webhook and put its URL in `teams_webhook_url` (see `docs/alerts.md`); Teams alerts are now Adaptive Cards. Not yet tested on a live Teams tenant. Also new: session-opened alerts name who ran `sudo`/`su`, over-long config values are an error instead of being cut off, and the Grafana demo counts each event once.
