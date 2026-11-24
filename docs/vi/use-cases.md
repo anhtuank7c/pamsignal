@@ -29,7 +29,7 @@ Bạn chạy 1–5 VPS cá nhân, một homelab, hay một dự án phụ. Bạn
 Bạn chạy 5–30 server, dùng chung một lịch on-call, và đã có sẵn một workspace Slack hoặc Teams.
 
 **Một cấu hình hợp lý:**
-- Triển khai ra cả fleet bằng [Ansible playbook](ssh-hardening.md#32-cách-tái-lập-được-ansible), dùng chung một `pamsignal.conf`.
+- Triển khai ra cả fleet bằng [Ansible playbook](ssh-hardening.md#42-cách-tái-lập-được-ansible), dùng chung một `pamsignal.conf`.
 - Định tuyến alert về một kênh [Slack/Teams](alerts.md) **#security-alerts** riêng.
 - Dựng [Grafana fleet dashboard](grafana-getting-started.md) để ai trực on-call cũng thấy cả fleet trong một cái nhìn.
 - Nếu đã có SIEM, forward sự kiện vào đó qua [custom webhook](#đã-chạy-một-siem-elastic--wazuh--splunk--datadog).
@@ -44,7 +44,7 @@ Bạn chạy server *cho người khác* — shared hosting, bán lại VPS, ded
 
 #### 1. Gắn tag cho từng host để alert tự nhận diện
 
-Đặt hai key context-tag trong `pamsignal.conf` của mỗi host (template theo từng host bằng [Ansible](ssh-hardening.md#32-cách-tái-lập-được-ansible)):
+Đặt hai key context-tag trong `pamsignal.conf` của mỗi host (template theo từng host bằng [Ansible](ssh-hardening.md#42-cách-tái-lập-được-ansible)):
 
 ```ini
 provider = acme-cloud
@@ -104,7 +104,7 @@ PAMSignal là một **cảm biến (sensor)**, không phải một điểm đế
 | Một SIEM (Elastic, Wazuh, Splunk, Datadog) | `webhook_url` → ECS JSON | Sự kiện rơi vào mà không cần remap trường |
 | Grafana + Loki | Alloy scrape | [Dashboard auth toàn fleet](grafana-getting-started.md) |
 | Fail2ban / CrowdSec | Tín hiệu journal `brute_force_detected` | Tự động chặn IP tại firewall |
-| Ansible / Salt / Puppet | Package + config template | [Triển khai fleet tái lập được](ssh-hardening.md#phần-3--triển-khai-pamsignal-cho-toàn-fleet) |
+| Ansible / Salt / Puppet | Package + config template | [Triển khai fleet tái lập được](ssh-hardening.md#phần-4--triển-khai-pamsignal-cho-toàn-fleet) |
 | PagerDuty / Opsgenie | Grafana contact point, hoặc webhook | Paging on-call theo đúng các rule quan trọng |
 | App / portal của riêng bạn | `webhook_url` → endpoint của bạn | Bất cứ thứ gì — xem các [ví dụ webhook](examples/nodejs-webhook.md) |
 
@@ -133,7 +133,7 @@ PAMSignal lo phần đếm; để bộ chặn của bạn ra tay dựa trên k�
 
 ### Đã dùng config management?
 
-Coi PAMSignal như bất kỳ package nào khác: cài nó và template `pamsignal.conf`. [Mục triển khai fleet](ssh-hardening.md#phần-3--triển-khai-pamsignal-cho-toàn-fleet) có sẵn một Ansible playbook với context tag riêng cho từng host.
+Coi PAMSignal như bất kỳ package nào khác: cài nó và template `pamsignal.conf`. [Mục triển khai fleet](ssh-hardening.md#phần-4--triển-khai-pamsignal-cho-toàn-fleet) có sẵn một Ansible playbook với context tag riêng cho từng host.
 
 ### Muốn tự xây tích hợp riêng?
 

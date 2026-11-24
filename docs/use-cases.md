@@ -29,7 +29,7 @@ You run 1–5 personal VPSes, a homelab, or a side project. You don't want to de
 You run 5–30 servers, share an on-call rotation, and already have a Slack or Teams workspace.
 
 **A good setup:**
-- Roll out across the fleet with the [Ansible playbook](./ssh-hardening.md#32-the-repeatable-way-ansible), one shared `pamsignal.conf`.
+- Roll out across the fleet with the [Ansible playbook](./ssh-hardening.md#42-the-repeatable-way-ansible), one shared `pamsignal.conf`.
 - Route alerts to a dedicated **#security-alerts** [Slack/Teams](./alerts.md) channel.
 - Stand up the [Grafana fleet dashboard](./grafana-getting-started.md) so anyone on-call sees the whole fleet at a glance.
 - If you already run a SIEM, also forward events there via the [custom webhook](#already-run-a-siem-elastic--wazuh--splunk--datadog).
@@ -44,7 +44,7 @@ Here's the full playbook.
 
 #### 1. Tag every host so alerts self-identify
 
-Set the two context-tag keys in each host's `pamsignal.conf` (template them per-host with [Ansible](./ssh-hardening.md#32-the-repeatable-way-ansible)):
+Set the two context-tag keys in each host's `pamsignal.conf` (template them per-host with [Ansible](./ssh-hardening.md#42-the-repeatable-way-ansible)):
 
 ```ini
 provider = acme-cloud
@@ -104,7 +104,7 @@ PAMSignal is a **sensor**, not a destination. It emits in two open formats — s
 | A SIEM (Elastic, Wazuh, Splunk, Datadog) | `webhook_url` → ECS JSON | Events drop in with no field remapping |
 | Grafana + Loki | Alloy scrape | [Fleet-wide auth dashboard](./grafana-getting-started.md) |
 | Fail2ban / CrowdSec | The `brute_force_detected` journal signal | Automatic IP blocking at the firewall |
-| Ansible / Salt / Puppet | Package + config template | [Reproducible fleet rollout](./ssh-hardening.md#part-3--roll-pamsignal-out-across-the-fleet) |
+| Ansible / Salt / Puppet | Package + config template | [Reproducible fleet rollout](./ssh-hardening.md#part-4--roll-pamsignal-out-across-the-fleet) |
 | PagerDuty / Opsgenie | Grafana contact point, or webhook | On-call paging on the rules that matter |
 | Your own app / portal | `webhook_url` → your endpoint | Anything — see the [webhook examples](../examples/nodejs-webhook/README.md) |
 
@@ -133,7 +133,7 @@ PAMSignal does the counting; let your blocker act on the result. [Fail2ban](../e
 
 ### Already use config management?
 
-Treat PAMSignal like any other package: install it and template `pamsignal.conf`. The [fleet rollout section](./ssh-hardening.md#part-3--roll-pamsignal-out-across-the-fleet) has a ready Ansible playbook with per-host context tags.
+Treat PAMSignal like any other package: install it and template `pamsignal.conf`. The [fleet rollout section](./ssh-hardening.md#part-4--roll-pamsignal-out-across-the-fleet) has a ready Ansible playbook with per-host context tags.
 
 ### Want to build your own integration?
 
