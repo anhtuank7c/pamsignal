@@ -68,7 +68,7 @@ Slack / WhatsApp
 *Host:* `web-01`
 *Source:* `203.0.113.50`
 
-Discord / Teams
+Discord
 🚨 **Brute force detected**
 **Host:** `web-01`
 **Source:** `203.0.113.50`
@@ -83,7 +83,7 @@ Discord / Teams
 | 🔥 Login after failed attempts | `login_after_failures` | Host, User, Source, Failures, Auth, PID, Time |
 | 🔔 PAMSignal test alert | `pamsignal --test-alert` | Host, Time |
 
-Các dòng `Provider` và `Service name` được thêm vào khi các tag đó được cấu hình. Teams ngăn cách các dòng bằng một dòng trống, vì markdown của nó gộp các dấu xuống dòng đơn.
+Các dòng `Provider` và `Service name` được thêm vào khi các tag đó được cấu hình. Teams nhận đúng các dòng đó trong một Adaptive Card: tiêu đề và nhãn in đậm, giá trị dạng monospace (xem [Microsoft Teams](#microsoft-teams)).
 
 ### Cách vô hiệu hoá văn bản không đáng tin
 
@@ -91,13 +91,14 @@ Tên user và tên host đến từ journal, và tên user do chính người đ
 
 - **Pretty:** mọi giá trị là nội dung của một code span.
 - **Compact:** cả dòng được gửi như một code span duy nhất (`<code>…</code>` trên Telegram, backtick ở các nền tảng khác), nên nó cũng hiển thị dạng monospace, đúng với cách bố cục độ rộng cố định của nó được thiết kế.
+- **Teams:** markdown của Adaptive Card không có code span, nên mọi đoạn văn bản là một `TextRun` bên trong một `RichTextBlock`, thứ mà Teams không bao giờ phân tích như markdown. Các dòng về ký tự điều khiển và Unicode trong bảng dưới vẫn áp dụng; dòng về backtick và `&` `<` `>` thì không, vì ở đó các ký tự này vô hại.
 
 Bên trong một code span, không nền tảng nào phân tích markup, resolve mention hay biến văn bản thành link. Trước khi văn bản được đưa vào:
 
 | Đầu vào | Trở thành | Lý do |
 |---|---|---|
 | Dấu backtick | `'` | Đây là ký tự duy nhất có thể đóng một code span |
-| `&` `<` `>` | `&amp;` `&lt;` `&gt;` trên Telegram, Slack, Teams | Ở đó chúng là cú pháp (HTML tag, `<!channel>`, `<url\|text>`) |
+| `&` `<` `>` | `&amp;` `&lt;` `&gt;` trên Telegram, Slack | Ở đó chúng là cú pháp (HTML tag, `<!channel>`, `<url\|text>`) |
 | Ký tự điều khiển, gồm cả CR / LF / TAB | `?` | Một dấu xuống dòng sẽ mở ra một dòng giả mạo |
 | Ký tự phân tách dòng và đoạn của Unicode (U+2028, U+2029), C1 control | `?` | Tương tự, với các client coi chúng là dấu xuống dòng |
 | Bidirectional override và isolate (U+202A–202E, U+2066–2069), ký tự zero-width và các ký tự định dạng vô hình khác | `?` | Chúng đảo thứ tự hoặc che giấu văn bản hiển thị |
@@ -128,11 +129,37 @@ Gửi trong trường `text` qua [incoming webhook](https://api.slack.com/messag
 
 ### Microsoft Teams
 
-Gửi trong trường `text` (dòng compact bọc trong backtick, hoặc tin nhắn pretty dạng markdown) qua [incoming webhook connector](https://learn.microsoft.com/en-us/microsoftteams/platform/webhooks-and-connectors/how-to/add-incoming-webhook).
+Gửi dưới dạng một [Adaptive Card](https://adaptivecards.io/) tới webhook **Workflows** của Teams. Microsoft đã ngừng hỗ trợ các webhook Office 365 connector (`https://<tenant>.webhook.office.com/...`), nên URL connector không còn gửi được gì; hãy tạo một webhook Workflows thay thế.
+
+Với `message_style = pretty`, card chứa tin nhắn pretty (tiêu đề và nhãn in đậm, giá trị dạng monospace); nếu không, card chứa dòng compact bằng font monospace. Request body cho một alert compact:
+
+```json
+{
+  "type": "message",
+  "attachments": [{
+    "contentType": "application/vnd.microsoft.card.adaptive",
+    "contentUrl": null,
+    "content": {
+      "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+      "type": "AdaptiveCard",
+      "version": "1.2",
+      "body": [
+        {"type": "RichTextBlock", "inlines": [
+          {"type": "TextRun", "text": "[WARN]   auth.login_failure user=bob src=192.0.2.1:22 ...", "fontType": "Monospace"}
+        ]}
+      ]
+    }
+  }]
+}
+```
 
 **Cài đặt:**
-1. Trong Teams channel của bạn, vào **Channel settings > Connectors > Incoming Webhook**
-2. Đặt `teams_webhook_url` trong `pamsignal.conf`
+1. Trong Teams, mở menu **...** cạnh channel và chọn **Workflows**
+2. Chọn template **Send webhook alerts to a channel**, đặt tên cho workflow, rồi xác nhận team và channel
+3. Sao chép webhook URL được hiển thị và đặt nó làm `teams_webhook_url` trong `pamsignal.conf`
+4. Chạy `sudo -u pamsignal pamsignal --test-alert`
+
+Card được đăng bởi tài khoản đã tạo workflow (hiển thị là "<name> via Workflows"). Hãy giữ bí mật URL này: ai có nó đều có thể đăng vào channel. URL dài tối đa 511 ký tự.
 
 ### WhatsApp
 

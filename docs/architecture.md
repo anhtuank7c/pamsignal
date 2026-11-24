@@ -66,7 +66,7 @@ The [event flow](#event-flow) diagram shows this after step ② (`ps_notify_even
 
 ### Curl invocation (memfd-backed config)
 
-Every per-channel sender (Telegram, Slack/Teams/Discord, WhatsApp, custom webhook) funnels through one internal entry point (`post_alert` in `src/notify.c`) that writes the per-request configuration to an in-memory `memfd_create()`-backed file and passes it to curl as `-K /dev/fd/9`. The memfd has its CLOEXEC bit cleared via `dup2`; every other inherited file descriptor is closed in the child before `execv`.
+Every per-channel sender (Telegram, Slack/Discord, Teams, WhatsApp, custom webhook) funnels through one internal entry point (`post_alert` in `src/notify.c`) that writes the per-request configuration to an in-memory `memfd_create()`-backed file and passes it to curl as `-K /dev/fd/9`. The memfd has its CLOEXEC bit cleared via `dup2`; every other inherited file descriptor is closed in the child before `execv`.
 
 What lands in the memfd config:
 

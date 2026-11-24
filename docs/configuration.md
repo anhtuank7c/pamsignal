@@ -185,8 +185,8 @@ Attempts: 12 in 300s
 Time: 2026-03-29 14:23:01 +0000
 ```
 
-- **Per-platform markup.** Each channel gets its own syntax (Telegram HTML, Slack mrkdwn, Teams and Discord markdown, WhatsApp formatting), so labels render bold and values monospace everywhere. See [Alerts → Pretty format](./alerts.md#pretty-format).
-- **Safe with hostile input.** User names and host names come from the journal and are attacker-influenced. In both styles they are only ever sent inside a code span, with backticks, markup characters, control characters and invisible Unicode neutralised first, so a login attempt as `<!channel>`, `@everyone` or `[click](https://evil.example)` cannot ping anyone or become a link. See [Alerts → How untrusted text is neutralised](./alerts.md#how-untrusted-text-is-neutralised).
+- **Per-platform markup.** Each channel gets its own syntax (Telegram HTML, Slack mrkdwn, Discord markdown, WhatsApp formatting, an Adaptive Card for Teams), so labels render bold and values monospace everywhere. See [Alerts → Pretty format](./alerts.md#pretty-format).
+- **Safe with hostile input.** User names and host names come from the journal and are attacker-influenced. In both styles they are only ever sent inside a code span (on Teams, a card text run that is never parsed as markdown), with backticks, markup characters, control characters and invisible Unicode neutralised first, so a login attempt as `<!channel>`, `@everyone` or `[click](https://evil.example)` cannot ping anyone or become a link. See [Alerts → How untrusted text is neutralised](./alerts.md#how-untrusted-text-is-neutralised).
 - **Falls back when too long.** A pretty message that would not fit is sent in the compact form instead of being cut.
 - **Compact is monospace.** The compact line is itself sent as one code span, so it renders in a fixed-width font on every platform.
 - **Webhook unaffected.** The custom webhook's ECS JSON is identical in both styles.
@@ -197,7 +197,7 @@ Run `sudo -u pamsignal pamsignal --test-alert` to see the chosen style in your c
 
 Only configure the channels you use. PAMSignal sends alerts to all channels that have credentials set. Alerts are fire-and-forget: a failed delivery is not retried and never stops monitoring. Use `--test-alert` to confirm a channel works.
 
-Values are checked at load time. `slack_webhook_url`, `teams_webhook_url`, `discord_webhook_url` and `webhook_url` must start with `https://` and contain no whitespace, quotes or shell metacharacters. `telegram_bot_token` must look like `123456:ABC...` (digits, a colon, then at least 20 letters, digits, `_` or `-`) and needs a `telegram_chat_id` (a number, negative for groups, or `@channelname`). When `whatsapp_access_token` is set, `whatsapp_phone_number_id` and `whatsapp_recipient` must be digits only.
+Values are checked at load time. `slack_webhook_url`, `teams_webhook_url`, `discord_webhook_url` and `webhook_url` must start with `https://` and contain no whitespace, quotes or shell metacharacters. `telegram_bot_token` must look like `123456:ABC...` (digits, a colon, then at least 20 letters, digits, `_` or `-`) and needs a `telegram_chat_id` (a number, negative for groups, or `@channelname`). When `whatsapp_access_token` is set, `whatsapp_phone_number_id` and `whatsapp_recipient` must be digits only. A value longer than its key allows (511 characters for the URL keys) is an error, never silently cut off, and so is a line longer than 1022 characters.
 
 See [Alerts](./alerts.md) for message formats, setup guides, and payload reference.
 
@@ -206,7 +206,7 @@ See [Alerts](./alerts.md) for message formats, setup guides, and payload referen
 | `telegram_bot_token` | Telegram | Bot token from [@BotFather](https://t.me/BotFather) |
 | `telegram_chat_id` | Telegram | Chat, group, or channel ID |
 | `slack_webhook_url` | Slack | Incoming webhook URL |
-| `teams_webhook_url` | Teams | Incoming webhook URL |
+| `teams_webhook_url` | Teams | Workflows webhook URL ("Send webhook alerts to a channel"); the retired Office 365 connector URLs no longer work |
 | `whatsapp_access_token` | WhatsApp | Meta Cloud API access token |
 | `whatsapp_phone_number_id` | WhatsApp | Phone Number ID from dashboard |
 | `whatsapp_recipient` | WhatsApp | Recipient phone with country code (e.g. `84901234567`) |

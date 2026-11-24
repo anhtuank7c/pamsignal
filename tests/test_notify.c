@@ -608,10 +608,6 @@ static void test_render_pretty_markup_per_platform(void **state) {
     assert_int_equal(render_pretty(&m, PS_MARKUP_DISCORD, buf, sizeof(buf)), 0);
     assert_non_null(strstr(buf, " **Brute force detected**\n"));
     assert_non_null(strstr(buf, "\n**Source:** `203.0.113.50`"));
-
-    // Teams folds single newlines, so rows are separated by a blank line.
-    assert_int_equal(render_pretty(&m, PS_MARKUP_TEAMS, buf, sizeof(buf)), 0);
-    assert_non_null(strstr(buf, "**\n\n**Host:** `web-01`\n\n**Source:**"));
 }
 
 static void test_render_pretty_note_line(void **state) {
@@ -658,9 +654,6 @@ static void test_render_pretty_neutralises_hostile_values(void **state) {
     assert_int_equal(render_pretty(&m, PS_MARKUP_DISCORD, buf, sizeof(buf)), 0);
     assert_non_null(strstr(buf, "**User:** `</code><a>&<!channel>'*x*'"
                                 "@everyone`\n"));
-
-    assert_int_equal(render_pretty(&m, PS_MARKUP_TEAMS, buf, sizeof(buf)), 0);
-    assert_null(strstr(buf, "<a>"));
 }
 
 static void test_render_pretty_control_chars_and_empty_value(void **state) {
@@ -877,9 +870,9 @@ static void test_render_compact_is_one_code_span(void **state) {
         "<code>[WARN]   auth.login_failure user=bob src=192.0.2.1:22</code>");
 
     static const ps_markup_t backtick_markups[] = {
-        PS_MARKUP_SLACK, PS_MARKUP_TEAMS, PS_MARKUP_WHATSAPP,
-        PS_MARKUP_DISCORD};
-    for (size_t i = 0; i < 4; i++) {
+        PS_MARKUP_SLACK, PS_MARKUP_WHATSAPP, PS_MARKUP_DISCORD};
+    for (size_t i = 0;
+         i < sizeof(backtick_markups) / sizeof(backtick_markups[0]); i++) {
         assert_int_equal(
             render_compact(line, backtick_markups[i], buf, sizeof(buf)), 0);
         assert_string_equal(
@@ -1025,7 +1018,7 @@ static void assert_safe_output(const char *out, ps_markup_t markup,
         for (const char *p = out; *p; p++)
             ticks += *p == '`';
         assert_int_equal(ticks, 2 * expected_spans);
-        if (markup == PS_MARKUP_SLACK || markup == PS_MARKUP_TEAMS) {
+        if (markup == PS_MARKUP_SLACK) {
             assert_null(strchr(out, '<'));
             assert_null(strchr(out, '>'));
         }
@@ -1035,7 +1028,7 @@ static void assert_safe_output(const char *out, ps_markup_t markup,
 static void test_property_no_input_escapes_its_code_span(void **state) {
     (void)state;
     static const ps_markup_t markups[] = {PS_MARKUP_TELEGRAM, PS_MARKUP_SLACK,
-                                          PS_MARKUP_TEAMS, PS_MARKUP_WHATSAPP,
+                                          PS_MARKUP_WHATSAPP,
                                           PS_MARKUP_DISCORD};
     static char out[8192];
     ps_config_t cfg;
@@ -1055,13 +1048,10 @@ static void test_property_no_input_escapes_its_code_span(void **state) {
         format_event_text(&cfg, &e, compact, sizeof(compact));
 
         for (size_t k = 0; k < sizeof(markups) / sizeof(markups[0]); k++) {
-            int sep = markups[k] == PS_MARKUP_TEAMS ? 2 : 1;
-
             assert_int_equal(render_pretty(&m, markups[k], out, sizeof(out)),
                              0);
             // one newline group before the note and before every row
-            assert_safe_output(out, markups[k], m.row_count,
-                               sep * (m.row_count + 1));
+            assert_safe_output(out, markups[k], m.row_count, m.row_count + 1);
 
             assert_int_equal(
                 render_compact(compact, markups[k], out, sizeof(out)), 0);
@@ -1075,6 +1065,310 @@ static void test_property_no_input_escapes_its_code_span(void **state) {
             for (const unsigned char *p = (const unsigned char *)esc; *p; p++)
                 assert_true(*p >= 0x20);
         }
+    }
+}
+
+// --- Microsoft Teams: Adaptive Card body ---
+
+// A small strict JSON checker for the Teams body. It fails on anything that
+// is not well-formed JSON, records every object key and every "type" value,
+// and checks every decoded string for control characters, malformed UTF-8
+// and the code points sanitising is meant to remove. If an untrusted value
+// ever broke out of its string, the result would be invalid JSON, an unknown
+// key, or an unknown "type".
+typedef struct {
+    const char *p;
+    int text_runs;
+    int bad;
+} jv_t;
+
+static void jv_ws(jv_t *v) {
+    while (*v->p == ' ' || *v->p == '\n' || *v->p == '\r' || *v->p == '\t')
+        v->p++;
+}
+
+static int jv_hex(char c) {
+    if (c >= '0' && c <= '9')
+        return c - '0';
+    if (c >= 'a' && c <= 'f')
+        return c - 'a' + 10;
+    if (c >= 'A' && c <= 'F')
+        return c - 'A' + 10;
+    return -1;
+}
+
+// Parse a string at v->p (which must be '"') into out, decoded.
+static void jv_string(jv_t *v, char *out, size_t size) {
+    size_t n = 0;
+    if (*v->p != '"') {
+        v->bad = 1;
+        return;
+    }
+    v->p++;
+    while (*v->p && *v->p != '"') {
+        unsigned char c = (unsigned char)*v->p;
+        if (c < 0x20) { // raw control characters are not allowed in JSON
+            v->bad = 1;
+            return;
+        }
+        if (c == '\\') {
+            v->p++;
+            char e = *v->p;
+            if (e == 'u') {
+                int cp = 0;
+                for (int k = 1; k <= 4; k++) {
+                    int h = jv_hex(v->p[k]);
+                    if (h < 0) {
+                        v->bad = 1;
+                        return;
+                    }
+                    cp = cp * 16 + h;
+                }
+                v->p += 5;
+                // the card text must not need any \u escape at all
+                (void)cp;
+                v->bad = 1;
+                return;
+            }
+            if (e != '"' && e != '\\' && e != '/') {
+                v->bad = 1; // \n, \t, ... would be control characters
+                return;
+            }
+            c = (unsigned char)e;
+        }
+        if (n + 1 < size)
+            out[n++] = (char)c;
+        v->p++;
+    }
+    if (*v->p != '"') {
+        v->bad = 1;
+        return;
+    }
+    v->p++;
+    out[n] = '\0';
+
+    for (const unsigned char *s = (const unsigned char *)out; *s;) {
+        uint32_t cp;
+        int len = utf8_decode(s, &cp);
+        if (len == 0 || is_unsafe_display_codepoint(cp)) {
+            v->bad = 1;
+            return;
+        }
+        s += len;
+    }
+}
+
+static void jv_value(jv_t *v, const char *key);
+
+static void jv_object(jv_t *v) {
+    static const char *const keys[] = {
+        "type",    "attachments", "contentType", "contentUrl", "content",
+        "$schema", "version",     "body",        "inlines",    "text",
+        "weight",  "fontType",    "spacing"};
+    v->p++; // '{'
+    jv_ws(v);
+    if (*v->p == '}') {
+        v->p++;
+        return;
+    }
+    while (!v->bad) {
+        char key[32];
+        jv_ws(v);
+        jv_string(v, key, sizeof(key));
+        if (v->bad)
+            return;
+        int known = 0;
+        for (size_t i = 0; i < sizeof(keys) / sizeof(keys[0]); i++)
+            known |= strcmp(key, keys[i]) == 0;
+        if (!known) {
+            v->bad = 1;
+            return;
+        }
+        jv_ws(v);
+        if (*v->p != ':') {
+            v->bad = 1;
+            return;
+        }
+        v->p++;
+        jv_ws(v);
+        jv_value(v, key);
+        jv_ws(v);
+        if (*v->p == ',') {
+            v->p++;
+            continue;
+        }
+        if (*v->p == '}') {
+            v->p++;
+            return;
+        }
+        v->bad = 1;
+    }
+}
+
+static void jv_array(jv_t *v) {
+    v->p++; // '['
+    jv_ws(v);
+    if (*v->p == ']') {
+        v->p++;
+        return;
+    }
+    while (!v->bad) {
+        jv_ws(v);
+        jv_value(v, NULL);
+        jv_ws(v);
+        if (*v->p == ',') {
+            v->p++;
+            continue;
+        }
+        if (*v->p == ']') {
+            v->p++;
+            return;
+        }
+        v->bad = 1;
+    }
+}
+
+static void jv_value(jv_t *v, const char *key) {
+    static char str[4096];
+    if (*v->p == '{') {
+        jv_object(v);
+    } else if (*v->p == '[') {
+        jv_array(v);
+    } else if (*v->p == '"') {
+        jv_string(v, str, sizeof(str));
+        if (!v->bad && key && strcmp(key, "type") == 0) {
+            if (strcmp(str, "TextRun") == 0)
+                v->text_runs++;
+            else if (strcmp(str, "message") != 0 &&
+                     strcmp(str, "AdaptiveCard") != 0 &&
+                     strcmp(str, "RichTextBlock") != 0)
+                v->bad = 1; // e.g. a TextBlock, which would parse markdown
+        }
+    } else if (strncmp(v->p, "null", 4) == 0) {
+        v->p += 4;
+    } else {
+        v->bad = 1; // the card has no numbers or booleans
+    }
+}
+
+// Returns the number of TextRuns, or -1 if body is not a valid card.
+static int teams_card_text_runs(const char *body) {
+    jv_t v = {.p = body, .text_runs = 0, .bad = 0};
+    jv_ws(&v);
+    if (*v.p != '{')
+        return -1;
+    jv_value(&v, NULL);
+    jv_ws(&v);
+    if (v.bad || *v.p != '\0')
+        return -1;
+    return v.text_runs;
+}
+
+static void test_teams_card_pretty_shape(void **state) {
+    (void)state;
+    ps_config_t cfg;
+    make_cfg_default(&cfg);
+    ps_pam_event_t e = make_login_success();
+    ps_pretty_msg_t m;
+    build_pretty_login_after_failures(&cfg, &e, 7, 300, &m);
+
+    static char body[8192];
+    assert_int_equal(render_teams_card(&m, NULL, body, sizeof(body)), 0);
+
+    // the envelope a Workflows "Send webhook alerts to a channel" flow reads
+    static const char envelope[] =
+        "{\"type\":\"message\",\"attachments\":[{"
+        "\"contentType\":"
+        "\"application/vnd.microsoft.card.adaptive\"";
+    assert_true(strncmp(body, envelope, strlen(envelope)) == 0);
+    assert_non_null(strstr(body, "\"type\":\"AdaptiveCard\""));
+    // headline + note + a label run and a value run per row
+    assert_int_equal(teams_card_text_runs(body), 2 + 2 * m.row_count);
+    assert_non_null(strstr(body, " Login after failed attempts\","
+                                 "\"weight\":\"Bolder\""));
+    assert_non_null(strstr(body, "{\"type\":\"TextRun\",\"text\":\"Failures: "
+                                 "\",\"weight\":\"Bolder\"},{\"type\":"
+                                 "\"TextRun\",\"text\":\"7 in 300s\","
+                                 "\"fontType\":\"Monospace\"}"));
+    // never a TextBlock, the element type that parses markdown
+    assert_null(strstr(body, "\"type\":\"TextBlock\""));
+}
+
+static void test_teams_card_compact(void **state) {
+    (void)state;
+    static char body[8192];
+    const char *line = "[WARN]   auth.login_failure user=bob src=192.0.2.1:22";
+    assert_int_equal(render_teams_card(NULL, line, body, sizeof(body)), 0);
+    assert_int_equal(teams_card_text_runs(body), 1);
+    assert_non_null(strstr(body, "{\"type\":\"TextRun\",\"text\":\"[WARN]   "
+                                 "auth.login_failure user=bob "
+                                 "src=192.0.2.1:22\",\"fontType\":"
+                                 "\"Monospace\"}"));
+    // an empty compact text still gives a valid card
+    assert_int_equal(render_teams_card(NULL, "", body, sizeof(body)), 0);
+    assert_int_equal(teams_card_text_runs(body), 1);
+}
+
+// Markdown links, mentions, JSON breakouts and control characters in a
+// username stay inert text of the one TextRun they belong to.
+static void test_teams_card_neutralises_hostile_values(void **state) {
+    (void)state;
+    ps_config_t cfg;
+    make_cfg_default(&cfg);
+    ps_pam_event_t e = make_login_failed();
+    snprintf(e.username, sizeof(e.username), "%s",
+             "[x](https://evil)\"},{\"type\":\"TextBlock\"\n<at>a</at>\\");
+    ps_pretty_msg_t m;
+    build_pretty_event(&cfg, &e, &m);
+
+    static char body[8192];
+    assert_int_equal(render_teams_card(&m, NULL, body, sizeof(body)), 0);
+    assert_int_equal(teams_card_text_runs(body),
+                     1 + (m.note != NULL) + 2 * m.row_count);
+    assert_non_null(strstr(body, "\"text\":\"[x](https://evil)\\\"},{\\\"type"
+                                 "\\\":\\\"TextBlock\\\"?<at>a</at>\\\\\""));
+}
+
+static void test_teams_card_overflow_reported(void **state) {
+    (void)state;
+    ps_config_t cfg;
+    make_cfg_default(&cfg);
+    ps_pam_event_t e = make_login_failed();
+    ps_pretty_msg_t m;
+    build_pretty_event(&cfg, &e, &m);
+    char small[200];
+    assert_int_equal(render_teams_card(&m, NULL, small, sizeof(small)), -1);
+    assert_int_equal(render_teams_card(NULL, "x", small, 0), -1);
+}
+
+// Random hostile values never produce an invalid card, an unknown key or
+// element type, or a control character, and the pretty card always fits the
+// buffer send_teams uses.
+static void test_property_teams_card_is_always_safe(void **state) {
+    (void)state;
+    static char body[8192];
+    ps_config_t cfg;
+    make_cfg_default(&cfg);
+    prng_state = 0x2545F491u;
+
+    for (int iter = 0; iter < 20000; iter++) {
+        ps_pam_event_t e = make_login_failed();
+        fill_hostile(e.username, sizeof(e.username));
+        fill_hostile(e.hostname, sizeof(e.hostname));
+        fill_hostile(cfg.provider, sizeof(cfg.provider));
+        fill_hostile(cfg.service_name, sizeof(cfg.service_name));
+
+        ps_pretty_msg_t m;
+        build_pretty_login_after_failures(&cfg, &e, 3, 300, &m);
+        assert_int_equal(render_teams_card(&m, NULL, body, sizeof(body)), 0);
+        assert_int_equal(teams_card_text_runs(body),
+                         1 + (m.note != NULL) + 2 * m.row_count);
+
+        char compact[1024];
+        format_event_text(&cfg, &e, compact, sizeof(compact));
+        assert_int_equal(render_teams_card(NULL, compact, body, sizeof(body)),
+                         0);
+        assert_int_equal(teams_card_text_runs(body), 1);
     }
 }
 
@@ -1422,6 +1716,11 @@ int main(void) {
         cmocka_unit_test(test_render_compact_is_one_code_span),
         cmocka_unit_test(test_render_compact_keeps_links_and_mentions_inert),
         cmocka_unit_test(test_property_no_input_escapes_its_code_span),
+        cmocka_unit_test(test_teams_card_pretty_shape),
+        cmocka_unit_test(test_teams_card_compact),
+        cmocka_unit_test(test_teams_card_neutralises_hostile_values),
+        cmocka_unit_test(test_teams_card_overflow_reported),
+        cmocka_unit_test(test_property_teams_card_is_always_safe),
         cmocka_unit_test(test_format_login_after_failures_text),
         cmocka_unit_test(test_format_login_after_failures_json),
         cmocka_unit_test(test_format_login_after_failures_json_escapes),
