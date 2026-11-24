@@ -112,7 +112,6 @@ meson test -C build-asan --print-errorlogs
 | `.github/workflows/ci.yml` | Push lên `main`, pull request vào `main` | `sanitizers`: build và chạy mọi test suite với ASAN + UBSAN. `who-did-what`: `shellcheck` cùng bài test end-to-end `examples/who-did-what/tests/e2e.sh` trên một VM đầy đủ có auditd |
 | `.github/workflows/grafana-integration.yml` | Thay đổi trong `examples/grafana/` hoặc `docs/grafana-integration.md` | Dựng compose stack Grafana, Loki và Alloy rồi chạy script verify của nó |
 | `.github/workflows/release-packages.yml` | Khi publish release, hoặc chạy thủ công | Kiểm tra `meson.build`, `debian/changelog` và `pamsignal.spec` khớp phiên bản; build và ký `.deb` (Ubuntu 24.04 và Focal) và `.rpm` (Fedora, EL9); kiểm thử chúng (xem [Các distro được hỗ trợ](distros.md)); publish apt/dnf repo |
-| `.github/workflows/ppa-upload.yml` | Khi publish release, hoặc chạy thủ công | Build source package đã ký và upload lên Launchpad PPA cho Ubuntu 24.04 (`noble`) |
 | `.github/workflows/claude.yml` | Comment trong issue hoặc PR có nhắc `@claude` | Trợ lý Claude Code theo yêu cầu; không có review tự động cho mỗi PR |
 
 Fuzz harness không chạy trong CI; hãy chạy ở máy local như hướng dẫn ở trên.

@@ -1,8 +1,8 @@
 name: CI
 
 # Runs on every push to main and every pull request targeting main. Distinct
-# from release-packages.yml (which only fires on a release: published event)
-# and ppa-upload.yml (same): release-packages.yml exercises packaging and the
+# from release-packages.yml (which only fires on a release: published event):
+# release-packages.yml exercises packaging and the
 # install-time integration; this workflow exercises the daemon's source-level
 # correctness on every change.
 
