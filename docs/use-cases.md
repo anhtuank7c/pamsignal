@@ -122,7 +122,7 @@ webhook_url = https://siem.example.com/ingest/pamsignal
 webhook_auth_header = Authorization: Bearer <token>
 ```
 
-The webhook sends the same alerts as chat, so it follows `enable_notification_type` and `trusted_sources`, and the routine per-event alerts share one `alert_cooldown_sec` timer (default 60 s; see [Configuration](./configuration.md#brute-force-detection)). If the SIEM must receive every login and session event, set `alert_cooldown_sec = 0`, or ship the journal entries (`SYSLOG_IDENTIFIER=pamsignal`) with your log shipper instead.
+The webhook sends the same alerts as chat, so it follows `enable_notification_type`, `trusted_sources` and `alert_cooldown_sec` (repeats of the same event, user and source within 60 s by default are collapsed; see [Configuration](./configuration.md#brute-force-detection)). If the SIEM must receive every login and session event, set `alert_cooldown_sec = 0`, or ship the journal entries (`SYSLOG_IDENTIFIER=pamsignal`) with your log shipper instead.
 
 The on-the-wire payload and a receiver-pattern table (Splunk HEC, Datadog, X-API-Key, Wazuh) are in [Alerts → Custom webhook](./alerts.md#custom-webhook-ecs-json). This is the integration that makes PAMSignal a *source* in a bigger detection pipeline rather than a standalone tool.
 

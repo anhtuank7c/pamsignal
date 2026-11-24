@@ -81,12 +81,12 @@ webhook_ca_bundle   = /etc/pamsignal/webhook-ca.pem
 | `fail_threshold` | `5` | 1 - 10000 | Failed attempts before triggering alert |
 | `fail_window_sec` | `300` | 1 - 86400 | Time window (seconds) for counting failures per IP, or per local actor for `sudo`/`su` |
 | `max_tracked_ips` | `256` | 1 - 100000 | Maximum IPs (and local actors) tracked at once; when full, the least recently active entry is replaced |
-| `alert_cooldown_sec` | `60` | 0 - 86400 | Rate limit for chat alerts (0 = no limit); see below |
+| `alert_cooldown_sec` | `60` | 0 - 86400 | Seconds before the same alert repeats in chat (0 = no limit); see below |
 
 `alert_cooldown_sec` works in two ways:
 
 - **Brute-force and login-after-failures alerts: per source.** Repeat brute-force alerts are spaced per IP (or per local actor), login-after-failures alerts per IP.
-- **All other per-event alerts share one timer.** After one `login_success`, `login_failed`, `session_open` or `session_close` alert is sent, every other one in the next `alert_cooldown_sec` seconds, from any user or IP, goes to the journal only.
+- **All other per-event alerts: per event type, user and source IP.** A `login_success`, `login_failed`, `session_open` or `session_close` alert for the same user from the same IP is sent at most once per `alert_cooldown_sec`; any other user, IP or event type alerts immediately. Up to 128 such keys are tracked; when the table is full the oldest is dropped, which can only let an alert through early.
 
 The journal records every event and every detection either way. Set `0` to send every routine event to chat.
 

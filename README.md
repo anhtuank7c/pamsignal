@@ -102,7 +102,7 @@ The defaults work out of the box. The keys you are most likely to change:
 | Key | Default | What it does |
 |---|---|---|
 | `fail_threshold` / `fail_window_sec` | `5` / `300` | Failures within the window that count as brute force |
-| `alert_cooldown_sec` | `60` | Rate limit for chat alerts (brute force: per source; other events: one shared timer). `0` turns it off |
+| `alert_cooldown_sec` | `60` | Seconds before the same alert repeats (same event, user and source; brute force: same source). `0` turns it off |
 | `enable_notification_type` | `all` | Which events reach chat: `login_success`, `login_failed`, `session_open`, `session_close`, `brute_force`, `login_after_failures`, `all` |
 | `trusted_sources` | empty | CIDR list (office, VPN, bastion) whose routine logins stay out of chat; attacks from them still alert |
 | `message_style` | `compact` | `pretty` for a multi-line layout |

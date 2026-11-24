@@ -29,11 +29,11 @@
 # max_tracked_ips = 256
 
 # --- Alert rate limiting ---
-# Rate limit for chat alerts, in seconds. Range 0..86400; 0 = no limit.
+# Seconds before the same alert is sent again. Range 0..86400; 0 = no limit.
 # Brute-force and login-after-failures alerts are limited per source.
 # All other per-event alerts (login_success, login_failed, session_open,
-# session_close) share one timer: after one is sent, others in the next
-# alert_cooldown_sec seconds go to the journal only.
+# session_close) are limited per event type, user and source IP: repeats
+# of the same key go to the journal only; other users and IPs alert at once.
 # alert_cooldown_sec = 60
 
 # --- Login-after-failures detection ---

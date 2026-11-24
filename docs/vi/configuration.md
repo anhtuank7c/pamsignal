@@ -81,12 +81,12 @@ webhook_ca_bundle   = /etc/pamsignal/webhook-ca.pem
 | `fail_threshold` | `5` | 1 - 10000 | Số lần thất bại trước khi kích hoạt cảnh báo |
 | `fail_window_sec` | `300` | 1 - 86400 | Cửa sổ thời gian (giây) để đếm số lần thất bại theo IP, hoặc theo actor nội bộ với `sudo`/`su` |
 | `max_tracked_ips` | `256` | 1 - 100000 | Số IP (và actor nội bộ) tối đa được theo dõi cùng lúc; khi bảng đầy, mục ít hoạt động gần đây nhất bị thay thế |
-| `alert_cooldown_sec` | `60` | 0 - 86400 | Giới hạn tần suất cảnh báo chat (0 = không giới hạn); xem bên dưới |
+| `alert_cooldown_sec` | `60` | 0 - 86400 | Số giây trước khi cùng một cảnh báo được gửi lại lên chat (0 = không giới hạn); xem bên dưới |
 
 `alert_cooldown_sec` hoạt động theo hai cách:
 
 - **Cảnh báo brute-force và login-after-failures: tính theo từng nguồn.** Các cảnh báo brute-force lặp lại được giãn cách theo từng IP (hoặc từng actor nội bộ), còn cảnh báo login-after-failures theo từng IP.
-- **Mọi cảnh báo theo từng sự kiện còn lại dùng chung một bộ đếm giờ.** Sau khi một cảnh báo `login_success`, `login_failed`, `session_open` hoặc `session_close` được gửi, mọi cảnh báo loại này khác trong `alert_cooldown_sec` giây tiếp theo, từ bất kỳ user hay IP nào, chỉ được ghi vào journal.
+- **Mọi cảnh báo theo từng sự kiện còn lại: theo loại sự kiện, user và IP nguồn.** Một cảnh báo `login_success`, `login_failed`, `session_open` hoặc `session_close` của cùng một user từ cùng một IP chỉ được gửi tối đa một lần mỗi `alert_cooldown_sec`; user, IP hoặc loại sự kiện khác thì được cảnh báo ngay. Tối đa 128 bộ khóa như vậy được theo dõi; khi bảng đầy, khóa cũ nhất bị bỏ, điều này chỉ có thể làm một cảnh báo được gửi sớm hơn.
 
 Dù thế nào journal vẫn ghi lại mọi sự kiện và mọi phát hiện. Đặt `0` nếu muốn mọi sự kiện thông thường đều lên chat.
 
