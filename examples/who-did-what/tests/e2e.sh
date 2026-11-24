@@ -55,7 +55,7 @@ usermod -aG sudo alice
 # The logging from docs/ssh-hardening.md Part 2, as written there.
 printf '%s\n' 'Defaults use_pty' 'Defaults log_output' 'Defaults!/usr/bin/sudoreplay !log_output' >/etc/sudoers.d/10-session-log
 chmod 440 /etc/sudoers.d/10-session-log
-visudo -cq || bad "sudoers invalid"
+visudo -cqf /etc/sudoers.d/10-session-log || bad "sudoers file invalid"
 mkdir -p /etc/nginx /var/www
 echo 'worker_processes 1;' >/etc/nginx/nginx.conf
 touch /var/www/old.html
@@ -86,8 +86,8 @@ echo "== report (all users)"
 bash "$WDW" --since "$START" >"$OUT" 2>&1
 cat "$OUT"
 
-expect "logins: alice with her key comment" '^  [^ ]+ +alice +127\.0\.0\.1:[0-9]+ +publickey +alice: alice@laptop' "$OUT"
-expect "logins: bob" '^  [^ ]+ +bob +127\.0\.0\.1' "$OUT"
+expect "logins: alice with her key comment" '^  [^ ]+ +alice +(127\.0\.0\.1|\[::1\]):[0-9]+ +publickey +alice: alice@laptop' "$OUT"
+expect "logins: bob" '^  [^ ]+ +bob +(127\.0\.0\.1|\[::1\])' "$OUT"
 expect "sudo: alice ran systemctl as root" 'alice +root +[0-9A-Z]+ +/usr/bin/systemctl is-active ssh' "$OUT"
 expect "sudo: bob refused" 'bob +root .*NOT in sudoers' "$OUT"
 expect "commands: command typed inside sudo -i, attributed to alice as root" 'alice +root .*systemctl is-active cron' "$OUT"
@@ -100,7 +100,7 @@ if grep -q $'\033' "$OUT"; then bad "output contains a raw ESC byte"; else ok "n
 echo "== report (--user bob)"
 bash "$WDW" --since "$START" --user bob >"$OUT" 2>&1
 cat "$OUT"
-expect "filter: bob's login" ' bob +127\.0\.0\.1' "$OUT"
+expect "filter: bob's login" ' bob +(127\.0\.0\.1|\[::1\])' "$OUT"
 expect_not "filter: no alice lines" ' alice ' "$OUT"
 
 echo "== report (--raw commands)"

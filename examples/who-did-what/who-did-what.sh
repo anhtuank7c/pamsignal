@@ -172,7 +172,8 @@ section_logins() {
                 if (want != "" && user != want) next
                 fp = $NF
                 k = (fp ~ /^SHA256:/) ? (fp in key ? key[fp] : fp " (not in any authorized_keys)") : "-"
-                printf "  %-25s %-12s %-22s %-10s %s\n", $1, user, $(i + 5) ":" $(i + 7), $(i + 1), k
+                ip = $(i + 5); if (index(ip, ":")) ip = "[" ip "]"   # IPv6: [addr]:port
+                printf "  %-25s %-12s %-22s %-10s %s\n", $1, user, ip ":" $(i + 7), $(i + 1), k
                 n++
             }
             END { if (!n) print "  (no successful SSH logins in this window)" }' | sanitize
