@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## 0.8.0 - 2026-11-24
+
+Minor release with a **security fix**: one login alert could silence every other login alert for a minute, so an attacker's login right after an admin's went unalerted. Upgrade. **Microsoft Teams users must act:** Microsoft retired the Office 365 connector webhooks, so create a Workflows webhook and put its URL in `teams_webhook_url` (see `docs/alerts.md`); Teams alerts are now Adaptive Cards. Not yet tested on a live Teams tenant. Also new: session-opened alerts name who ran `sudo`/`su`, over-long config values are an error instead of being cut off, and the Grafana demo counts each event once.
+
 ### Features
 - [x] **Session-opened alerts name who ran `sudo`/`su`.** The pam_unix line `session opened for user root(uid=0) by alice(uid=1000)` was reduced to `user=root`, so an alert said someone became root without saying which account did it. The invoking account is now kept as the actor: an **Actor** row in the pretty style, `actor=` after `user=` in the compact style, `pamsignal.actor` in the custom-webhook JSON, and `PAMSIGNAL_ACTOR` (plus `actor=` in `MESSAGE`) in PAMSignal's own journal entry. It is the account that logged in to the session `sudo`/`su` ran from, which is usually but not always the person who ran it (after `su - bob`, bob's `sudo` still reports alice; the sudo log names bob). It is shown only when it names someone other than the session user, and never for the console placeholder `LOGIN` (`by LOGIN(uid=0)`): pam_unix takes the name from the login session, so an SSH login is logged `alice(uid=1001) by alice(uid=0)` and gets no actor, and sudo run outside a login session (`by (uid=0)`, e.g. cron) gets none either. Verified against real Ubuntu 24.04 sshd and sudo logs. `user.name` keeps meaning the session's user, so existing webhook consumers see no change. The actor is parsed only from the position directly after the target user and its `(uid=N)`, cut at the first space or `(`, length-bounded with the `+` truncation marker, and passed through `sanitize_string`.
 
@@ -16,7 +20,6 @@
 
 ### Fixed
 - [x] **Microsoft Teams alerts work again (Workflows webhooks).** Microsoft has retired the Office 365 connector webhooks, and the Workflows webhook that replaces them ("Send webhook alerts to a channel") reads an Adaptive Card from `attachments`, not the `{"text": ...}` body PAMSignal sent, so Teams alerts were no longer delivered. Teams now gets an Adaptive Card: the pretty message as bold labels and monospace values, or the compact line in monospace. Adaptive Card markdown has no code spans, so wrapping the old markdown in a card would have reopened the link and mention injection fixed in 0.7.1; instead every piece of text is a `TextRun` in a `RichTextBlock`, which Teams never parses as markdown, after the same control-character and invisible-Unicode replacement as the other platforms. Covered by shape tests, a hostile-input test and a 20000-case property test that parses every card as strict JSON and allows only the expected keys and element types. Not yet tried against a live Teams tenant. Setup docs (EN + VI), the example config and `pamsignal.conf(5)` describe the Workflows steps; old connector URLs must be replaced.
-- [ ] **Test the Teams Adaptive Card on a live Teams tenant.** Create a Workflows webhook ("Send webhook alerts to a channel"), run `pamsignal --test-alert` with both `message_style` values, and check that the card is delivered and renders as documented. Until then `docs/alerts.md` (EN + VI) marks Teams as not yet tested on a real tenant.
 - [x] **Over-long config values were cut off silently.** A value longer than its key allows (511 characters for the URL keys) was truncated, so a long webhook URL lost its signature and every alert failed with nothing in the log. It is now a config error naming the key and the limit. A line longer than 1022 characters, which used to be read as two lines with the second parsed on its own, is now one error too.
 - [x] **Grafana demo: every panel counted each event twice, and some titles were wrong.** The synthetic producer pushed each event to Loki directly and through Alloy (`MODE: both`); it now uses only the Alloy path that real hosts use. The Detections stat showed `Value #A`/`Value #B` instead of its names and the two top-N tables headed their count column `Value #A`, because Grafana 11 names instant-query fields per query; both dashboard files now map those names. CI now also checks the detection query, waits for data before rendering the dashboard screenshot, and renders the last 3 minutes at 1600x1920 so the charts are readable. The two line charts have a 15 s minimum interval, so a short time range no longer breaks them into isolated dots. `assets/grafana-dashboard.png` is refreshed from that render.
 - [x] **`pamsignal --help` said `--foreground` is required under `Type=simple`.** The shipped unit is `Type=notify` with a watchdog; the help text and `pamsignal(8)` now say so.
@@ -501,12 +504,11 @@ Packaging-only release. Binary is identical to v0.2.0; this release adds signed 
 ## To Do
 
 ### Next Up
+- [ ] **Test the Teams Adaptive Card on a live Teams tenant.** Create a Workflows webhook ("Send webhook alerts to a channel"), run `pamsignal --test-alert` with both `message_style` values, and check that the card is delivered and renders as documented. Until then `docs/alerts.md` (EN + VI) marks Teams as not yet tested on a real tenant.
 - [ ] Curl availability check at startup (log warning if `curl` not found)
-- [ ] Sign and publish .deb / .rpm to a hosted repository (Launchpad PPA, COPR)
 
 ### Ideas (no promises)
 - [ ] GeoIP/ASN lookup for source IPs
 - [ ] Forwarding events to external logging systems
 - [ ] IPv6 network context from `/proc/net/tcp6`
-- [ ] Configurable event filter (choose which events trigger alerts)
 - [ ] Message templates (customizable alert format)

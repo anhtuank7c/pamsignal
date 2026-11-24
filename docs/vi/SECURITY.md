@@ -40,8 +40,8 @@ Hai trục:
 
 | Phiên bản | Được hỗ trợ |
 |---------|-----------|
-| `0.7.x` | Có (hiện tại: `0.7.1`) |
-| `< 0.7` | Không (nâng cấp lên `0.7.x`) |
+| `0.8.x` | Có (hiện tại: `0.8.0`) |
+| `< 0.8` | Không (nâng cấp lên `0.8.x`) |
 
 Đường cài đặt được khuyến nghị là repository apt hoặc dnf đã được ký, được ghi lại trong [`README.md`](README.md#1-cài-đặt); `apt upgrade` / `dnf upgrade` giữ bạn trên dòng được hỗ trợ một cách tự động.
 
