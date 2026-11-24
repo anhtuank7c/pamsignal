@@ -170,9 +170,11 @@ jobs:
         run: |
           # Let a few minutes of events and attack bursts build up so the
           # charts are not squeezed into the last seconds of the range.
-          sleep 150
+          # 200 s plus the earlier steps keeps the stack start-up (when Alloy
+          # ships its first batch at once) outside the rendered 3 minutes.
+          sleep 200
           curl -s -o /tmp/dashboard.png \
-            'http://localhost:3000/render/d/pamsignal-v1/pamsignal?width=1600&height=1920&from=now-5m&to=now&kiosk=1&tz=UTC' \
+            'http://localhost:3000/render/d/pamsignal-v1/pamsignal?width=1600&height=1920&from=now-3m&to=now&kiosk=1&tz=UTC' \
             -w 'http_code=%{http_code} size=%{size_download}\n'
           ls -la /tmp/dashboard.png
           file /tmp/dashboard.png | grep -q PNG

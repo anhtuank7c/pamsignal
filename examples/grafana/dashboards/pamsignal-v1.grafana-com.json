@@ -332,6 +332,7 @@
       "id": 5,
       "type": "timeseries",
       "title": "Login attempts/min by outcome",
+      "interval": "15s",
       "description": "Successful vs failed logins per minute. Sudden vertical spikes in failures are the canonical brute-force signature.",
       "gridPos": {
         "x": 0,
@@ -497,6 +498,7 @@
       "id": 7,
       "type": "timeseries",
       "title": "Events per host",
+      "interval": "15s",
       "description": "Top 10 hosts by event volume. Useful to spot a noisy host or one that has fallen silent.",
       "gridPos": {
         "x": 0,
