@@ -159,7 +159,7 @@ static size_t json_escape(const char *src, char *dst, size_t dst_len) {
 // --- Truncation-safe snprintf ---
 //
 // snprintf returns the would-be length, so n >= size means the result was
-// truncated. Truncated alerts are dropped — sending a partial JSON body or a
+// truncated. Truncated alerts are dropped: sending a partial JSON body or a
 // half-formed URL is worse than silently doing nothing, and validated config
 // values mean truncation only happens on logic bugs.
 
@@ -242,7 +242,7 @@ static int build_secrets_memfd(const curl_config_t *cfg) {
         return -1;
 
     /* Ownership transfer: the caller will dup2 and manage lifetime.
-     * Disarm _cleanup_close_ — the store is read by ps_closep through
+     * Disarm _cleanup_close_; the store is read by ps_closep through
      * __attribute__((cleanup)), which clang-analyzer cannot see.
      */
     int ret = fd;
@@ -737,7 +737,7 @@ static void format_login_after_failures_json(const ps_config_t *cfg,
     json_escape(event->hostname, esc_host, sizeof(esc_host));
     format_labels_json(cfg, labels_json, sizeof(labels_json));
 
-    // event.outcome is "success" — the login itself succeeded; event.kind
+    // event.outcome is "success" (the login itself succeeded); event.kind
     // "alert" plus the intrusion_detection category mark it as a detection.
     snprintf(buf, len,
              "{\"@timestamp\":\"%s\","

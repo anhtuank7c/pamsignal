@@ -1,6 +1,6 @@
 # Journal Subscriber
 
-> 🌐 **English** · [Tiếng Việt](../vi/notes/systemd-journal.md)
+> **English** · [Tiếng Việt](../vi/notes/systemd-journal.md)
 
 - **Status**: Completed
 - **Start Date**: 27/12/2025
@@ -297,7 +297,7 @@ graph TD
     pam["PAM Authentication<br/>1. verify credentials (password / key / 2FA)<br/>2. check account validity<br/>3. setup session<br/>4. log auth event"]
     journald[("systemd-journald (log collector)<br/>receives from PAM · adds metadata<br/>writes binary journal · notifies subscribers")]
     pamsignal["PAMSignal subscriber<br/>1. sd_journal_wait()<br/>2. extract auth data<br/>3. determine login type<br/>4. gather context<br/>5. send notification"]
-    notify["User notification<br/>🔐 SSH login: user@192.168.1.100 → server"]
+    notify["User notification<br/>SSH login: user@192.168.1.100 → server"]
 
     login --> pam
     pam --> journald
@@ -398,11 +398,11 @@ void send_notification(LoginEvent *event) {
     // Format message
     char message[1024];
     snprintf(message, sizeof(message),
-        "🔐 %s login\n"
-        "👤 User: %s\n"
-        "🌐 From: %s\n"
-        "🖥️  Server: %s\n"
-        "⏰ Time: %s",
+        "%s login\n"
+        "User: %s\n"
+        "From: %s\n"
+        "Server: %s\n"
+        "Time: %s",
         event->type,      // "SSH", "Console", "Sudo"
         event->username,
         event->source_ip,
@@ -599,10 +599,10 @@ while (1) {
 
 **Benefits for PAMSignal:**
 
-1. ✅ **Zero polling overhead**: CPU usage only when events occur
-2. ✅ **Instant notifications**: ~0ms latency from event to processing
-3. ✅ **Reliable parsing**: No regex, direct field access
-4. ✅ **Tamper detection**: Sealed logs prevent attacker log deletion
-5. ✅ **Cross-distro compatibility**: Works on all systemd-based distributions
+1. **Zero polling overhead**: CPU usage only when events occur
+2. **Instant notifications**: ~0ms latency from event to processing
+3. **Reliable parsing**: No regex, direct field access
+4. **Tamper detection**: Sealed logs prevent attacker log deletion
+5. **Cross-distro compatibility**: Works on all systemd-based distributions
 
 This architecture makes PAMSignal a truly real-time, efficient, and reliable authentication monitoring solution.

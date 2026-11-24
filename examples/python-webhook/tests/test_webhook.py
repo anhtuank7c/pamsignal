@@ -1,6 +1,6 @@
 """Unit tests for the PAMSignal Flask webhook receiver.
 
-Uses Flask's test_client so no transport is involved — these tests pin down
+Uses Flask's test_client so no transport is involved; these tests pin down
 the in-process behavior of the request handler, the security defenses
 (timing-safe Bearer compare, body size cap, Content-Type validation, log
 injection sanitization), and the per-action dispatch logic.
@@ -83,7 +83,7 @@ class TestAuthentication:
         assert response.status_code == 401
 
     def test_rejects_bearer_token_prefix_of_secret(self, client):
-        # Prefix of the real secret must not authenticate — covers the
+        # Prefix of the real secret must not authenticate. This covers the
         # timing-safe compare's handling of unequal-length inputs.
         response = client.post(
             "/webhook/pamsignal",
@@ -140,7 +140,7 @@ class TestContentType:
 
     def test_415_path_runs_after_auth(self, client):
         # An unauthenticated request with the wrong Content-Type must still
-        # 401, not 415 — auth happens before media-type validation so we
+        # 401, not 415: auth happens before media-type validation so we
         # don't tell an unauthenticated peer anything about the endpoint.
         response = client.post(
             "/webhook/pamsignal",
@@ -163,7 +163,7 @@ class TestBodySizeLimit:
         assert response.status_code == 413
 
     def test_accepts_body_well_under_limit(self, client):
-        # ~10 KB payload — comfortably below the 64 KB cap.
+        # ~10 KB payload, comfortably below the 64 KB cap.
         payload = {
             "event": {"action": "x"},
             "pamsignal": {},
@@ -209,7 +209,7 @@ class TestPayloadValidation:
         assert response.status_code == 400
 
     def test_rejects_null_payload(self, client):
-        # Literal JSON `null` with the correct Content-Type — should hit the
+        # Literal JSON `null` with the correct Content-Type should hit the
         # payload validator, not the 415 path.
         response = client.post(
             "/webhook/pamsignal",
@@ -422,4 +422,4 @@ class TestSafeHelper:
         # Non-control non-ASCII chars (accents, CJK, emoji) pass through.
         assert _safe("café") == "café"
         assert _safe("日本語") == "日本語"
-        assert _safe("🔥") == "🔥"
+        assert _safe("\U0001F525") == "\U0001F525"

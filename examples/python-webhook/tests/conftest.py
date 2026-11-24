@@ -1,4 +1,4 @@
-"""Shared pytest configuration — silence noisy app logging during tests."""
+"""Shared pytest configuration: silence noisy app logging during tests."""
 
 from __future__ import annotations
 

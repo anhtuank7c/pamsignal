@@ -32,7 +32,7 @@ typedef struct {
     ps_event_type_t type;
     ps_auth_method_t auth_method;
     ps_service_t service;
-    // username is the actor — for sshd this is the account being attacked
+    // username is the actor: for sshd this is the account being attacked
     // ("Failed password for X"), for sudo/su this is `ruser=` (the local user
     // pressing keys).
     char username[64];

@@ -1,4 +1,4 @@
-// Grafana Alloy config — production PAMSignal scraper.
+// Grafana Alloy config: production PAMSignal scraper.
 //
 // Install on every host whose PAMSignal events you want in Loki.
 //

@@ -1,6 +1,6 @@
 # Development Guide
 
-> 🌐 **English** · [Tiếng Việt](vi/development.md)
+> **English** · [Tiếng Việt](vi/development.md)
 
 ## Prerequisites
 
@@ -70,7 +70,7 @@ CC=clang-21 meson setup -Dfuzz=enabled build-fuzz
 meson compile -C build-fuzz fuzz_parse_message
 
 # Run for 60 seconds. The first positional arg is libFuzzer's working corpus
-# (writable — discoveries are saved here); the second is the read-only seed
+# (writable: discoveries are saved here); the second is the read-only seed
 # corpus. build-fuzz/ is gitignored, so discoveries stay out of the repo.
 mkdir -p build-fuzz/corpus
 ./build-fuzz/fuzz_parse_message build-fuzz/corpus \

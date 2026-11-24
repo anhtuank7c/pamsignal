@@ -1,10 +1,10 @@
 # Deployment
 
-> 🌐 **English** · [Tiếng Việt](vi/deployment.md)
+> **English** · [Tiếng Việt](vi/deployment.md)
 
 ## Install
 
-The recommended path is the published `.deb` or `.rpm` from the project repo (the same one-liners in the [README quick start](../README.md#1-install)). The packages create the `pamsignal` system user, set the config-file permissions to `root:pamsignal 0640`, and arm the systemd unit for you — when you install via `apt` or `dnf` you can skip straight to [Configure](#configure).
+The recommended path is the published `.deb` or `.rpm` from the project repo (the same one-liners in the [README quick start](../README.md#1-install)). The packages create the `pamsignal` system user, set the config-file permissions to `root:pamsignal 0640`, and arm the systemd unit for you. When you install via `apt` or `dnf` you can skip straight to [Configure](#configure).
 
 If you build from source, you do those steps yourself; see the "Source build" subsection below.
 
@@ -22,7 +22,7 @@ sudo apt update -o Dir::Etc::sourcelist="sources.list.d/pamsignal.list" \
 sudo apt install pamsignal
 ```
 
-The scoped `apt update` refreshes only `pamsignal.list`. If an unrelated third-party repo on the box is broken (e.g. an expired `NO_PUBKEY`), a plain `apt update && apt install` would exit non-zero and never reach the install — the `-o Dir::Etc::*` flags sidestep that by reading only PamSignal's source. Drop the flags if you'd rather run a full `apt update`.
+The scoped `apt update` refreshes only `pamsignal.list`. If an unrelated third-party repo on the box is broken (e.g. an expired `NO_PUBKEY`), a plain `apt update && apt install` would exit non-zero and never reach the install; the `-o Dir::Etc::*` flags sidestep that by reading only PamSignal's source. Drop the flags if you'd rather run a full `apt update`.
 
 `/etc/apt/keyrings` is the standard location for system-administrator-installed APT signing keys (per `sources.list(5)`); the `install -d` line is idempotent and safe to re-run on systems where the directory already exists.
 
@@ -57,14 +57,14 @@ sudo meson install -C build
 
 With the default `--prefix=/usr/local` you get:
 
-- `/usr/local/bin/pamsignal` — the binary (modern systemd-era convention: admin-oriented daemons share `/usr/bin` with everything else, matching `journalctl`, `systemctl`, `podman`, `containerd`)
-- `/usr/local/lib/systemd/system/pamsignal.service` — the systemd unit (vendor unit search path)
-- `/usr/local/etc/pamsignal/pamsignal.conf` — the example config (from `pamsignal.conf.example`)
-- `/usr/local/share/man/man8/pamsignal.8` — the man page
+- `/usr/local/bin/pamsignal`: the binary (modern systemd-era convention: admin-oriented daemons share `/usr/bin` with everything else, matching `journalctl`, `systemctl`, `podman`, `containerd`)
+- `/usr/local/lib/systemd/system/pamsignal.service`: the systemd unit (vendor unit search path)
+- `/usr/local/etc/pamsignal/pamsignal.conf`: the example config (from `pamsignal.conf.example`)
+- `/usr/local/share/man/man8/pamsignal.8`: the man page
 
 For a system-wide install that mirrors the packaged layout (`/usr/bin`, `/usr/lib/systemd/system`, `/etc/pamsignal`), reconfigure with `meson setup build --prefix=/usr --sysconfdir=/etc`.
 
-A source build does **not** create the `pamsignal` system user or lock down the config-file permissions — do those steps yourself before starting the service:
+A source build does **not** create the `pamsignal` system user or lock down the config-file permissions. Do those steps yourself before starting the service:
 
 ```bash
 sudo useradd -r -s /usr/sbin/nologin pamsignal
@@ -88,7 +88,7 @@ Edit the config file. The path depends on how you installed:
 sudo editor /etc/pamsignal/pamsignal.conf
 ```
 
-All values are optional — defaults are sane. To enable alerts, add your channel credentials (e.g. Telegram, Slack):
+All values are optional; defaults are sane. To enable alerts, add your channel credentials (e.g. Telegram, Slack):
 
 ```ini
 telegram_bot_token = <bot_token>
@@ -99,7 +99,7 @@ See [Configuration](./configuration.md) for all options.
 
 ### Custom webhook authentication
 
-If you point `webhook_url` at your own SIEM or receiver, configure authentication with `webhook_auth_header` (Bearer token, API key, etc.) or — for environments that already run a PKI — `webhook_client_cert` + `webhook_client_key` for mTLS:
+If you point `webhook_url` at your own SIEM or receiver, configure authentication with `webhook_auth_header` (Bearer token, API key, etc.) or, for environments that already run a PKI, `webhook_client_cert` + `webhook_client_key` for mTLS:
 
 ```bash
 # Place client cert + key under the daemon's config directory.
@@ -108,7 +108,7 @@ sudo install -o root -g pamsignal -m 0644 webhook-client.crt /etc/pamsignal/
 sudo install -o root -g pamsignal -m 0640 webhook-client.key /etc/pamsignal/
 ```
 
-The daemon refuses to start if `webhook_client_key` is group- or world-readable; mode `0640` with group `pamsignal` is the canonical layout (matches `pamsignal.conf` itself). If your cert manager (cert-manager, certbot, `systemd-creds`) deploys keys elsewhere, point `webhook_client_key` at that path — pamsignal opens it with `O_NOFOLLOW` and validates ownership and mode at every config load. See [Configuration → Custom webhook authentication](./configuration.md#custom-webhook-authentication) for the full reference.
+The daemon refuses to start if `webhook_client_key` is group- or world-readable; mode `0640` with group `pamsignal` is the canonical layout (matches `pamsignal.conf` itself). If your cert manager (cert-manager, certbot, `systemd-creds`) deploys keys elsewhere, point `webhook_client_key` at that path; pamsignal opens it with `O_NOFOLLOW` and validates ownership and mode at every config load. See [Configuration → Custom webhook authentication](./configuration.md#custom-webhook-authentication) for the full reference.
 
 ## Start the service
 
@@ -138,7 +138,7 @@ After editing `/etc/pamsignal/pamsignal.conf`:
 sudo systemctl reload pamsignal
 ```
 
-This sends SIGHUP — no downtime, no restart.
+This sends SIGHUP: no downtime, no restart.
 
 ## Stop
 
@@ -165,7 +165,7 @@ sudo apt remove pamsignal
 sudo apt purge pamsignal
 ```
 
-The maintainer scripts shipped with the package (`debian/pamsignal.{prerm,postrm}`) handle `systemctl stop`, `systemctl disable`, and `daemon-reload`. The `pamsignal` system user is **intentionally preserved** across both `remove` and `purge` — if any file on the system was created with that UID (a runtime artifact, an unexpected leftover) and the user were deleted, the file would orphan to a numeric UID the kernel could later reuse for a different user. Drop the user manually only after you have confirmed nothing on the system is owned by it:
+The maintainer scripts shipped with the package (`debian/pamsignal.{prerm,postrm}`) handle `systemctl stop`, `systemctl disable`, and `daemon-reload`. The `pamsignal` system user is **intentionally preserved** across both `remove` and `purge`. If any file on the system was created with that UID (a runtime artifact, an unexpected leftover) and the user were deleted, the file would orphan to a numeric UID the kernel could later reuse for a different user. Drop the user manually only after you have confirmed nothing on the system is owned by it:
 
 ```bash
 sudo find / -user pamsignal 2>/dev/null
@@ -180,13 +180,13 @@ rpm has a single removal verb:
 sudo dnf remove pamsignal
 ```
 
-There is no equivalent of `apt purge` — `dnf remove` already deletes everything the package put on disk. One subtlety: if you edited `/etc/pamsignal/pamsignal.conf` since install, `rpm` saves your modified copy as `/etc/pamsignal/pamsignal.conf.rpmsave` rather than deleting it (the `%config(noreplace)` directive in `pamsignal.spec`). Remove the `.rpmsave` file by hand if you no longer need your old configuration.
+There is no equivalent of `apt purge`: `dnf remove` already deletes everything the package put on disk. One subtlety: if you edited `/etc/pamsignal/pamsignal.conf` since install, `rpm` saves your modified copy as `/etc/pamsignal/pamsignal.conf.rpmsave` rather than deleting it (the `%config(noreplace)` directive in `pamsignal.spec`). Remove the `.rpmsave` file by hand if you no longer need your old configuration.
 
 The spec's `%preun` / `%postun` blocks handle systemd lifecycle. The `pamsignal` user is preserved on uninstall for the same reason explained above.
 
 ### Source build (`meson install`)
 
-If you ran `sudo meson install -C build` instead of installing a package, no package-manager database tracks what was placed where — you have to undo it explicitly:
+If you ran `sudo meson install -C build` instead of installing a package, no package-manager database tracks what was placed where, so you have to undo it explicitly:
 
 ```bash
 sudo systemctl stop pamsignal
@@ -204,7 +204,7 @@ sudo userdel pamsignal
 sudo systemctl daemon-reload
 ```
 
-`/run/pamsignal/` does not need manual cleanup — `RuntimeDirectory=pamsignal` removes it automatically when the service stops.
+`/run/pamsignal/` does not need manual cleanup: `RuntimeDirectory=pamsignal` removes it automatically when the service stops.
 
 If you reconfigured the build with `--prefix=/usr --sysconfdir=/etc` to mirror the packaged layout, replace `/usr/local/bin`, `/usr/local/lib/systemd/system`, `/usr/local/share/man/man8`, and `/usr/local/etc/pamsignal` with their `/usr/...` and `/etc/...` counterparts.
 

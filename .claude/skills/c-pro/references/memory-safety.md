@@ -1,4 +1,4 @@
-# Memory Safety — Deeper Patterns
+# Memory Safety: Deeper Patterns
 
 The SKILL.md covers the basics (cleanup attribute, goto-cleanup, allocation hygiene). This file is for the patterns you reach for when a module grows beyond a few hundred lines or when ownership is genuinely non-trivial.
 
@@ -11,7 +11,7 @@ C has no `unique_ptr`. Ownership is encoded in convention and documented in the 
 The caller owns the memory; the callee reads or writes through the pointer without taking responsibility. Default for `const T *` inputs.
 
 ```c
-// In the header — make it explicit.
+// In the header: make it explicit.
 /**
  * Read-only borrow. Pointer must remain valid for the duration of the call.
  */
@@ -30,7 +30,7 @@ The callee takes responsibility for freeing. Caller must not free or use the poi
 int ps_event_queue_push(ps_queue_t *q, ps_event_t *ev /* taken */);
 ```
 
-The trailing `/* taken */` (or `/* owned */`) at the call site is a useful convention — it documents intent at the point of use.
+The trailing `/* taken */` (or `/* owned */`) at the call site is a useful convention: it documents intent at the point of use.
 
 ### Return ownership (factory)
 
@@ -132,13 +132,13 @@ Use cases:
 - Parsing one config file: every string and node lives until the parser returns.
 - Building a single alert payload before fork+exec.
 
-Do **not** use for objects whose lifetime crosses the arena's owner — those still need explicit ownership.
+Do **not** use for objects whose lifetime crosses the arena's owner; those still need explicit ownership.
 
 ---
 
 ## 4. Refcounting
 
-Refcounts are for shared-ownership cases where neither caller knows when to free. Keep them rare — explicit single-ownership is almost always clearer.
+Refcounts are for shared-ownership cases where neither caller knows when to free. Keep them rare: explicit single-ownership is almost always clearer.
 
 ```c
 typedef struct {
@@ -174,20 +174,20 @@ When auditing or refactoring, trace each allocation through to its `free`. If yo
 
 - **No matching free?** Leak. Add the free or transfer ownership.
 - **Multiple frees?** Double-free. Set the pointer to `NULL` after the first free, or restructure so only one owner exists.
-- **Free in error path but not success?** Asymmetric — usually a bug. Cleanup attribute fixes both paths uniformly.
+- **Free in error path but not success?** Asymmetric, and usually a bug. Cleanup attribute fixes both paths uniformly.
 - **Free of a borrowed pointer?** Crash waiting to happen. The function had no right to free it.
 
-A useful exercise: pick a random allocation in `src/`, then close your eyes (figuratively) and predict where it gets freed. Open the code and check. If you were wrong, that allocation's lifetime is unclear — file a refactor.
+A useful exercise: pick a random allocation in `src/`, then close your eyes (figuratively) and predict where it gets freed. Open the code and check. If you were wrong, that allocation's lifetime is unclear; file a refactor.
 
 ---
 
 ## 6. Tools That Catch Lifetime Bugs
 
-- **AddressSanitizer (`-fsanitize=address`)** — adds it to dev builds via meson. Catches heap overflow, use-after-free, double-free.
-- **UndefinedBehaviorSanitizer (`-fsanitize=undefined`)** — catches signed overflow, alignment violations, OOB shifts.
-- **LeakSanitizer (`-fsanitize=leak`)** — bundled with ASan on Linux. Reports leaks at exit.
-- **Valgrind (`memcheck`)** — slower, more thorough, no recompile needed.
-- **clang-tidy with `bugprone-*` and `cert-*` checks** — already wired into the pre-commit workflow.
+- **AddressSanitizer (`-fsanitize=address`)**: adds it to dev builds via meson. Catches heap overflow, use-after-free, double-free.
+- **UndefinedBehaviorSanitizer (`-fsanitize=undefined`)**: catches signed overflow, alignment violations, OOB shifts.
+- **LeakSanitizer (`-fsanitize=leak`)**: bundled with ASan on Linux. Reports leaks at exit.
+- **Valgrind (`memcheck`)**: slower, more thorough, no recompile needed.
+- **clang-tidy with `bugprone-*` and `cert-*` checks**: already wired into the pre-commit workflow.
 
 Run the test suite with sanitizers periodically:
 
@@ -196,4 +196,4 @@ meson setup build-asan -Db_sanitize=address,undefined
 meson test -C build-asan -v
 ```
 
-A clean ASan run is not proof of correctness — it is proof against the specific bugs ASan can see on the paths your tests exercised. Keep writing tests.
+A clean ASan run is not proof of correctness; it is proof against the specific bugs ASan can see on the paths your tests exercised. Keep writing tests.

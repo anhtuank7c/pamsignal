@@ -37,7 +37,7 @@ jobs:
       matrix:
         series:
           - noble     # Ubuntu 24.04 LTS
-          # - jammy   # Ubuntu 22.04 LTS — uncomment to enable
+          # - jammy   # Ubuntu 22.04 LTS (uncomment to enable)
 
     steps:
       - name: Checkout
@@ -100,7 +100,7 @@ jobs:
         run: |
           # Prepend a throwaway changelog entry for this Ubuntu series.
           # This sets the distribution and PPA version string without
-          # modifying the committed history — the debian/changelog edit
+          # modifying the committed history; the debian/changelog edit
           # only lives in this job's workspace.
           # --force-bad-version (-b) is required because 0.2.3-1~noble1
           # intentionally sorts below 0.2.3-1 (~ is a pre-release marker

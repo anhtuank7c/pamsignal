@@ -1,6 +1,6 @@
-# Grafana Integration — Design
+# Grafana Integration: Design
 
-> 🌐 **English** · [Tiếng Việt](vi/grafana-integration.md)
+> **English** · [Tiếng Việt](vi/grafana-integration.md)
 
 This document is the locked design for the PAMSignal Grafana integration, tracked in [issue #25](https://github.com/anhtuank7c/pamsignal/issues/25). Implementation artifacts live under `examples/grafana/`.
 
@@ -15,7 +15,7 @@ graph LR
     alloy["Grafana Alloy<br/>(per host)"]
     loki[("Loki")]
     grafana["Grafana"]
-    operator["🧑‍💻 Operator"]
+    operator["Operator"]
 
     pamsignal -- "sd_journal_send<br/>(ECS fields)" --> journald
     journald -- "SYSLOG_IDENTIFIER=pamsignal" --> alloy
@@ -60,14 +60,14 @@ Source of truth: `src/journal_watch.c` (`emit_brute_force_alert`, `ps_log_event`
 
 ## Label cardinality plan
 
-Loki indexes labels — high-cardinality labels blow up the index. The plan keeps cardinality bounded.
+Loki indexes labels, and high-cardinality labels blow up the index. The plan keeps cardinality bounded.
 
 **Promoted to Loki labels (used in every selector):**
 
-- `app="pamsignal"` — static, set by Alloy
-- `host` ← `__journal__hostname` — one per host (bounded by fleet size)
-- `service` ← `__journal_service_name` — 5 values
-- `event_action` ← `__journal_event_action` — 6 values
+- `app="pamsignal"`: static, set by Alloy
+- `host` ← `__journal__hostname`: one per host (bounded by fleet size)
+- `service` ← `__journal_service_name`: 5 values
+- `event_action` ← `__journal_event_action`: 6 values
 
 Total streams: `~5 × 6 × fleet_size ≈ 30 × N`. Safe up to thousands of hosts.
 
@@ -75,35 +75,35 @@ Total streams: `~5 × 6 × fleet_size ≈ 30 × N`. Safe up to thousands of host
 
 - `SOURCE_IP`, `USER_NAME`, `USER_TARGET_NAME`, `SOURCE_PORT`, `PROCESS_PID`, `EVENT_SEVERITY`, `EVENT_OUTCOME`, `EVENT_KIND`
 
-`event_outcome` and `event_kind` are derivable from `event_action` — there's no point indexing them. Source IP and user name are high-cardinality; querying them on demand is the right tradeoff.
+`event_outcome` and `event_kind` are derivable from `event_action`, so there's no point indexing them. Source IP and user name are high-cardinality; querying them on demand is the right tradeoff.
 
 ## Dashboard layout
 
 Three rows, top to bottom:
 
-### Row 1 — Fleet pulse (5 stat panels)
+### Row 1: Fleet pulse (5 stat panels)
 
 The "Friday-afternoon glance." Each panel is a single number, color-coded.
 
-1. **Hosts reporting (last 1h)** — fleet liveness
+1. **Hosts reporting (last 1h)**: fleet liveness
 2. **Successful logins** (range)
 3. **Failed logins** (range)
-4. **Brute-force alerts** (range) — red if > 0
+4. **Brute-force alerts** (range), red if > 0
 5. **Privilege escalations** (sudo/su `session_opened`, range)
 
-### Row 2 — Trends (3 time-series)
+### Row 2: Trends (3 time-series)
 
-6. **Login attempts/min** — stacked by `event_outcome` (success vs failure)
-7. **Brute-force detections/min** — stacked by `service`
-8. **Events/min per host** — stacked area, top-10 hosts; spot the noisy host
+6. **Login attempts/min**, stacked by `event_outcome` (success vs failure)
+7. **Brute-force detections/min**, stacked by `service`
+8. **Events/min per host**: stacked area, top-10 hosts; spot the noisy host
 
-### Row 3 — Drill-downs (4 tables + 1 logs panel)
+### Row 3: Drill-downs (4 tables + 1 logs panel)
 
 9. **Top 10 source IPs by failed-login count** (parsed `SOURCE_IP`)
 10. **Top 10 attacked usernames** (parsed `USER_NAME`)
-11. **Recent brute-force alerts** — time, ip-or-actor, attempts, window, service, host
-12. **Recent successful root logins** — `event_action="login_success"` AND `USER_NAME="root"`
-13. **Live log stream** — pamsignal events filtered by dashboard variables
+11. **Recent brute-force alerts**: time, ip-or-actor, attempts, window, service, host
+12. **Recent successful root logins**: `event_action="login_success"` AND `USER_NAME="root"`
+13. **Live log stream**: pamsignal events filtered by dashboard variables
 
 ### Variables (multi-select, default "All")
 
@@ -155,7 +155,7 @@ Shipped in `examples/grafana/alerts.yaml` as Grafana-native rules:
 | 1 | Any `event_action="brute_force_detected"` | critical | PAMSignal already validated the threshold; alert is trustworthy |
 | 2 | `event_action="login_success"` AND `USER_NAME="root"` on `service="sshd"` | high | Direct root SSH is the canonical "you should care" event |
 | 3 | ≥10 `login_failure` from one `SOURCE_IP` in 5 min | high | Safety net if operator tuned `fail_threshold` very high |
-| 4 | Host stopped reporting > 10 min | medium | Heartbeat — daemon dead or host offline |
+| 4 | Host stopped reporting > 10 min | medium | Heartbeat: daemon dead or host offline |
 
 Off-hours login is policy-specific. Out of scope for v1.
 
@@ -169,16 +169,16 @@ The "real PAMSignal" path is documented in `examples/grafana/README.md` and uses
 
 ```
 examples/grafana/
-├── README.md              — integration guide (Loki-newcomer friendly)
-├── alloy.river            — Alloy config: journald → Loki
+├── README.md              # integration guide (Loki-newcomer friendly)
+├── alloy.river            # Alloy config: journald → Loki
 ├── dashboards/
-│   └── pamsignal-v1.json  — the dashboard
-├── alerts.yaml            — Grafana alert rules
-├── docker-compose.yml     — Loki + Alloy + Grafana try-it stack
-├── synthetic/             — synthetic event producer (try-it & CI)
+│   └── pamsignal-v1.json  # the dashboard
+├── alerts.yaml            # Grafana alert rules
+├── docker-compose.yml     # Loki + Alloy + Grafana try-it stack
+├── synthetic/             # synthetic event producer (try-it & CI)
 │   ├── Dockerfile
 │   └── produce.py
-└── verify.sh              — one-command integration health check
+└── verify.sh              # one-command integration health check
 ```
 
 ## Success criteria

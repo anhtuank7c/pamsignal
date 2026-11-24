@@ -100,7 +100,7 @@ typedef struct {
 void ps_config_defaults(ps_config_t *cfg);
 
 // Parse config file into cfg.
-// Returns PS_OK on success (including file not found — defaults kept).
+// Returns PS_OK on success (including file not found; defaults kept).
 // Returns PS_ERR_CONFIG on parse/validation error.
 int ps_config_load(const char *path, ps_config_t *cfg);
 

@@ -27,7 +27,7 @@ if (tlsKeyPath && tlsCertPath) {
   if (process.env.TLS_REQUIRE_CLIENT_CERT === 'true') {
     if (!opts.ca) {
       console.warn(
-        '⚠️  TLS_REQUIRE_CLIENT_CERT=true but TLS_CLIENT_CA_PATH is unset — ' +
+        'WARNING: TLS_REQUIRE_CLIENT_CERT=true but TLS_CLIENT_CA_PATH is unset, so ' +
         'clients will be validated against the default trust store, which is ' +
         'almost certainly not what you want for an internal-PKI deployment.'
       );
@@ -45,15 +45,15 @@ server.listen(PORT, () => {
   if (scheme === 'https') {
     const mtls = process.env.TLS_REQUIRE_CLIENT_CERT === 'true';
     console.log(
-      `🔐 PAMSignal Webhook Receiver listening on https://localhost:${PORT}/webhook/pamsignal` +
-      (mtls ? ' (mTLS — client cert required)' : '')
+      `PAMSignal Webhook Receiver listening on https://localhost:${PORT}/webhook/pamsignal` +
+      (mtls ? ' (mTLS, client cert required)' : '')
     );
   } else {
-    console.log(`🚀 PAMSignal Webhook Receiver listening on http://localhost:${PORT}/webhook/pamsignal`);
+    console.log(`PAMSignal Webhook Receiver listening on http://localhost:${PORT}/webhook/pamsignal`);
   }
 
   if (!WEBHOOK_SECRET) {
-    console.log('⚠️  WARNING: Running without Bearer authentication. Set WEBHOOK_SECRET in .env');
+    console.log('WARNING: Running without Bearer authentication. Set WEBHOOK_SECRET in .env');
   }
 });
 

@@ -36,7 +36,7 @@ def build_ssl_context() -> ssl.SSLContext | None:
     if os.environ.get("TLS_REQUIRE_CLIENT_CERT") == "true":
         if not ca_path:
             print(
-                "⚠️  TLS_REQUIRE_CLIENT_CERT=true but TLS_CLIENT_CA_PATH is unset — "
+                "WARNING: TLS_REQUIRE_CLIENT_CERT=true but TLS_CLIENT_CA_PATH is unset, so "
                 "clients will be validated against the default trust store, which is "
                 "almost certainly not what you want for an internal-PKI deployment.",
                 file=sys.stderr,
@@ -57,19 +57,19 @@ def main() -> None:
 
     if scheme == "https":
         mtls = os.environ.get("TLS_REQUIRE_CLIENT_CERT") == "true"
-        suffix = " (mTLS — client cert required)" if mtls else ""
+        suffix = " (mTLS, client cert required)" if mtls else ""
         print(
-            f"🔐 PAMSignal Webhook Receiver listening on "
+            f"PAMSignal Webhook Receiver listening on "
             f"https://localhost:{port}/webhook/pamsignal{suffix}"
         )
     else:
         print(
-            f"🚀 PAMSignal Webhook Receiver listening on "
+            f"PAMSignal Webhook Receiver listening on "
             f"http://localhost:{port}/webhook/pamsignal"
         )
 
     if not webhook_secret:
-        print("⚠️  WARNING: Running without Bearer authentication. Set WEBHOOK_SECRET in .env")
+        print("WARNING: Running without Bearer authentication. Set WEBHOOK_SECRET in .env")
 
     run_simple("0.0.0.0", port, app, ssl_context=ssl_context, use_reloader=False)
 

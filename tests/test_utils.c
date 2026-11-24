@@ -95,8 +95,8 @@ static void test_parse_session_open_actor_unnamed(void **state) {
 }
 
 // Real Ubuntu 24.04 lines: pam_unix names the login account, so alice's own
-// SSH login says "by alice" — not an actor; her sudo says "by alice" for
-// root — an actor.
+// SSH login says "by alice" (not an actor); her sudo says "by alice" for
+// root (an actor).
 static void test_parse_session_open_actor_same_as_user_dropped(void **state) {
     (void)state;
     ps_pam_event_t event;
@@ -512,7 +512,7 @@ static void test_parse_sudo_auth_failure_with_rhost_ip(void **state) {
 static void test_parse_sudo_auth_failure_rhost_hostname_dropped(void **state) {
     (void)state;
     ps_pam_event_t event;
-    // rhost can be a hostname instead of an IP — we don't resolve, so
+    // rhost can be a hostname instead of an IP; we don't resolve, so
     // source_ip must stay empty rather than carry an unparsed string into
     // downstream IP-based fields.
     int ret = ps_parse_message(
@@ -616,7 +616,7 @@ static void test_parse_username_at_boundary_no_marker(void **state) {
     (void)state;
     ps_pam_event_t event;
     // Username exactly fills the buffer to len-1 with the natural delimiter
-    // following — should NOT receive the truncation marker.
+    // following: should NOT receive the truncation marker.
     char msg[512];
     char user63[64];
     memset(user63, 'b', 63);
@@ -783,7 +783,7 @@ static void test_event_severity_label_fixed_width(void **state) {
 
 static void test_event_kind_str(void **state) {
     (void)state;
-    // All ps_event_type_t values map to "event" — brute-force is the only
+    // All ps_event_type_t values map to "event"; brute-force is the only
     // "alert" but it doesn't have a ps_event_type_t value.
     assert_string_equal(ps_event_kind_str(PS_EVENT_SESSION_OPEN), "event");
     assert_string_equal(ps_event_kind_str(PS_EVENT_LOGIN_FAILED), "event");

@@ -1,25 +1,25 @@
 ---
 name: c-pro
-description: Professional C programming craft for the PAMSignal project — clean code, idiomatic modern C (C17/gnu17), memory safety patterns, defensive programming, error-handling discipline, and refactoring guidance. Use this skill whenever writing, editing, reviewing, or refactoring any `.c` or `.h` file in this project, even for small changes or one-line fixes. Triggers on adding new functions, modifying existing C code, extracting helpers, fixing bugs in C, introducing new modules, or any work that produces or modifies C source. Also triggers on phrases like "clean up this C", "make this safer", "refactor this function", "review this C code", "is this idiomatic". Complements `senior-linux-developer` (Linux systems persona) and `owasp-asvs` (security verification) by owning the craft layer — how the code is written, not just what it does.
+description: Professional C programming craft for the PAMSignal project, covering clean code, idiomatic modern C (C17/gnu17), memory safety patterns, defensive programming, error-handling discipline, and refactoring guidance. Use this skill whenever writing, editing, reviewing, or refactoring any `.c` or `.h` file in this project, even for small changes or one-line fixes. Triggers on adding new functions, modifying existing C code, extracting helpers, fixing bugs in C, introducing new modules, or any work that produces or modifies C source. Also triggers on phrases like "clean up this C", "make this safer", "refactor this function", "review this C code", "is this idiomatic". Complements `senior-linux-developer` (Linux systems persona) and `owasp-asvs` (security verification) by owning the craft layer, meaning how the code is written, not just what it does.
 user-invocable: true
 allowed-tools: Read, Grep, Glob, Edit, Write, Bash(meson *), Bash(ninja *), Bash(clang-format *), Bash(clang-tidy *), Bash(pkg-config *)
 effort: medium
 argument-hint: optional task description
 ---
 
-# Professional C — Craft, Cleanliness, Safety
+# Professional C: Craft, Cleanliness, Safety
 
-You are writing C in a project that values discipline. Memory leaks, latent undefined behavior, or sloppy error handling in a long-running daemon are not just style problems — they are production bugs that surface at 3 AM. This skill is the craft layer: clean code, idiomatic modern C, memory safety, and the patterns that make C code worth maintaining for years.
+You are writing C in a project that values discipline. Memory leaks, latent undefined behavior, or sloppy error handling in a long-running daemon are not just style problems; they are production bugs that surface at 3 AM. This skill is the craft layer: clean code, idiomatic modern C, memory safety, and the patterns that make C code worth maintaining for years.
 
-The project conventions (gnu17, `ps_` prefix, snake_case, `_t` suffix on types, error code enums, `sd_journal_*` for logging) come from `CLAUDE.md` — honor them. This skill adds craft on top.
+The project conventions (gnu17, `ps_` prefix, snake_case, `_t` suffix on types, error code enums, `sd_journal_*` for logging) come from `CLAUDE.md`. Honor them. This skill adds craft on top.
 
-## Decision Flow — Before Writing Any C
+## Decision Flow: Before Writing Any C
 
 Ask yourself, in order:
 
 1. **Does this function need to exist?** Three similar lines is better than a premature abstraction. Do not add helpers for hypothetical reuse.
 2. **Who owns each resource?** Every `malloc`, `open`, `fopen`, `fork`, `pthread_create` needs one clear owner and one clear destruction site. If you cannot draw that line on paper, the design is wrong.
-3. **What is the error contract?** Functions return either `void`, a bounded status enum, or a pointer (possibly `NULL`). Pick one — never mix sentinels in a single return value.
+3. **What is the error contract?** Functions return either `void`, a bounded status enum, or a pointer (possibly `NULL`). Pick one and never mix sentinels in a single return value.
 4. **What may the caller assume?** Encode preconditions as `assert()`. Document non-obvious postconditions next to the declaration in the header.
 
 If a change feels uncomfortable, stop and figure out why. The discomfort is usually a real signal.
@@ -34,7 +34,7 @@ C is unforgiving but expressive. Cleanliness here means structure, naming, and r
 
 - **One job per function.** If the body has two distinct paragraphs separated by a blank line and a header comment, it is two functions.
 - **Length budget:** ~40 lines is comfortable. Past ~60 lines, decompose. Long C functions usually signal a missing abstract data type.
-- **Parameter count:** four or fewer. More means you are passing a struct's worth of state — extract a struct.
+- **Parameter count:** four or fewer. More means you are passing a struct's worth of state; extract a struct.
 - **Pure where possible.** Helpers that take inputs and return outputs without touching globals or I/O are testable, reentrant, and obviously correct.
 
 ### Naming
@@ -56,7 +56,7 @@ C is unforgiving but expressive. Cleanliness here means structure, naming, and r
 ### Files and Headers
 
 - One module per `.c` + `.h` pair. The `.h` declares the public surface; everything else is `static` in the `.c`.
-- Each header must compile standalone — include what you use.
+- Each header must compile standalone: include what you use.
 - Order inside the `.c`: system headers, then local headers, then static prototypes, then static helpers, then public functions.
 - Header guards use `PS_<MODULE>_H` (matches project convention).
 - Do not declare globals in headers without `extern`. Define them in exactly one `.c`.
@@ -122,21 +122,21 @@ out:
 Rules:
 - Single exit point at the end.
 - Labels appear in reverse-allocation order.
-- Each label is idempotent — running it twice would not corrupt state.
+- Each label is idempotent: running it twice would not corrupt state.
 - Never `goto` forward, never `goto` into a different scope.
 
 ### Allocation hygiene
 
-- Use `calloc()` when you need zeroed memory — one call, one allocation check, no `memset` afterthought.
+- Use `calloc()` when you need zeroed memory: one call, one allocation check, no `memset` afterthought.
 - Always check the return. `malloc(0)` is implementation-defined; do not write code that relies on it.
 - After `free(p)`, set `p = NULL` unless `p` goes out of scope on the next line. Stops use-after-free at the source.
-- Pair every allocator with the matching deallocator: `fdopen`/`fclose`, `strdup`/`free`, `open`/`close`, `getline`/`free` (yes — the buffer `getline` returns must be `free`d, even on error).
+- Pair every allocator with the matching deallocator: `fdopen`/`fclose`, `strdup`/`free`, `open`/`close`, `getline`/`free` (yes, the buffer `getline` returns must be `free`d, even on error).
 - Do not cast `malloc`'s return value in C. It is an implicit `void *` conversion; an explicit cast hides a missing `<stdlib.h>` include.
 
 ### Strings
 
 - `snprintf()` everywhere. Never `strcpy`, `strcat`, `sprintf`, `gets`.
-- Check `snprintf`'s return: if `>= bufsize`, you truncated — that is usually a bug, not a warning.
+- Check `snprintf`'s return: if `>= bufsize`, you truncated, and that is usually a bug, not a warning.
 - `strncpy` is a footgun (no guaranteed NUL terminator). Prefer `snprintf(dst, sizeof dst, "%s", src)` or write a `safe_copy()` helper.
 - Compute buffer sizes from `sizeof` on the buffer, never magic numbers: `snprintf(buf, sizeof buf, ...)`.
 - For untrusted strings entering logs, sanitize first. See `sanitize_string()` in `src/utils.c`.
@@ -152,7 +152,7 @@ Rules:
 
 - Initialize on declaration: `char *p = NULL;`, `FILE *fp = NULL;`. Uninitialized pointers are landmines, especially under `goto out`.
 - Do not return addresses of stack locals.
-- `const` everything you do not mutate — for the reader, for the optimizer, for the type system.
+- `const` everything you do not mutate: for the reader, for the optimizer, for the type system.
 
 For deeper patterns (ownership transfer, opaque handles, arena allocators, refcounting), read `references/memory-safety.md`.
 
@@ -172,7 +172,7 @@ Never overload: do not return a count where `-1` also means error and `0` also m
 
 ### Propagate, do not paper over
 
-- If a callee returns `PS_ERR_*`, return it — or map it to a more specific error the caller can act on. Do not silently translate to `PS_OK`.
+- If a callee returns `PS_ERR_*`, return it, or map it to a more specific error the caller can act on. Do not silently translate to `PS_OK`.
 - `errno` is per-thread but trampled by every libc call. Capture it immediately: `int saved = errno;` **before** any other libc call.
 - Log at the point you decide to give up, not at every layer. Otherwise the journal becomes unreadable noise.
 
@@ -183,8 +183,8 @@ Never overload: do not return a count where `-1` also means error and `0` also m
 
 ### Assertions vs. runtime checks
 
-- `assert()` is for invariants the programmer guarantees. A `NULL` pointer from a public-API caller is a programmer error — `assert`.
-- `if (...) return PS_ERR_*` is for conditions that can occur at runtime (user input, syscall failures, OOM). A `NULL` from `getenv()` is runtime — check it.
+- `assert()` is for invariants the programmer guarantees. A `NULL` pointer from a public-API caller is a programmer error, so `assert`.
+- `if (...) return PS_ERR_*` is for conditions that can occur at runtime (user input, syscall failures, OOM). A `NULL` from `getenv()` is runtime, so check it.
 - For this project, keep assertions on in release builds. Cheap, catches real bugs.
 
 For error code design and structured logging patterns, see `references/refactoring-patterns.md` (section: error contracts).
@@ -197,31 +197,31 @@ C has no safety net. You are the safety net.
 
 - **Validate at boundaries, trust internally.** Public functions check inputs; `static` helpers may assume callers are honest.
 - **Bound every loop.** A `while (1)` needs either a guaranteed exit condition or a sanity counter.
-- **No fixed-size buffers without explicit length checks.** Even for "obviously bounded" inputs — kernel versions change, log formats evolve.
+- **No fixed-size buffers without explicit length checks.** Even for "obviously bounded" inputs: kernel versions change, log formats evolve.
 - **Use `O_NOFOLLOW`, `O_EXCL`, `O_CLOEXEC` on file opens.** Defaults are unsafe in daemon contexts.
 - **Set `umask` explicitly** before creating files. Never trust the inherited mask.
-- **Fork+exec for external commands.** Never `system()` or `popen()` on untrusted input. The PAMSignal alert dispatcher already does this — follow the pattern.
+- **Fork+exec for external commands.** Never `system()` or `popen()` on untrusted input. The PAMSignal alert dispatcher already does this; follow the pattern.
 - **Drop privileges early.** This project runs as `pamsignal` user. Code that runs as root should not exist outside `init.c`.
 
 ---
 
-## 5. Modern C — Used Sparingly
+## 5. Modern C: Used Sparingly
 
 `gnu17` is the project standard. Use modern features when they make code clearer, not as virtuosity:
 
 - **Designated initializers**, always: `ps_config_t cfg = {.threshold = 5, .window = 60};`
 - **Compound literals** for short-lived structs: `process_event(&(ps_event_t){.type = LOGIN, .src_ip = ip});`
 - **`_Static_assert`** at file scope for size and layout invariants: `_Static_assert(sizeof(ps_event_t) <= 256, "event size budget exceeded");`
-- **`stdbool.h`** — `bool`, `true`, `false`. Not `int 0/1`.
-- **`_Generic`** sparingly — only when type dispatch genuinely simplifies the call site.
-- **C23 attributes** (`[[nodiscard]]`, `[[maybe_unused]]`) — fine under `__has_c_attribute` guards if the standard ever bumps.
+- **`stdbool.h`**: `bool`, `true`, `false`. Not `int 0/1`.
+- **`_Generic`** sparingly, only when type dispatch genuinely simplifies the call site.
+- **C23 attributes** (`[[nodiscard]]`, `[[maybe_unused]]`): fine under `__has_c_attribute` guards if the standard ever bumps.
 - **Avoid VLAs** (`int arr[n];`). Stack-overflow risk; banned by many style guides.
 
 ---
 
 ## 6. Refactoring Smells (C-specific)
 
-When you see these in existing code, surface them — do not silently bundle the refactor into an unrelated change.
+When you see these in existing code, surface them; do not silently bundle the refactor into an unrelated change.
 
 | Smell | Likely fix |
 |-------|------------|
@@ -236,7 +236,7 @@ When you see these in existing code, surface them — do not silently bundle the
 | Cast of `void *` to typed pointer in C | Almost always unnecessary; remove |
 | `(int)` cast on a pointer comparison | Almost certainly a bug |
 | `strncpy` | Replace with bounded `snprintf` or a `safe_copy()` helper |
-| `printf`-family format strings built from user input | `FIO30-C` violation — fix immediately |
+| `printf`-family format strings built from user input | `FIO30-C` violation; fix immediately |
 
 For full before/after examples, see `references/refactoring-patterns.md`.
 
@@ -260,9 +260,9 @@ After editing, run the pre-commit workflow from `CLAUDE.md`:
 
 ## References
 
-- `references/memory-safety.md` — Lifetime patterns, ownership transfer, opaque handles, arena allocators, refcount discipline.
-- `references/refactoring-patterns.md` — Concrete before/after refactors for the smells in section 6.
+- `references/memory-safety.md`: Lifetime patterns, ownership transfer, opaque handles, arena allocators, refcount discipline.
+- `references/refactoring-patterns.md`: Concrete before/after refactors for the smells in section 6.
 
 ---
 
-You are a craftsman, not a code generator. Slow is smooth, smooth is fast — measured in production hours, not keystrokes.
+You are a craftsman, not a code generator. Slow is smooth, smooth is fast, measured in production hours, not keystrokes.

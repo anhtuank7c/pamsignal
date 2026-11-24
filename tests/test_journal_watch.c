@@ -4,7 +4,7 @@
 // state (fail_table, fail_table_count, fail_table_capacity) and call the
 // file-static ps_track_failed_login helper without having to expose them in
 // the public header. The matching meson target therefore must NOT also link
-// src/journal_watch.c — that would yield duplicate symbols.
+// src/journal_watch.c; that would yield duplicate symbols.
 
 #include <setjmp.h>
 #include <signal.h>
@@ -232,7 +232,7 @@ static void test_track_per_ip_cooldown_suppresses_repeat_alert(void **state) {
     uint64_t alert_ts_after_first_breach = fail_table[0].last_brute_alert_usec;
     assert_int_equal(alert_ts_after_first_breach, t0 + 1000000);
 
-    // Two more attempts well within cooldown (10s later) — second breach.
+    // Two more attempts well within cooldown (10s later): second breach.
     uint64_t t_within_cooldown = t0 + 10ULL * 1000000;
     ps_pam_event_t e3 =
         make_failed_login("192.0.2.1", "alice", t_within_cooldown);
@@ -297,7 +297,7 @@ static void test_track_evicts_oldest_when_full(void **state) {
     ps_pam_event_t e1_again = make_failed_login("192.0.2.1", "a", t + 3000000);
     ps_track_failed_login(&e1_again);
 
-    // New IP arrives — table is full, oldest by last_attempt_usec is 192.0.2.2.
+    // New IP arrives; table is full, oldest by last_attempt_usec is 192.0.2.2.
     ps_pam_event_t e4 = make_failed_login("192.0.2.4", "d", t + 4000000);
     ps_track_failed_login(&e4);
 
@@ -358,7 +358,7 @@ static void test_track_ip_and_local_user_do_not_collide(void **state) {
     assert_int_equal(ps_fail_table_init(g_config.max_tracked_ips), PS_OK);
 
     ps_pam_event_t ip_event = make_failed_login("alice", "root", 1000000);
-    // Bypass is_valid_ip on the synthetic IP — make_failed_login already
+    // Bypass is_valid_ip on the synthetic IP: make_failed_login already
     // copied it verbatim, and ps_track_failed_login doesn't re-validate.
     ps_pam_event_t sudo_event = make_failed_sudo("alice", "root", 2000000);
 
@@ -398,7 +398,7 @@ static void test_track_sudo_threshold_resets_and_arms_cooldown(void **state) {
     assert_int_not_equal(fail_table[0].last_brute_alert_usec, 0);
 }
 
-// Empty username AND empty source IP for a sudo event must be skipped — the
+// Empty username AND empty source IP for a sudo event must be skipped; the
 // derive_fail_key contract is "must have a trackable identity."
 static void test_track_skips_sudo_without_actor(void **state) {
     (void)state;
@@ -646,7 +646,7 @@ static void test_trusted_exe_accepts_sshd_session(void **state) {
     // that emits "Failed password" / "Accepted password" entries on Ubuntu
     // 26.04, Fedora 41+, Debian Trixie. Without this entry on the
     // allowlist, pamsignal silently drops every sshd auth event on those
-    // distributions — the bug surfaced by tests/scenario.sh on 2026-05-03.
+    // distributions: the bug surfaced by tests/scenario.sh on 2026-05-03.
     assert_int_equal(ps_is_trusted_exe("/usr/sbin/sshd-session"), 1);
     assert_int_equal(ps_is_trusted_exe("/usr/lib/openssh/sshd-session"), 1);
 }
@@ -673,7 +673,7 @@ static void test_trusted_exe_rejects_logger(void **state) {
 static void test_trusted_exe_rejects_non_system_paths(void **state) {
     (void)state;
     // An attacker who can drop a binary into /tmp or $HOME and run it
-    // cannot have its events trusted — the path prefix filter rejects.
+    // cannot have its events trusted; the path prefix filter rejects.
     assert_int_equal(ps_is_trusted_exe("/tmp/sshd"), 0);
     assert_int_equal(ps_is_trusted_exe("/home/attacker/sshd"), 0);
     assert_int_equal(ps_is_trusted_exe("/var/tmp/sshd-session"), 0);
@@ -700,7 +700,7 @@ static void test_trusted_exe_rejects_null_and_empty(void **state) {
 
 static void test_trusted_exe_rejects_paths_without_slash(void **state) {
     (void)state;
-    // strrchr returning NULL was a real bug class — make sure the
+    // strrchr returning NULL was a real bug class, so make sure the
     // helper handles bare basenames defensively even though the call site
     // never produces them (journald always writes absolute paths).
     assert_int_equal(ps_is_trusted_exe("sshd"), 0);

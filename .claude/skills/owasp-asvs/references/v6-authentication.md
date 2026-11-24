@@ -1,18 +1,18 @@
-# V6 — Authentication
+# V6: Authentication
 
 > Upstream: <https://github.com/OWASP/ASVS/blob/master/5.0/en/0x15-V6-Authentication.md>
 
-## Status for PAMSignal: ⚪ **N/A**
+## Status for PAMSignal: **N/A**
 
-PAMSignal does **not authenticate users**. It is a passive observer of PAM events — the operating system performs the actual authentication; PAMSignal merely reads the journal entries that result. There are no PAMSignal accounts, no passwords, no TOTP, no WebAuthn, no recovery flows, no rate-limited login endpoints. The V6 controls (password policy, MFA enrolment, breached-password check, account lockout, OOB tokens) have no target.
+PAMSignal does **not authenticate users**. It is a passive observer of PAM events: the operating system performs the actual authentication; PAMSignal merely reads the journal entries that result. There are no PAMSignal accounts, no passwords, no TOTP, no WebAuthn, no recovery flows, no rate-limited login endpoints. The V6 controls (password policy, MFA enrolment, breached-password check, account lockout, OOB tokens) have no target.
 
 The daemon's own privilege model is covered under **V15 Secure Coding & Architecture** (runs as the unprivileged `pamsignal` user; no setuid bits).
 
-The outbound webhook tokens / bearer headers are **not** authentication credentials *for* PAMSignal — they are credentials presented *by* PAMSignal to the alert destination. Those are covered under **V14 Data Protection** (kept out of argv) and **V12 Secure Communication** (sent over TLS).
+The outbound webhook tokens / bearer headers are **not** authentication credentials *for* PAMSignal; they are credentials presented *by* PAMSignal to the alert destination. Those are covered under **V14 Data Protection** (kept out of argv) and **V12 Secure Communication** (sent over TLS).
 
 ## When this would become applicable
 
-If PAMSignal grows a local control surface — for example, a Unix-domain admin socket that authenticates connecting peers — V6 would apply to that surface. Not currently planned.
+If PAMSignal grows a local control surface (for example, a Unix-domain admin socket that authenticates connecting peers), V6 would apply to that surface. Not currently planned.
 
 If that ever changes:
 

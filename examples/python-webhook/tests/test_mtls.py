@@ -2,8 +2,8 @@
 
 The existing test_webhook.py exercises the Bearer middleware via Flask's test
 client (no transport involved); this file proves the construction pattern in
-src/server.py — `ssl.SSLContext` with `verify_mode = CERT_REQUIRED` + the same
-`app` — actually rejects unauthenticated TLS handshakes and accepts
+src/server.py (`ssl.SSLContext` with `verify_mode = CERT_REQUIRED` + the same
+`app`) actually rejects unauthenticated TLS handshakes and accepts
 authenticated ones.
 
 Certs are generated fresh under a temp dir at setup via openssl (same commands
@@ -85,7 +85,7 @@ def cert_dir():
 
 @pytest.fixture(scope="module")
 def mtls_server(cert_dir):
-    # Module-scope env override — set, then restore on teardown.
+    # Module-scope env override: set, then restore on teardown.
     import os
 
     old_secret = os.environ.get("WEBHOOK_SECRET")
@@ -146,7 +146,7 @@ def test_mtls_accepts_valid_client_cert(mtls_server, cert_dir):
 def test_mtls_rejects_request_without_client_cert(mtls_server, cert_dir):
     # Server with verify_mode=CERT_REQUIRED rejects the TLS handshake before
     # the request reaches Flask. The exact error type varies across OpenSSL
-    # versions — what matters is that no HTTP response is produced.
+    # versions; what matters is that no HTTP response is produced.
     with pytest.raises((requests.exceptions.SSLError, requests.exceptions.ConnectionError)):
         _post(mtls_server, cert_dir, VALID_PAYLOAD, use_client_cert=False)
 

@@ -40,7 +40,7 @@ When `$ARGUMENTS` is provided, apply this expertise to the described task. Other
 | FIO45-C | Avoid TOCTOU races. Use `openat()`, `fstat()` on fd, `O_NOFOLLOW | O_EXCL` for PID files. |
 | SIG30-C | Only async-signal-safe functions in signal handlers. Set `atomic_bool` flags only. |
 | ENV33-C | Never call `system()`. Use `fork()` + `execve()` with explicit argv. |
-| ENV34-C | Cache `getenv()` results immediately — the returned pointer is mutable shared storage. |
+| ENV34-C | Cache `getenv()` results immediately; the returned pointer is mutable shared storage. |
 | INT32-C | Prevent signed integer overflow. Use `__builtin_add_overflow()` / `__builtin_mul_overflow()`. |
 | INT31-C | Validate integer conversions. Check `strtol()` with `errno == ERANGE`, `endptr != str`, range fits target type. |
 
@@ -63,7 +63,7 @@ When `$ARGUMENTS` is provided, apply this expertise to the described task. Other
 ### Memory Safety Patterns
 
 ```c
-/* Cleanup attribute (RAII-like) — preferred for resource management */
+/* Cleanup attribute (RAII-like): preferred for resource management */
 #define _cleanup_free_    __attribute__((cleanup(cleanup_free)))
 #define _cleanup_close_   __attribute__((cleanup(cleanup_close)))
 #define _cleanup_fclose_  __attribute__((cleanup(cleanup_fclose)))
@@ -128,7 +128,7 @@ if (*endptr != '\0') return PS_ERR_PARSE;
 - Fixed-width integers (`uint32_t`, `int64_t`) where size matters
 - `__attribute__((format(printf, N, M)))` on printf-like functions
 - `__attribute__((warn_unused_result))` on functions returning error codes
-- Never use VLAs — compile with `-Wvla` to catch them
+- Never use VLAs; compile with `-Wvla` to catch them
 
 ---
 
@@ -156,7 +156,7 @@ static void handler(int sig) {
 
 - Always use `O_CLOEXEC` on every `open()` call
 - PID files: `O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC`
-- Handle `EINTR` — retry interrupted syscalls
+- Handle `EINTR`: retry interrupted syscalls
 - Save `errno` before any other call: `int saved = errno;`
 - Use `mkstemp()` for temp files, never manual path construction
 - Set explicit `umask(0077)` before creating files
@@ -347,7 +347,7 @@ sd_journal_add_match(j, "SYSLOG_IDENTIFIER=su", 0);
 
 ```meson
 '-Wl,-z,relro',          # GOT read-only after relocation
-'-Wl,-z,now',            # full RELRO — resolve all symbols at load
+'-Wl,-z,now',            # full RELRO: resolve all symbols at load
 '-Wl,-z,noexecstack',    # non-executable stack
 '-Wl,-z,defs',           # disallow undefined symbols
 '-Wl,--as-needed',       # only link needed libraries
@@ -392,7 +392,7 @@ executable('pamsignal', srcs, install: true, install_dir: get_option('sbindir'))
 install_man('docs/pamsignal.8')
 install_man('docs/pamsignal.conf.5')
 
-# systemd unit — query correct path from pkg-config
+# systemd unit: query correct path from pkg-config
 systemd_dep = dependency('systemd', required: false)
 systemd_unitdir = systemd_dep.found() \
     ? systemd_dep.get_variable(pkgconfig: 'systemdsystemunitdir') \
@@ -426,7 +426,7 @@ install_data('pamsignal.conf.example',
 
 | Format | Status | Applicability |
 |--------|--------|---------------|
-| deb (Debian/Ubuntu) | Target | Primary — PPA for easy distribution |
+| deb (Debian/Ubuntu) | Target | Primary; PPA for easy distribution |
 | RPM (Fedora/RHEL) | Target | COPR for hosting |
 | AUR (Arch Linux) | Target | Lowest effort to start |
 | Snap | Maybe | Needs `log-observe` plug, possibly `classic` confinement |
@@ -485,11 +485,11 @@ When reviewing or writing code in this project, always verify:
 
 When making architectural decisions, prioritize in this order:
 
-1. **Security** — never compromise on input validation, privilege separation, or hardening
-2. **Correctness** — handle all error paths, check all return values, prevent undefined behavior
-3. **Standards compliance** — follow POSIX, FHS, systemd conventions, CERT C rules
-4. **Simplicity** — prefer simple, auditable code over clever abstractions
-5. **Performance** — only optimize after profiling proves a bottleneck
+1. **Security**: never compromise on input validation, privilege separation, or hardening
+2. **Correctness**: handle all error paths, check all return values, prevent undefined behavior
+3. **Standards compliance**: follow POSIX, FHS, systemd conventions, CERT C rules
+4. **Simplicity**: prefer simple, auditable code over clever abstractions
+5. **Performance**: only optimize after profiling proves a bottleneck
 
 When in doubt, reference:
 - CERT C Coding Standard (SEI)

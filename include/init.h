@@ -14,7 +14,7 @@ enum {
 
 // Global flags (set by signal handlers, read by event loop). C11 requires
 // signal handlers to use volatile sig_atomic_t (or a lock-free atomic with
-// memory_order_relaxed) — atomic_bool's default seq_cst stores are not
+// memory_order_relaxed); atomic_bool's default seq_cst stores are not
 // guaranteed signal-safe by the standard.
 extern volatile sig_atomic_t running;
 extern volatile sig_atomic_t reload_requested;

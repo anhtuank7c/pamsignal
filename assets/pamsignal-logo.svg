@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024" role="img" aria-labelledby="title desc">
   <title id="title">PAMSignal</title>
-  <desc id="desc">PAMSignal logo — auth-event signal peaks with wordmark</desc>
+  <desc id="desc">PAMSignal logo: auth-event signal peaks with wordmark</desc>
 
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
@@ -27,12 +27,12 @@
     <polygon fill="#22D3EE" points="370,500 512,220 654,500"/>
     <polygon fill="#0E7490" points="610,500 690,340 770,500"/>
 
-    <!-- apex markers — each detected PAM event -->
+    <!-- apex markers: each detected PAM event -->
     <circle cx="340" cy="320" r="6"  fill="#FBBF24"/>
     <circle cx="512" cy="220" r="9"  fill="#FBBF24"/>
     <circle cx="690" cy="340" r="6"  fill="#FBBF24"/>
 
-    <!-- mirror reflection — the journal stream beneath the surface -->
+    <!-- mirror reflection: the journal stream beneath the surface -->
     <g opacity="0.28">
       <polygon fill="#0E7490" points="260,500 340,640 420,500"/>
       <polygon fill="#22D3EE" points="370,500 512,700 654,500"/>

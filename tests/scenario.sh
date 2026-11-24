@@ -1,5 +1,5 @@
 #!/bin/bash
-# tests/scenario.sh — full-stack local end-to-end scenario test for pamsignal.
+# tests/scenario.sh: full-stack local end-to-end scenario test for pamsignal.
 #
 # Mirrors the release-packages.yml test-deb job's coverage (build → install
 # → real sshd brute-force → mock webhook ingestion → SIGHUP reload → purge)
@@ -37,7 +37,7 @@
 #   - testpamuser deleted
 #   - Test CA removed from system trust store
 #   - /etc/pamsignal directory force-removed (purge already deletes it on
-#     Debian/Ubuntu, but defensive — and the systemd ConfigurationDirectory=
+#     Debian/Ubuntu, but defensive, and the systemd ConfigurationDirectory=
 #     re-creates it on first start so it lingers)
 #
 # Exit code is 0 if every phase passes, non-zero if any phase fails.
@@ -128,7 +128,7 @@ confirm() {
     # blocks at the first prompt when stdin is anything other than a
     # plain interactive terminal.
     if [ ! -t 0 ] || [ ! -r /dev/tty ]; then
-        echo "Cannot read from a controlling terminal — run this script" >&2
+        echo "Cannot read from a controlling terminal. Run this script" >&2
         echo "directly in your terminal (not via a wrapper or pipe)." >&2
         return 1
     fi
@@ -329,7 +329,7 @@ pass "self-signed CA installed in system trust store"
 #   - finish() override that calls connection.unwrap() to issue a TLS
 #     close_notify alert before the TCP socket closes. Without this,
 #     OpenSSL 3.5+ (Ubuntu 26.04 default) reports "unexpected EOF while
-#     reading" (error:0A000126) and curl exits 56 — even though the HTTP
+#     reading" (error:0A000126) and curl exits 56, even though the HTTP
 #     response was successfully received and the test would otherwise
 #     have passed. Real webhook receivers (Telegram, Slack, etc.) do
 #     this correctly; our quick-and-dirty mock has to as well.
@@ -435,7 +435,7 @@ pass "mock webhook live at https://localhost:8443/ (TLS validated end-to-end)"
 phase "6. Point pamsignal at the test webhook"
 
 sudo tee /etc/pamsignal/pamsignal.conf >/dev/null <<'CONF'
-# Scenario test configuration — points at the local mock webhook.
+# Scenario test configuration: points at the local mock webhook.
 webhook_url = https://localhost:8443/events
 fail_threshold = 3
 fail_window_sec = 60
@@ -620,9 +620,9 @@ sudo_brute=$(jq -r 'select(.event.action == "brute_force_detected"
                      | .user.target.name' \
               /tmp/pamsignal-webhook-events.log 2>/dev/null | head -1)
 if [ -n "$sudo_brute" ]; then
-    pass "sudo brute-force alert (user.target.name=$sudo_brute) — v0.3.0 sudo path verified"
+    pass "sudo brute-force alert (user.target.name=$sudo_brute), v0.3.0 sudo path verified"
 else
-    echo "  ⚠ no sudo brute-force alert received (the v0.3.0 sudo path)"
+    echo "  WARNING: no sudo brute-force alert received (the v0.3.0 sudo path)"
     echo "    full webhook log:"
     cat /tmp/pamsignal-webhook-events.log
 fi

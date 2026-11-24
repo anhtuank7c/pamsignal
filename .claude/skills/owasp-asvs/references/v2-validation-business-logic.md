@@ -1,4 +1,4 @@
-# V2 — Validation & Business Logic
+# V2: Validation & Business Logic
 
 > Upstream: <https://github.com/OWASP/ASVS/blob/master/5.0/en/0x11-V2-Validation-and-Business-Logic.md>
 
@@ -23,7 +23,7 @@ The chapter covers input validation at trust boundaries, business-rule enforceme
 
 ---
 
-## V2.1 — Input validation
+## V2.1: Input validation
 
 | V-ID | Requirement | Level | Project evaluation |
 |---|---|---|---|
@@ -31,34 +31,34 @@ The chapter covers input validation at trust boundaries, business-rule enforceme
 | V2.1.2 | Verify length, type, range, and format checks on every input. | L1 | Numeric configs: range-checked. String configs: bounded by struct field size + content rules (e.g., `validate_tls_path`). Verify on every new key added. |
 | V2.1.3 | Verify validation rejects null bytes, CR/LF and other control characters in fields where they have no meaning. | L1 | `sanitize_string` (V1) handles message-derived fields; config parser rejects control chars in TLS paths at `src/config.c:230`. |
 | V2.1.4 | Verify validation uses an allow-list approach where the grammar is constrained. | L1 | Service names map to enum via `parse_service_from_pam`; unknown → `PS_SERVICE_OTHER`. IPs validated via `inet_pton`. ✓ |
-| V2.1.5 | Verify integer parsing checks for overflow and trailing garbage. | L1 | `errno = 0; strtol(...)` + `end == buf` check + range check — see `src/init.c:117-124` and `src/journal_watch.c:420-425`. ✓ |
+| V2.1.5 | Verify integer parsing checks for overflow and trailing garbage. | L1 | `errno = 0; strtol(...)` + `end == buf` check + range check; see `src/init.c:117-124` and `src/journal_watch.c:420-425`. ✓ |
 
-## V2.2 — Strong validation primitives
+## V2.2: Strong validation primitives
 
 | V-ID | Requirement | Level | Project evaluation |
 |---|---|---|---|
 | V2.2.1 | Verify use of well-tested primitives over hand-rolled regex (e.g., `inet_pton` for IPs, `strtol`/`strtoul` for ints). | L1 | `inet_pton` ✓, `strtol` ✓. No regex in the codebase. |
-| V2.2.2 | Verify input that crosses a trust boundary is canonicalized before validation. | L1 | Pathnames passed to `validate_tls_path` are validated then opened with `O_NOFOLLOW` — symlink races closed. ✓ |
+| V2.2.2 | Verify input that crosses a trust boundary is canonicalized before validation. | L1 | Pathnames passed to `validate_tls_path` are validated then opened with `O_NOFOLLOW`, so symlink races are closed. ✓ |
 
-## V2.3 — Business-logic enforcement
+## V2.3: Business-logic enforcement
 
 | V-ID | Requirement | Level | Project evaluation |
 |---|---|---|---|
 | V2.3.1 | Verify business rules (rate limits, thresholds, state transitions) are enforced server-side. | L1 | Brute-force threshold + window + alert cooldown all enforced inside `journal_watch`. ✓ |
 | V2.3.2 | Verify anti-automation defends against flood / DoS where applicable. | L2 | `RLIMIT_NPROC=64` (`main.c:171`) prevents fork-bomb of alert children. ✓ Brute-force tracker bounded by `max_tracked_ips`. |
 
-## V2.4 — Race-condition defence
+## V2.4: Race-condition defence
 
 | V-ID | Requirement | Level | Project evaluation |
 |---|---|---|---|
-| V2.4.1 | Verify operations on shared state are race-free (TOCTOU / write-after-check). | L1 | Pidfile uses `O_NOFOLLOW \| O_EXCL \| O_CREAT` + `flock(F_SETLK)` — no TOCTOU on creation (`src/init.c:153-188`). Stale-pidfile path uses `openat` against held `dirfd` to defeat symlink swaps (`src/init.c:158-168`). ✓ |
-| V2.4.2 | Verify signal handlers do not race with main-loop state. | L1 | `running` and `reload_requested` are `atomic_bool` — signal-safe. SIGHUP reload swaps a fully-parsed temp config; on parse failure the live config is unchanged. |
+| V2.4.1 | Verify operations on shared state are race-free (TOCTOU / write-after-check). | L1 | Pidfile uses `O_NOFOLLOW \| O_EXCL \| O_CREAT` + `flock(F_SETLK)`: no TOCTOU on creation (`src/init.c:153-188`). Stale-pidfile path uses `openat` against held `dirfd` to defeat symlink swaps (`src/init.c:158-168`). ✓ |
+| V2.4.2 | Verify signal handlers do not race with main-loop state. | L1 | `running` and `reload_requested` are `atomic_bool`, which is signal-safe. SIGHUP reload swaps a fully-parsed temp config; on parse failure the live config is unchanged. |
 
 ---
 
 ## Common drift in this codebase
 
-- **A new numeric config key is parsed with `atoi`** — silent overflow + no error signal. Always use the `errno=0 / strtol / end-pointer / range` quartet.
+- **A new numeric config key is parsed with `atoi`**: silent overflow + no error signal. Always use the `errno=0 / strtol / end-pointer / range` quartet.
 - **A new string config field is added to `ps_config_t` without a bound** (e.g., a pointer instead of a fixed array). Don't. Bounded buffers are an invariant; allocation lifetime in a reloadable config is a footgun.
 - **A new parser is added without a corresponding test in `tests/test_utils.c` or `tests/fuzz_parse_message.c`.** The pre-commit workflow (CLAUDE.md §Pre-Commit Workflow item 1) requires CMocka tests for every new parsing path.
 
@@ -79,13 +79,13 @@ The chapter covers input validation at trust boundaries, business-rule enforceme
 ## Report row template
 
 ```markdown
-| 2 | V2.1.5 | 🟠 | src/config.c:412 | New keepalive_sec key parsed via atoi() with no range check [L1] | Negative / huge values silently accepted; allows DoS via runaway timer | Replace atoi with the strtol pattern at src/init.c:117 and clamp to 1..3600 |
+| 2 | V2.1.5 | High | src/config.c:412 | New keepalive_sec key parsed via atoi() with no range check [L1] | Negative / huge values silently accepted; allows DoS via runaway timer | Replace atoi with the strtol pattern at src/init.c:117 and clamp to 1..3600 |
 ```
 
 ---
 
 ## Cross-references
 
-- Root `/CLAUDE.md` §Security Requirements — "bounded buffers, `inet_pton` for IPs".
-- `tests/test_config.c` — config-validation tests.
-- `tests/fuzz_parse_message.c` + `tests/fuzz/` — fuzz harness for the parsing entrypoint.
+- Root `/CLAUDE.md` §Security Requirements: "bounded buffers, `inet_pton` for IPs".
+- `tests/test_config.c`: config-validation tests.
+- `tests/fuzz_parse_message.c` + `tests/fuzz/`: fuzz harness for the parsing entrypoint.

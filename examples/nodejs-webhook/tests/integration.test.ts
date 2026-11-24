@@ -2,7 +2,7 @@
  * Integration tests over real HTTP transport.
  *
  * Spins up an http.createServer on a kernel-picked free port and exercises
- * the webhook with the built-in `node:http` client — the same path
+ * the webhook with the built-in `node:http` client, the same path
  * PAMSignal's curl fork+exec uses. Proves the in-process behavior covered
  * by webhook.test.ts survives a real HTTP roundtrip (headers, body
  * framing, error status codes, content negotiation).
@@ -165,7 +165,7 @@ describe('Defenses over HTTP', () => {
 
   it('log injection payload does not crash server', async () => {
     // Control chars in every string field. The server must accept the
-    // request and return 200 — the unit-test suite separately verifies
+    // request and return 200; the unit-test suite separately verifies
     // that the actual console output is sanitized.
     const attack = 'alice\n\x1b[31mFAKE\x00\x7f';
     const r = await sendJson(

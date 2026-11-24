@@ -22,7 +22,7 @@ Requires(pre):  shadow-utils
 # %files declares %attr(...,pamsignal) which makes RPM auto-generate
 # Requires: user(pamsignal) and Requires: group(pamsignal). The user and
 # group are created by %pre as part of THIS package's install, so we
-# Provides them explicitly — otherwise dnf rejects the transaction at
+# Provides them explicitly; otherwise dnf rejects the transaction at
 # resolution time, before %pre has a chance to run.
 Provides:       user(pamsignal)
 Provides:       group(pamsignal)
@@ -83,7 +83,7 @@ fi
 
 %postun
 %systemd_postun_with_restart pamsignal.service
-# The pamsignal user is intentionally NOT removed — it may own journal
+# The pamsignal user is intentionally NOT removed: it may own journal
 # entries or runtime state outside our control.
 
 %files
@@ -109,8 +109,8 @@ fi
   quote / backslash injection and refuses the key set without
   webhook_url.
 - Feature: optional mTLS client authentication for the custom
-  webhook channel (#8). Three new keys — webhook_client_cert,
-  webhook_client_key, webhook_ca_bundle — let operators with PKI
+  webhook channel (#8). Three new keys (webhook_client_cert,
+  webhook_client_key, webhook_ca_bundle) let operators with PKI
   (internal CA, cert-manager, SPIFFE, service-mesh issuance)
   authenticate with a client certificate. Combines additively with
   webhook_auth_header for the Wazuh / corporate-SIEM pattern.
@@ -142,7 +142,7 @@ fi
   (sshd-session). On Fedora 41+, RHEL/Alma/Rocky once they pick up
   the new OpenSSH, and on Ubuntu 26.04 / Debian Trixie, all sshd
   PAM auth events come from sshd-session and were dropped by
-  pamsignal's allowlist — the daemon ran fine, journald accumulated
+  pamsignal's allowlist. The daemon ran fine, journald accumulated
   events fine, the daemon just didn't see them. Fix is a one-line
   addition to the basename allowlist. Refactored into a testable
   ps_is_trusted_exe helper with eight new CMocka cases covering
@@ -161,7 +161,7 @@ fi
   CI runner is currently on OpenSSL 3.0 (tolerant) but will
   eventually promote to 3.5+ (strict); fix in place.
 - Repository hygiene: CONTRIBUTING.md, GitHub issue + PR templates,
-  rewritten as Linux-daemon reports — accumulated under
+  rewritten as Linux-daemon reports. These accumulated under
   Unreleased since v0.3.3 and ship now alongside the security fix.
 
 * Sun May 03 2026 Tuan Nguyen <anhtuank7c@hotmail.com> - 0.3.3-1
@@ -293,7 +293,7 @@ fi
 * Sat May 02 2026 Tuan Nguyen <anhtuank7c@hotmail.com> - 0.2.2-1
 - Republish signed apt + dnf repository on the canonical GitHub Pages URL
   (https://anhtuank7c.github.io/pamsignal/) after the custom domain was
-  removed from the gh-pages site. No source or packaging logic changes —
+  removed from the gh-pages site. No source or packaging logic changes:
   binary is identical to v0.2.1; this release simply triggers the
   publish-repo workflow against the github.io origin so users following
   the install instructions in README.md get a working repo.
@@ -303,7 +303,7 @@ fi
   Pages. Adds Provides: user(pamsignal) / group(pamsignal) so the auto-
   generated user/group Requires from %attr(...,pamsignal) in %files
   resolves cleanly under dnf 5 (Fedora 44).
-- No source code changes — binary is identical to v0.2.0.
+- No source code changes; binary is identical to v0.2.0.
 
 * Thu Apr 30 2026 Tuan Nguyen <anhtuank7c@hotmail.com> - 0.2.0-1
 - Align alert payloads with Elastic Common Schema (ECS). Breaking change to

@@ -1,8 +1,8 @@
 # Configuration
 
-> 🌐 [English](../configuration.md) · **Tiếng Việt**
+> [English](../configuration.md) · **Tiếng Việt**
 
-`/etc/pamsignal/pamsignal.conf` — định dạng INI, không phụ thuộc thư viện ngoài. Tất cả các giá trị đều là tùy chọn; nếu file bị thiếu hoặc một key không có mặt, các giá trị mặc định hợp lý sẽ được áp dụng.
+`/etc/pamsignal/pamsignal.conf`: định dạng INI, không phụ thuộc thư viện ngoài. Tất cả các giá trị đều là tùy chọn; nếu file bị thiếu hoặc một key không có mặt, các giá trị mặc định hợp lý sẽ được áp dụng.
 
 Vì file này có thể chứa thông tin xác thực của các kênh cảnh báo, quyền truy cập cần được giới hạn:
 
@@ -92,7 +92,7 @@ Một người gõ sai mật khẩu của chính mình ba lần rồi mới gõ 
 |-----|---------|-------------|
 | `trusted_sources` | *(rỗng)* | Danh sách địa chỉ IPv4/IPv6 hoặc dải CIDR phân cách bằng dấu phẩy (tối đa 32) mà cảnh báo đăng nhập thông thường từ đó sẽ không được gửi lên chat |
 
-Dùng key này cho những nơi bạn đăng nhập hằng ngày — dải IP văn phòng, VPN, bastion host — để các lần đăng nhập đó thôi ping vào kênh.
+Dùng key này cho những nơi bạn đăng nhập hằng ngày (dải IP văn phòng, VPN, bastion host) để các lần đăng nhập đó thôi ping vào kênh.
 
 ```ini
 trusted_sources = 10.0.0.0/8, 203.0.113.7, 2001:db8::/32
@@ -107,12 +107,12 @@ Một địa chỉ đứng riêng nghĩa là đúng một host đó. Độ dài 
 
 ## Bộ lọc loại thông báo
 
-`enable_notification_type` cho phép chọn những loại sự kiện nào sẽ kích hoạt cảnh báo trên các kênh chat. Đây là danh sách phân cách bằng dấu phẩy. Mặc định — khi key bị bỏ qua hoặc khi `all` được chỉ định — là mọi loại sự kiện, giữ nguyên hành vi trước đó. Các token không hợp lệ là lỗi config cứng; giá trị rỗng và các phần tử danh sách rỗng đều bị từ chối.
+`enable_notification_type` cho phép chọn những loại sự kiện nào sẽ kích hoạt cảnh báo trên các kênh chat. Đây là danh sách phân cách bằng dấu phẩy. Mặc định (khi key bị bỏ qua hoặc khi `all` được chỉ định) là mọi loại sự kiện, giữ nguyên hành vi trước đó. Các token không hợp lệ là lỗi config cứng; giá trị rỗng và các phần tử danh sách rỗng đều bị từ chối.
 
 | Token | Kích hoạt cảnh báo chat khi… |
 |-------|---------------------------|
 | `login_success` | Phát hiện đăng nhập thành công (sshd, login) |
-| `login_failed` | Phát hiện đăng nhập thất bại (sshd, login; lỗi sudo/su vẫn chịu sự chặn lọc riêng theo từng sự kiện — xem bên dưới) |
+| `login_failed` | Phát hiện đăng nhập thất bại (sshd, login; lỗi sudo/su vẫn chịu sự chặn lọc riêng theo từng sự kiện; xem bên dưới) |
 | `session_open` | Một PAM session mở ra (bao gồm cả các session nền của systemd như cron) |
 | `session_close` | Một PAM session đóng lại |
 | `brute_force` | Ngưỡng brute-force từ xa (theo IP) hoặc nội bộ (theo actor sudo/su) bị vượt qua |
@@ -167,7 +167,7 @@ Chạy `sudo -u pamsignal pamsignal --test-alert` để xem kiểu đã chọn n
 
 ## Các kênh cảnh báo
 
-Chỉ cấu hình những kênh bạn sử dụng. PAMSignal gửi cảnh báo đến tất cả các kênh đã có thông tin xác thực. Cảnh báo là best-effort — nếu một kênh bị lỗi, pamsignal ghi log cảnh báo và tiếp tục giám sát.
+Chỉ cấu hình những kênh bạn sử dụng. PAMSignal gửi cảnh báo đến tất cả các kênh đã có thông tin xác thực. Cảnh báo là best-effort: nếu một kênh bị lỗi, pamsignal ghi log cảnh báo và tiếp tục giám sát.
 
 Xem [Alerts](./alerts.md) để biết định dạng tin nhắn, hướng dẫn cài đặt và tham chiếu payload.
 
@@ -185,28 +185,28 @@ Xem [Alerts](./alerts.md) để biết định dạng tin nhắn, hướng dẫn
 
 ## Xác thực custom webhook
 
-Kênh `webhook_url` hỗ trợ hai cơ chế xác thực bổ sung tùy chọn — có thể dùng không cái nào, một trong hai, hoặc cả hai. Telegram, Slack, Teams, WhatsApp và Discord tự xác thực qua URL/token riêng của chúng và không bị ảnh hưởng.
+Kênh `webhook_url` hỗ trợ hai cơ chế xác thực bổ sung tùy chọn: có thể dùng không cái nào, một trong hai, hoặc cả hai. Telegram, Slack, Teams, WhatsApp và Discord tự xác thực qua URL/token riêng của chúng và không bị ảnh hưởng.
 
 | Key | Chế độ | Mô tả |
 |-----|------|-------------|
 | `webhook_auth_header` | Header | Một HTTP header tùy ý gửi kèm theo mỗi POST. Dạng đầy đủ `Name: value` để hỗ trợ mọi scheme xác thực (Bearer, API key, Splunk HEC, Datadog, HMAC). Giá trị được đưa vào một curl `-K` config file backed bởi memfd, nên secret không bao giờ xuất hiện trong `argv` hay `/proc/<pid>/cmdline`. |
 | `webhook_client_cert` | mTLS | Đường dẫn đến client certificate mã hóa PEM. Phải được đặt cùng với `webhook_client_key`. |
-| `webhook_client_key` | mTLS | Đường dẫn đến private key PEM tương ứng. **Không được phép đọc bởi group hoặc other** — pamsignal sẽ từ chối khởi động nếu vi phạm. Khuyến nghị: `0640 root:pamsignal` (hoặc `0600 pamsignal:pamsignal` nếu chạy daemon dưới user đó). |
+| `webhook_client_key` | mTLS | Đường dẫn đến private key PEM tương ứng. **Không được phép đọc bởi group hoặc other**; pamsignal sẽ từ chối khởi động nếu vi phạm. Khuyến nghị: `0640 root:pamsignal` (hoặc `0600 pamsignal:pamsignal` nếu chạy daemon dưới user đó). |
 | `webhook_ca_bundle` | mTLS | Đường dẫn tùy chọn đến CA bundle PEM. Chỉ cần khi CA của receiver không có trong system trust store (CA nội bộ, internal cert-manager). |
 
 **Các pattern thường dùng:**
 
 ```ini
-# Chỉ Bearer — hầu hết các receiver (Wazuh, Splunk HEC, Datadog, custom Express receivers).
+# Chỉ Bearer: hầu hết các receiver (Wazuh, Splunk HEC, Datadog, custom Express receivers).
 webhook_url = https://siem.example.com/ingest/pamsignal
 webhook_auth_header = Authorization: Bearer <token>
 
-# Chỉ mTLS — môi trường đã có PKI; xác thực danh tính service ở tầng transport.
+# Chỉ mTLS: môi trường đã có PKI; xác thực danh tính service ở tầng transport.
 webhook_url = https://siem.internal.example.com/ingest
 webhook_client_cert = /etc/pamsignal/webhook-client.crt
 webhook_client_key  = /etc/pamsignal/webhook-client.key
 
-# Kết hợp — SIEM gateway doanh nghiệp yêu cầu cả transport auth lẫn per-request authorization.
+# Kết hợp: SIEM gateway doanh nghiệp yêu cầu cả transport auth lẫn per-request authorization.
 webhook_url = https://siem.internal.example.com/ingest
 webhook_auth_header = Authorization: Bearer <jwt>
 webhook_client_cert = /etc/pamsignal/webhook-client.crt
@@ -214,7 +214,7 @@ webhook_client_key  = /etc/pamsignal/webhook-client.key
 webhook_ca_bundle   = /etc/pamsignal/internal-ca.pem
 ```
 
-*Bất kỳ pattern nào trong số này đều có thể kết hợp với `enable_notification_type` để thu hẹp loại sự kiện nào được gửi đến webhook — xem [Bộ lọc loại thông báo](#bộ-lọc-loại-thông-báo) ở trên để biết danh sách đầy đủ các token (`login_success`, `login_failed`, `session_open`, `session_close`, `brute_force`, `all`).*
+*Bất kỳ pattern nào trong số này đều có thể kết hợp với `enable_notification_type` để thu hẹp loại sự kiện nào được gửi đến webhook. Xem [Bộ lọc loại thông báo](#bộ-lọc-loại-thông-báo) ở trên để biết danh sách đầy đủ các token (`login_success`, `login_failed`, `session_open`, `session_close`, `brute_force`, `all`).*
 
 **Các kiểm tra xác thực được thực thi khi load config:**
 
@@ -224,7 +224,7 @@ webhook_ca_bundle   = /etc/pamsignal/internal-ca.pem
 - Các chuỗi đường dẫn chứa ký tự điều khiển, `"` hoặc `\` đều bị từ chối để đảm bảo giá trị rõ ràng trong curl `-K` config.
 - `webhook_auth_header` phải ở dạng `Name: value`; các giá trị chứa CR, LF, `"` hoặc `\` đều bị từ chối (bảo vệ chống CRLF header injection / quote-escape).
 
-Khóa mã hóa (protected bằng passphrase) không được hỗ trợ — hãy quản lý bí mật của key thông qua quyền filesystem, `systemd-creds`, hoặc mô hình secret injection của cert manager.
+Khóa mã hóa (protected bằng passphrase) không được hỗ trợ. Hãy quản lý bí mật của key thông qua quyền filesystem, `systemd-creds`, hoặc mô hình secret injection của cert manager.
 
 Xem [Alerts → Custom webhook (ECS JSON)](./alerts.md#custom-webhook-ecs-json) để biết payload truyền qua mạng, bảng các pattern receiver (Bearer / X-API-Key / Splunk / Datadog / Wazuh), và hướng dẫn triển khai mTLS phía operator.
 

@@ -93,7 +93,7 @@ static int parse_int_range(const char *val, int min, int max, int *out) {
 // Parse a comma-separated notification-type list ("login_success,brute_force",
 // "all", etc.) into a bitmask. Returns -1 on unknown token, empty value, or
 // an empty list element (we want "a,,b" to be a hard error, not silently
-// coalesced into {a,b} — strtok_r would skip the empty element, so we split
+// coalesced into {a,b}; strtok_r would skip the empty element, so we split
 // by hand). Whitespace around each element is tolerated. Case-insensitive.
 static int parse_notification_mask(const char *val, unsigned int *out) {
     if (!val || !*val)
@@ -354,7 +354,7 @@ static const size_t config_keys_count =
 //
 // Webhook URLs and bearer tokens are interpolated into the curl invocation.
 // We refuse anything that could smuggle whitespace, CR/LF, shell
-// metacharacters, or non-https schemes — each value passes an explicit
+// metacharacters, or non-https schemes. Each value passes an explicit
 // per-field allowlist before the daemon will start with it.
 
 static int has_only_chars(const char *s, int (*pred)(int)) {
@@ -463,7 +463,7 @@ static int is_telegram_chat_id(const char *s) {
 // Validates a filesystem path that pamsignal will hand to curl as
 // --cert / --key / --cacert. Refuses symlinks, non-regular files, ownership
 // outside {root, euid}. The `private` flag tightens to "no group/world read"
-// for the client key — certs and CA bundles are public material so we leave
+// for the client key. Certs and CA bundles are public material so we leave
 // their read-perms to the operator's discretion. Existence is required (a
 // missing cert file would surface as a curl runtime error long after startup,
 // hiding the misconfiguration).
@@ -684,7 +684,7 @@ static FILE *open_config_secure(const char *path) {
 
     // Disarm _cleanup_close_: FILE* now owns the fd. The store is read by
     // ps_closep through __attribute__((cleanup)), which clang-analyzer
-    // cannot see — suppress the dead-store false positive.
+    // cannot see, so suppress the dead-store false positive.
     // NOLINTNEXTLINE(clang-analyzer-deadcode.DeadStores)
     fd = -1;
     return f;

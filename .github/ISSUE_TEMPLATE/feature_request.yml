@@ -1,5 +1,5 @@
 name: Feature request
-description: Propose a new operator-facing surface — config key, journal field, webhook payload field, unit-file directive, or CLI flag
+description: Propose a new operator-facing surface (config key, journal field, webhook payload field, unit-file directive, or CLI flag)
 labels: [enhancement]
 body:
   - type: markdown
@@ -16,7 +16,7 @@ body:
         much faster than one framed in "the daemon should also do X."
 
         **Before filing**, please read
-        [`docs/threat-model.md`](https://github.com/anhtuank7c/pamsignal/blob/main/docs/threat-model.md) —
+        [`docs/threat-model.md`](https://github.com/anhtuank7c/pamsignal/blob/main/docs/threat-model.md),
         in particular the ten explicit out-of-scope non-goals
         (NS1–NS10). If your feature falls into one of them, the
         threat-model-amendment field below is the right place to
@@ -42,7 +42,7 @@ body:
         alert channel, what you currently see vs what you need to
         see. ("On 30 production hosts behind a load balancer, a
         coordinated SSH brute-force across many IPs hits each host
-        only 3 times — below threshold — but the cumulative
+        only 3 times (below threshold), but the cumulative
         signal is obvious. I need pamsignal-the-aggregate to fire
         even when no single host's tracker does." is more useful
         than "add multi-host correlation").
@@ -60,14 +60,14 @@ body:
         - 'New `/etc/pamsignal/pamsignal.conf` key'
         - 'Change to existing `pamsignal.conf` key (default value, range, or behavior)'
         - 'New `EVENT_*` / `USER_*` / `SOURCE_*` etc. journal field written by pamsignal'
-        - 'Change to existing journal field (rename / removal — requires deprecation cycle)'
+        - 'Change to existing journal field (rename / removal; requires deprecation cycle)'
         - 'New field in the chat-text alert format (Telegram / Slack / Teams / WhatsApp / Discord)'
         - 'New field in the ECS JSON webhook payload'
         - 'New native alert channel (alongside the existing six)'
         - 'New `pamsignal.service` unit directive'
         - 'New `pamsignal --flag` CLI option'
         - 'New man-page section / documentation surface'
-        - 'No operator-facing change — purely internal refactor or build/CI'
+        - 'No operator-facing change: purely internal refactor or build/CI'
         - 'Other (please describe)'
     validations:
       required: true
@@ -109,14 +109,14 @@ body:
       description: |
         How does this affect operators upgrading from a previous
         minor? The PAMSIGNAL_* journal-field retirement in v0.3.0
-        is the reference precedent — renames or removals get a
+        is the reference precedent: renames or removals get a
         full minor of overlap before the old form is dropped.
       options:
-        - 'Purely additive — older versions ignore it, newer versions emit it. No deprecation needed.'
-        - 'Default-on but operator-overridable — adds new behavior the operator can turn off if it surprises them.'
-        - 'Default-off, opt-in — adds the surface but only activates when explicitly configured.'
-        - 'Replaces an existing surface — needs a deprecation cycle (1+ minors of overlap, retire in a later major or minor with explicit changelog migration notes).'
-        - 'Breaking change — needs an explicit BREAKING CHANGE footer + migration guide. Expect the bar to be high.'
+        - 'Purely additive: older versions ignore it, newer versions emit it. No deprecation needed.'
+        - 'Default-on but operator-overridable: adds new behavior the operator can turn off if it surprises them.'
+        - 'Default-off, opt-in: adds the surface but only activates when explicitly configured.'
+        - 'Replaces an existing surface: needs a deprecation cycle (1+ minors of overlap, retire in a later major or minor with explicit changelog migration notes).'
+        - 'Breaking change: needs an explicit BREAKING CHANGE footer + migration guide. Expect the bar to be high.'
     validations:
       required: true
 
@@ -154,10 +154,10 @@ body:
         - **Tightens an existing defense** (a sandbox directive,
           a parser validator, a compiler hardening flag).
         - **New surface that's logically in-scope but not yet
-          covered** — make the case for which adversary class
+          covered**: make the case for which adversary class
           (A through E) it defends against.
         - **Argues for moving an out-of-scope non-goal (NS1–NS10)
-          into scope.** This is the highest bar — describe what
+          into scope.** This is the highest bar: describe what
           changes about the threat model itself, what new
           attacker class the project would now defend against,
           and what the cost is in code surface / dependencies /
@@ -166,7 +166,7 @@ body:
         Strengthens attack #2 (brute-force tracker bypass): a
         coordinated multi-IP attacker currently evades detection
         because each per-IP counter stays under threshold. The
-        cluster_id field doesn't directly address attack #2 —
+        cluster_id field doesn't directly address attack #2,
         but cumulating cluster_id at the SIEM level (which this
         feature enables) does. Stays squarely on the
         "out-of-band aggregation via custom webhook" story

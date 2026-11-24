@@ -3,7 +3,7 @@
 // We #include the source file directly so the suite can call file-static
 // helpers (format_event_json, format_brute_json, format_local_brute_json,
 // json_escape) without exposing them in the public header. The matching
-// meson target must NOT also link src/notify.c — that would yield duplicate
+// meson target must NOT also link src/notify.c; that would yield duplicate
 // symbols.
 
 #include <setjmp.h>
@@ -117,7 +117,7 @@ static void test_json_escape_empty(void **state) {
 
 static void test_json_escape_truncation(void **state) {
     (void)state;
-    // Buffer too small — should not overflow and must null-terminate.
+    // Buffer too small: should not overflow and must null-terminate.
     // With dst_len=4, the loop condition (j + 6 < dst_len) is false from the
     // start for any character that might need 6-byte escape, so output is
     // empty (j stays at 0, dst[0] = '\0').

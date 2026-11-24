@@ -1,8 +1,8 @@
 # Đóng Góp cho PAMSignal
 
-> 🌐 [English](../../CONTRIBUTING.md) · **Tiếng Việt**
+> [English](../../CONTRIBUTING.md) · **Tiếng Việt**
 
-Cảm ơn bạn đã quan tâm. PAMSignal là một C daemon nhỏ với trọng tâm chặt chẽ vào việc phát hiện các sự kiện PAM auth và gửi cảnh báo; phạm vi cố ý hẹp là một phần trong threat model của dự án. Vui lòng đọc [`docs/threat-model.md`](../../docs/threat-model.md) trước khi đề xuất tính năng — đây là tài liệu tham chiếu để xác định liệu một thay đổi có tăng cường một biện pháp giảm thiểu trong phạm vi hay đưa công việc từ ngoài phạm vi vào daemon.
+Cảm ơn bạn đã quan tâm. PAMSignal là một C daemon nhỏ với trọng tâm chặt chẽ vào việc phát hiện các sự kiện PAM auth và gửi cảnh báo; phạm vi cố ý hẹp là một phần trong threat model của dự án. Vui lòng đọc [`docs/threat-model.md`](../../docs/threat-model.md) trước khi đề xuất tính năng. Đây là tài liệu tham chiếu để xác định liệu một thay đổi có tăng cường một biện pháp giảm thiểu trong phạm vi hay đưa công việc từ ngoài phạm vi vào daemon.
 
 Tài liệu này bao gồm cách thực hiện đóng góp về code, tài liệu và packaging. Đối với:
 
@@ -28,12 +28,12 @@ meson compile -C build
 meson test -C build
 ```
 
-Để được hướng dẫn build/debug sâu hơn — fuzzing, chạy ASAN local, các pattern introspection với journalctl, đóng gói thành `.deb` / `.rpm` — xem [`docs/development.md`](../../docs/development.md). Để biết chi tiết về systemd unit + sandbox, xem [`docs/deployment.md`](../../docs/deployment.md).
+Để được hướng dẫn build/debug sâu hơn (fuzzing, chạy ASAN local, các pattern introspection với journalctl, đóng gói thành `.deb` / `.rpm`), xem [`docs/development.md`](../../docs/development.md). Để biết chi tiết về systemd unit + sandbox, xem [`docs/deployment.md`](../../docs/deployment.md).
 
 ## Quy Trình Branch + Commit
 
 1. Fork và tạo branch từ `main`. Một branch cho mỗi thay đổi logic.
-2. Thực hiện thay đổi của bạn. Giữ các commit nhỏ và tập trung — người review phải có thể hiểu từng commit một cách độc lập.
+2. Thực hiện thay đổi của bạn. Giữ các commit nhỏ và tập trung; người review phải có thể hiểu từng commit một cách độc lập.
 3. Chạy [danh sách kiểm tra pre-commit](#danh-sách-kiểm-tra-pre-commit) bên dưới. **Mọi mục đều bắt buộc để PR được merge.**
 4. Push branch của bạn và mở PR đối với `main`. Điền vào PR template.
 5. CI chạy ASAN+UBSAN sanitizers trên mọi push đến PR; cả hai phải pass.
@@ -64,7 +64,7 @@ Các type được sử dụng ở đây:
 
 Quy tắc:
 
-- Subject dùng **imperative mood** ("add", "fix", "update" — không phải "added", "fixes", "updated").
+- Subject dùng **imperative mood** ("add", "fix", "update", không phải "added", "fixes", "updated").
 - Không có dấu chấm ở cuối subject.
 - Body giải thích *tại sao* cần thay đổi; diff đã cho thấy *cái gì* thay đổi.
 - Tham chiếu issue bằng `#NNN` trong body, không phải subject.
@@ -78,7 +78,7 @@ fix: stop dropping brute-force counter on SIGHUP reload
 Reloading the config previously zeroed the in-memory fail_table,
 which let an attacker SIGHUP-spam the daemon to reset their per-IP
 counter just before crossing the threshold. Preserve the table
-across reloads — config changes shouldn't invalidate observed
+across reloads; config changes shouldn't invalidate observed
 attack state.
 
 Refs #42
@@ -94,14 +94,14 @@ Mã nguồn C tuân theo các quy ước được mã hóa trong `.clang-format`
 - **Globals**: tiền tố `g_` (ví dụ `g_config`).
 - **Macros / `#define`**: `UPPER_SNAKE_CASE` với tiền tố `PS_`.
 - **Types** (struct và enum): hậu tố `_t` (ví dụ `ps_pam_event_t`, `ps_event_type_t`).
-- **Enum constants**: `UPPER_SNAKE_CASE` với tiền tố `PS_` (clang-tidy bắt buộc điều này — thêm enum không có tiền tố sẽ fail lint).
+- **Enum constants**: `UPPER_SNAKE_CASE` với tiền tố `PS_` (clang-tidy bắt buộc điều này; thêm enum không có tiền tố sẽ fail lint).
 - **Xử lý lỗi**: return code enum (`PS_OK`, `PS_ERR_*`), early return thay vì các nhánh thành công lồng nhau sâu.
 - **Logging**: `sd_journal_print()` / `sd_journal_send()`. **Không được** gọi `printf`, `syslog`, hoặc ghi vào stdout/stderr từ các code path production.
 
 Chính sách comment:
 
 - Mặc định **không viết comment**. Các định danh được đặt tên tốt và các function nhỏ nên làm cho *cái gì* rõ ràng.
-- Thêm comment khi *tại sao* không rõ ràng: một ràng buộc ẩn, một bất biến tinh tế, một workaround cho một lỗi cụ thể, hành vi sẽ khiến người đọc ngạc nhiên. Bao gồm đủ context để comment còn giá trị theo thời gian — tham chiếu CVE liên quan, phần man-page kernel, hoặc định dạng thông điệp PAM nếu có thể.
+- Thêm comment khi *tại sao* không rõ ràng: một ràng buộc ẩn, một bất biến tinh tế, một workaround cho một lỗi cụ thể, hành vi sẽ khiến người đọc ngạc nhiên. Bao gồm đủ context để comment còn giá trị theo thời gian: tham chiếu CVE liên quan, phần man-page kernel, hoặc định dạng thông điệp PAM nếu có thể.
 
 ## Yêu Cầu Test
 
@@ -147,10 +147,10 @@ Sau đó cập nhật [`CHANGELOG.md`](../../CHANGELOG.md) trong mục `## Unrel
 
 Một maintainer sẽ review PR của bạn. Dự kiến nhận phản hồi trong vài ngày đối với các thay đổi không nhỏ. Chúng tôi cố gắng giữ các review tập trung vào:
 
-1. **Alignment với threat model** — thay đổi có tăng cường một biện pháp phòng thủ trong phạm vi hay mở rộng daemon vào một non-goal? Xem [`docs/threat-model.md`](../../docs/threat-model.md).
-2. **Độ đầy đủ của test** — test suite có mã hóa thay đổi để một regression trong tương lai sẽ fail CI không?
-3. **Ổn định API** — thay đổi này có đưa vào một config key, journal field, hoặc webhook payload field mà chúng ta sẽ cần hỗ trợ qua các phiên bản không? Các surface công khai được version hóa qua SemVer; các deprecation cần một overlap period (việc retire `PAMSIGNAL_*` trong v0.3.0 là tiền lệ).
-4. **Coding style** — được bao phủ bởi clang-format / clang-tidy; chúng tôi sẽ không tranh cãi về style nếu lần chạy pre-commit của bạn sạch.
+1. **Alignment với threat model**: thay đổi có tăng cường một biện pháp phòng thủ trong phạm vi hay mở rộng daemon vào một non-goal? Xem [`docs/threat-model.md`](../../docs/threat-model.md).
+2. **Độ đầy đủ của test**: test suite có mã hóa thay đổi để một regression trong tương lai sẽ fail CI không?
+3. **Ổn định API**: thay đổi này có đưa vào một config key, journal field, hoặc webhook payload field mà chúng ta sẽ cần hỗ trợ qua các phiên bản không? Các surface công khai được version hóa qua SemVer; các deprecation cần một overlap period (việc retire `PAMSIGNAL_*` trong v0.3.0 là tiền lệ).
+4. **Coding style**: được bao phủ bởi clang-format / clang-tidy; chúng tôi sẽ không tranh cãi về style nếu lần chạy pre-commit của bạn sạch.
 
 Reviewer có thể yêu cầu thay đổi; vui lòng phản hồi trên PR thay vì force-push mà không giải thích. Force-push trong khi review là ổn khi giải quyết rõ ràng một comment, nhưng hãy để lại một ghi chú ngắn trên PR thread nói về những gì đã thay đổi.
 

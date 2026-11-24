@@ -1,8 +1,8 @@
 # Configuration
 
-> 🌐 **English** · [Tiếng Việt](vi/configuration.md)
+> **English** · [Tiếng Việt](vi/configuration.md)
 
-`/etc/pamsignal/pamsignal.conf` — INI-style, zero dependencies. All values are optional; sane defaults apply if the file is missing or a key is absent.
+`/etc/pamsignal/pamsignal.conf`: INI-style, zero dependencies. All values are optional; sane defaults apply if the file is missing or a key is absent.
 
 Since this file may contain alert credentials, it should have restricted permissions:
 
@@ -92,7 +92,7 @@ A person who mistypes their own password three times and then gets it right trig
 |-----|---------|-------------|
 | `trusted_sources` | *(empty)* | Comma-separated IPv4/IPv6 addresses or CIDR networks (at most 32) whose routine login alerts are not sent to chat |
 
-Use it for the places you log in from every day — an office range, a VPN, a bastion host — so those logins stop pinging the channel.
+Use it for the places you log in from every day (an office range, a VPN, a bastion host) so those logins stop pinging the channel.
 
 ```ini
 trusted_sources = 10.0.0.0/8, 203.0.113.7, 2001:db8::/32
@@ -107,12 +107,12 @@ A bare address means that single host. The prefix length must be at least 1 (`0.
 
 ## Notification-type filter
 
-`enable_notification_type` selects which event categories trigger chat alerts. It is a comma-separated list. The default — when the key is omitted, or when `all` is given — is every category, preserving prior behaviour. Unknown tokens are a hard config error; empty values and empty list elements are rejected.
+`enable_notification_type` selects which event categories trigger chat alerts. It is a comma-separated list. The default (when the key is omitted, or when `all` is given) is every category, preserving prior behaviour. Unknown tokens are a hard config error; empty values and empty list elements are rejected.
 
 | Token | Triggers chat alert when… |
 |-------|---------------------------|
 | `login_success` | A successful login is detected (sshd, login) |
-| `login_failed` | A failed login is detected (sshd, login; sudo/su failures stay subject to the existing per-event suppression — see below) |
+| `login_failed` | A failed login is detected (sshd, login; sudo/su failures stay subject to the existing per-event suppression; see below) |
 | `session_open` | A PAM session opens (incl. systemd background sessions like cron) |
 | `session_close` | A PAM session closes |
 | `brute_force` | Either remote (IP-based) or local (sudo/su actor-based) brute-force threshold is crossed |
@@ -167,7 +167,7 @@ Run `sudo -u pamsignal pamsignal --test-alert` to see the chosen style in your c
 
 ## Alert channels
 
-Only configure the channels you use. PAMSignal sends alerts to all channels that have credentials set. Alerts are best-effort — if a channel fails, pamsignal logs a warning and continues monitoring.
+Only configure the channels you use. PAMSignal sends alerts to all channels that have credentials set. Alerts are best-effort: if a channel fails, pamsignal logs a warning and continues monitoring.
 
 See [Alerts](./alerts.md) for message formats, setup guides, and payload reference.
 
@@ -185,28 +185,28 @@ See [Alerts](./alerts.md) for message formats, setup guides, and payload referen
 
 ## Custom webhook authentication
 
-The `webhook_url` channel supports two optional, additive authentication mechanisms — neither, either, or both. Telegram, Slack, Teams, WhatsApp, and Discord authenticate through their own URL/token schemes and are unaffected.
+The `webhook_url` channel supports two optional, additive authentication mechanisms: neither, either, or both. Telegram, Slack, Teams, WhatsApp, and Discord authenticate through their own URL/token schemes and are unaffected.
 
 | Key | Mode | Description |
 |-----|------|-------------|
 | `webhook_auth_header` | Header | Single arbitrary HTTP header sent on every POST. Full `Name: value` form so any auth scheme works (Bearer, API key, Splunk HEC, Datadog, HMAC). The value is rendered into a memfd-backed curl `-K` config file, so the secret never appears in `argv` or `/proc/<pid>/cmdline`. |
 | `webhook_client_cert` | mTLS | Path to a PEM-encoded client certificate. Must be set together with `webhook_client_key`. |
-| `webhook_client_key` | mTLS | Path to the matching PEM-encoded private key. **Must not be group- or world-readable** — pamsignal refuses to start otherwise. Recommended: `0640 root:pamsignal` (or `0600 pamsignal:pamsignal` if you run the daemon as that user). |
+| `webhook_client_key` | mTLS | Path to the matching PEM-encoded private key. **Must not be group- or world-readable**; pamsignal refuses to start otherwise. Recommended: `0640 root:pamsignal` (or `0600 pamsignal:pamsignal` if you run the daemon as that user). |
 | `webhook_ca_bundle` | mTLS | Optional path to a CA bundle PEM. Only needed when the receiver's CA is not in the system trust store (private CA, internal cert-manager). |
 
 **Common patterns:**
 
 ```ini
-# Bearer-only — most receivers (Wazuh, Splunk HEC, Datadog, custom Express receivers).
+# Bearer-only: most receivers (Wazuh, Splunk HEC, Datadog, custom Express receivers).
 webhook_url = https://siem.example.com/ingest/pamsignal
 webhook_auth_header = Authorization: Bearer <token>
 
-# mTLS-only — environments with PKI in place; transport-layer service identity.
+# mTLS-only: environments with PKI in place; transport-layer service identity.
 webhook_url = https://siem.internal.example.com/ingest
 webhook_client_cert = /etc/pamsignal/webhook-client.crt
 webhook_client_key  = /etc/pamsignal/webhook-client.key
 
-# Combined — corporate SIEM gateways that want both transport auth and per-request authorization.
+# Combined: corporate SIEM gateways that want both transport auth and per-request authorization.
 webhook_url = https://siem.internal.example.com/ingest
 webhook_auth_header = Authorization: Bearer <jwt>
 webhook_client_cert = /etc/pamsignal/webhook-client.crt
@@ -214,7 +214,7 @@ webhook_client_key  = /etc/pamsignal/webhook-client.key
 webhook_ca_bundle   = /etc/pamsignal/internal-ca.pem
 ```
 
-*Any of these patterns can be paired with `enable_notification_type` to narrow which event categories reach the webhook — see [Notification-type filter](#notification-type-filter) above for the full list of tokens (`login_success`, `login_failed`, `session_open`, `session_close`, `brute_force`, `all`).*
+*Any of these patterns can be paired with `enable_notification_type` to narrow which event categories reach the webhook. See [Notification-type filter](#notification-type-filter) above for the full list of tokens (`login_success`, `login_failed`, `session_open`, `session_close`, `brute_force`, `all`).*
 
 **Validation enforced at config load:**
 
@@ -224,7 +224,7 @@ webhook_ca_bundle   = /etc/pamsignal/internal-ca.pem
 - Path strings containing control characters, `"`, or `\` are rejected so the value is unambiguous in the curl `-K` config.
 - `webhook_auth_header` must be in `Name: value` form; values containing CR, LF, `"`, or `\` are rejected (CRLF header injection / quote-escape protection).
 
-Encrypted (passphrase-protected) keys are not supported — manage key secrecy via filesystem permissions, `systemd-creds`, or your cert manager's secret-injection model.
+Encrypted (passphrase-protected) keys are not supported. Manage key secrecy via filesystem permissions, `systemd-creds`, or your cert manager's secret-injection model.
 
 See [Alerts → Custom webhook (ECS JSON)](./alerts.md#custom-webhook-ecs-json) for the on-the-wire payload, the receiver-pattern table (Bearer / X-API-Key / Splunk / Datadog / Wazuh), and the operator-side mTLS deployment notes.
 

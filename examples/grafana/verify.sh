@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# verify.sh — confirms a PAMSignal → Loki → Grafana pipeline is healthy.
+# verify.sh: confirms a PAMSignal → Loki → Grafana pipeline is healthy.
 #
 # What it does:
 #   1. Emits a synthetic pamsignal-shaped event into the local journal
@@ -9,11 +9,11 @@
 #   4. Confirms the pamsignal-v1 dashboard is installed.
 #
 # Exit codes:
-#   0 — healthy
-#   1 — event not received by Loki
-#   2 — Loki not reachable
-#   3 — Grafana not reachable / datasource broken
-#   4 — dashboard missing
+#   0 = healthy
+#   1 = event not received by Loki
+#   2 = Loki not reachable
+#   3 = Grafana not reachable / datasource broken
+#   4 = dashboard missing
 #
 # Usage:
 #   ./verify.sh                       # full check (needs systemd-cat or curl)
@@ -105,7 +105,7 @@ if [[ "${MODE}" == "full" ]]; then
     ok "Wrote synthetic event to journald (tag=pamsignal)"
     dim "    (Alloy on this host needs to be running for the event to reach Loki)"
   else
-    yellow "  ! systemd-cat/logger not available — falling back to direct Loki push"
+    yellow "  ! systemd-cat/logger not available; falling back to direct Loki push"
     emit_via_loki
     ok "Pushed event directly to Loki"
   fi
@@ -160,7 +160,7 @@ fi
 # ---------------------------------------------------------------------------
 step "Checking Grafana at ${GRAFANA_URL}"
 if ! curl -sf --max-time 5 "${GRAFANA_URL}/api/health" >/dev/null; then
-  yellow "  ! Grafana not reachable at ${GRAFANA_URL} — skipping dashboard check."
+  yellow "  ! Grafana not reachable at ${GRAFANA_URL}; skipping dashboard check."
   yellow "    (Set GRAFANA_URL=… if Grafana is elsewhere.)"
   green "Pipeline OK (Loki only)"
   exit 0
@@ -207,7 +207,7 @@ ok "Dashboard installed: ${title}"
 
 # ---------------------------------------------------------------------------
 echo
-green "✅ Pipeline healthy"
+green "Pipeline healthy"
 echo "   - Loki:        ${LOKI_URL}"
 echo "   - Grafana:     ${GRAFANA_URL}"
 echo "   - Dashboard:   ${GRAFANA_URL}/d/${DASHBOARD_UID}"

@@ -1,7 +1,7 @@
 """Integration tests over real HTTP transport.
 
 Spins up a Werkzeug WSGI server on a kernel-picked free port and exercises the
-webhook with the `requests` client — the same path PAMSignal's curl
+webhook with the `requests` client, the same path PAMSignal's curl
 fork+exec uses. Proves that the in-process behavior covered by test_webhook.py
 survives a real WSGI roundtrip (headers, body framing, error status codes,
 content negotiation).
@@ -41,7 +41,7 @@ def _free_port() -> int:
 @pytest.fixture(scope="module")
 def http_server() -> Iterator[int]:
     """Real HTTP server on a kernel-picked free port."""
-    # Module-scoped — can't use monkeypatch (function-scoped). Save and restore
+    # Module-scoped: can't use monkeypatch (function-scoped). Save and restore
     # the env var manually so we don't leak state into other test modules.
     old_secret = os.environ.get("WEBHOOK_SECRET")
     os.environ["WEBHOOK_SECRET"] = SECRET
@@ -154,7 +154,7 @@ def test_invalid_payload_shape_returns_400(http_server):
 
 def test_log_injection_payload_does_not_crash_server(http_server):
     # Control chars in every string field. The server must accept the
-    # request and return 200 — the unit-test suite separately verifies that
+    # request and return 200; the unit-test suite separately verifies that
     # the actual stdout output is sanitized.
     attack = "alice\n\x1b[31mFAKE\x00\x7f"
     payload = {

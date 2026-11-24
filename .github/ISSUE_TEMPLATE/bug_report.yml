@@ -1,5 +1,5 @@
 name: Bug report
-description: pamsignal is doing — or failing to do — something its documentation says it should
+description: pamsignal is doing (or failing to do) something its documentation says it should
 labels: [bug]
 body:
   - type: markdown
@@ -10,7 +10,7 @@ body:
         alerts. Most actionable bug reports therefore include
         **standard system state** (`systemctl status`, `journalctl -u`,
         kernel + systemd versions, MAC-policy state) rather than free-form
-        descriptions — those are what we'd ask you to gather first anyway.
+        descriptions; those are what we'd ask you to gather first anyway.
 
         **Before filing**:
         - Security vulnerability? **Don't file a public issue.** Use
@@ -19,9 +19,9 @@ body:
         - Behavior you think is a bug but it's an explicit non-goal in
           [`docs/threat-model.md`](https://github.com/anhtuank7c/pamsignal/blob/main/docs/threat-model.md)
           (durable alert delivery, multi-host correlation, authenticated
-          delivery, etc.) — please file as a feature request instead, with
+          delivery, etc.)? Please file as a feature request instead, with
           the threat-model-amendment framing the feature template asks for.
-        - Operator question rather than a defect — check the existing
+        - Operator question rather than a defect? Check the existing
           [`question`-labeled issues](https://github.com/anhtuank7c/pamsignal/issues?q=is%3Aissue+label%3Aquestion).
 
   - type: dropdown
@@ -92,9 +92,9 @@ body:
     attributes:
       label: Install method
       options:
-        - apt — signed gh-pages repo (https://anhtuank7c.github.io/pamsignal/ stable main)
-        - dnf — signed gh-pages repo (Fedora)
-        - dnf — signed gh-pages repo (EL9 / AlmaLinux 9 / Rocky 9)
+        - 'apt: signed gh-pages repo (https://anhtuank7c.github.io/pamsignal/ stable main)'
+        - 'dnf: signed gh-pages repo (Fedora)'
+        - 'dnf: signed gh-pages repo (EL9 / AlmaLinux 9 / Rocky 9)'
         - source build (`meson install`)
         - other (please describe)
     validations:
@@ -106,7 +106,7 @@ body:
       label: Mandatory access control
       description: |
         Both SELinux and AppArmor can override the systemd unit's
-        directives in either direction — knowing which is enforcing
+        directives in either direction; knowing which is enforcing
         and whether the relevant rules are in place is often the
         decisive triage step.
       options:
@@ -159,7 +159,7 @@ body:
     attributes:
       label: Source-of-truth auth events
       description: |
-        The PAM events that should have been picked up — grouped by the
+        The PAM events that should have been picked up, grouped by the
         underlying systemd unit so the `_EXE` allowlist context is
         preserved:
         ```
@@ -221,14 +221,14 @@ body:
         We CI-gate this at 20 (internal) on every release; a score above
         20 on your host suggests a drop-in override or distribution
         repackaging has loosened a hardening directive.
-      placeholder: '→ Overall exposure level for pamsignal.service: 1.3 OK 🙂'
+      placeholder: '→ Overall exposure level for pamsignal.service: 1.3 OK'
 
   - type: textarea
     id: reproduce
     attributes:
       label: Steps to reproduce
       description: |
-        Concrete operational sequence — what auth events did you generate,
+        Concrete operational sequence: what auth events did you generate,
         in what order, with what `fail_threshold` / `fail_window_sec` /
         `alert_cooldown_sec`. Include the commands you ran (e.g. `ssh -p
         22 root@host` from a remote attacker, `sudo -k && sudo whoami`
@@ -249,7 +249,7 @@ body:
     attributes:
       label: Expected behavior
       description: |
-        What pamsignal should have done — preferably in the same terms
+        What pamsignal should have done, preferably in the same terms
         the docs use. ("A `[ALERT] auth.brute_force_detected ...` chat
         message should appear in Slack" / "An ECS-formatted JSON should
         POST to `webhook_url` with `event.action=brute_force_detected`"

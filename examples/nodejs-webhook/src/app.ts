@@ -108,31 +108,31 @@ app.post('/webhook/pamsignal', authenticate, (req: Request, res: Response): void
   if (process.env.NODE_ENV !== 'test') {
     switch (eventAction) {
       case 'login_success':
-        console.log(`✅ [LOGIN_SUCCESS] User '${safe(user?.name)}' logged in via ${safe(source?.ip)} on ${safe(host?.hostname)} (PID: ${safe(proc?.pid)})`);
+        console.log(`[LOGIN_SUCCESS] User '${safe(user?.name)}' logged in via ${safe(source?.ip)} on ${safe(host?.hostname)} (PID: ${safe(proc?.pid)})`);
         break;
 
       case 'login_failure':
-        console.log(`❌ [LOGIN_FAILED] Failed login attempt for user '${safe(user?.name)}' from ${safe(source?.ip)} on ${safe(host?.hostname)}`);
+        console.log(`[LOGIN_FAILED] Failed login attempt for user '${safe(user?.name)}' from ${safe(source?.ip)} on ${safe(host?.hostname)}`);
         break;
 
       case 'brute_force_detected':
-        console.log(`🚨 [BRUTE_FORCE] ${safe(pamsignal?.attempts)} failed attempts detected from IP ${safe(source?.ip)} in ${safe(pamsignal?.window_sec)}s!`);
+        console.log(`[BRUTE_FORCE] ${safe(pamsignal?.attempts)} failed attempts detected from IP ${safe(source?.ip)} in ${safe(pamsignal?.window_sec)}s!`);
         break;
 
       case 'login_after_failures':
-        console.log(`🔥 [LOGIN_AFTER_FAILURES] User '${safe(user?.name)}' logged in from ${safe(source?.ip)} after ${safe(pamsignal?.failures)} failed attempts on ${safe(host?.hostname)} — possible guessed password!`);
+        console.log(`[LOGIN_AFTER_FAILURES] User '${safe(user?.name)}' logged in from ${safe(source?.ip)} after ${safe(pamsignal?.failures)} failed attempts on ${safe(host?.hostname)}: possible guessed password!`);
         break;
 
       case 'test_alert':
-        console.log(`🔔 [TEST_ALERT] Test alert received from ${safe(host?.hostname)} — webhook channel is working`);
+        console.log(`[TEST_ALERT] Test alert received from ${safe(host?.hostname)}, webhook channel is working`);
         break;
 
       case 'session_opened':
-        console.log(`ℹ️ [SESSION_OPEN] Session opened for user '${safe(user?.name)}' on ${safe(host?.hostname)}`);
+        console.log(`[SESSION_OPEN] Session opened for user '${safe(user?.name)}' on ${safe(host?.hostname)}`);
         break;
 
       case 'session_closed':
-        console.log(`ℹ️ [SESSION_CLOSE] Session closed for user '${safe(user?.name)}' on ${safe(host?.hostname)}`);
+        console.log(`[SESSION_CLOSE] Session closed for user '${safe(user?.name)}' on ${safe(host?.hostname)}`);
         break;
 
       default:

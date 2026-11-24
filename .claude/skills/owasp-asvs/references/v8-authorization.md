@@ -1,12 +1,12 @@
-# V8 — Authorization
+# V8: Authorization
 
 > Upstream: <https://github.com/OWASP/ASVS/blob/master/5.0/en/0x17-V8-Authorization.md>
 
-## Status for PAMSignal: ⚪ **N/A (mostly)**
+## Status for PAMSignal: **N/A (mostly)**
 
-PAMSignal has **no per-resource authorization model**. There is no RBAC, no function-level access control, no tenant boundary, no IDOR surface — because there are no users (V6 N/A) and no inbound requests (V4 N/A). The V8 controls (function-level checks, per-resource scoping, multi-tenant isolation, OAuth scope enforcement) have no target.
+PAMSignal has **no per-resource authorization model**. There is no RBAC, no function-level access control, no tenant boundary, no IDOR surface, because there are no users (V6 N/A) and no inbound requests (V4 N/A). The V8 controls (function-level checks, per-resource scoping, multi-tenant isolation, OAuth scope enforcement) have no target.
 
-The one authorization decision PAMSignal *does* make — "can this process read the system journal?" — is delegated to the operating system via standard Unix permissions. The `pamsignal` user is added to `systemd-journal` group (or equivalent), and the daemon is granted journal read access through that membership. This is covered under **V15.3 Process / privilege architecture**, not V8.
+The one authorization decision PAMSignal *does* make ("can this process read the system journal?") is delegated to the operating system via standard Unix permissions. The `pamsignal` user is added to `systemd-journal` group (or equivalent), and the daemon is granted journal read access through that membership. This is covered under **V15.3 Process / privilege architecture**, not V8.
 
 ## When this would become applicable
 

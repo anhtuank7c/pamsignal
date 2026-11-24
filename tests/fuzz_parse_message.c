@@ -19,7 +19,7 @@
 #include "pam_event.h"
 #include "utils.h"
 
-// Cap input size — beyond ~4 KB the journal-supplied MESSAGE field is
+// Cap input size: beyond ~4 KB the journal-supplied MESSAGE field is
 // already truncated upstream by ps_process_entry, so spending fuzzer cycles
 // on huge inputs only stresses memcpy, not the parser.
 #define FUZZ_MAX_INPUT 4096
