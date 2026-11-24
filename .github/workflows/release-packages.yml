@@ -744,16 +744,20 @@ jobs:
           # Set a different correct password to use for the successful login.
           echo 'testpamuser:correctpassword456' | sudo chpasswd
 
-          # Ensure PasswordAuthentication is enabled in sshd.
-          sudo sed -i 's/^#*PasswordAuthentication.*/PasswordAuthentication yes/' \
-            /etc/ssh/sshd_config
-          sudo sed -i 's/^#*PermitRootLogin.*/PermitRootLogin no/' \
-            /etc/ssh/sshd_config
-          # Allow our test user.
-          echo 'AllowUsers testpamuser' | sudo tee -a /etc/ssh/sshd_config
+          # Enable password auth in a drop-in. sshd_config includes
+          # /etc/ssh/sshd_config.d/*.conf before its own settings and the
+          # first value wins, so a runner image that ships a drop-in with
+          # "PasswordAuthentication no" overrides an edit of sshd_config
+          # itself. "00-" sorts ahead of any such file.
+          printf '%s\n' 'PasswordAuthentication yes' 'KbdInteractiveAuthentication yes' \
+            'UsePAM yes' 'PermitRootLogin no' 'AllowUsers testpamuser' |
+            sudo tee /etc/ssh/sshd_config.d/00-pamsignal-test.conf
           sudo systemctl restart ssh
           sleep 1
           systemctl is-active ssh
+          # Fail here, not two steps later, if password auth is still off.
+          sudo sshd -T | grep -iE '^(passwordauthentication|usepam|allowusers) '
+          sudo sshd -T | grep -qi '^passwordauthentication yes'
 
       - name: Generate real sshd auth events
         run: |
@@ -762,12 +766,18 @@ jobs:
           # 3 failed logins → triggers brute-force threshold (fail_threshold=3).
           for i in 1 2 3; do
             sshpass -p 'wrongpassword123' ssh $SSH_OPTS \
-              testpamuser@127.0.0.1 exit 2>/dev/null || true
+              testpamuser@127.0.0.1 exit 2>>/tmp/ssh-client.log || true
           done
 
           # 1 successful login.
           sshpass -p 'correctpassword456' ssh $SSH_OPTS \
-            testpamuser@127.0.0.1 exit 2>/dev/null || true
+            testpamuser@127.0.0.1 exit 2>>/tmp/ssh-client.log || true
+          echo "::group::ssh client stderr"
+          cat /tmp/ssh-client.log || true
+          echo "::endgroup::"
+          echo "::group::sshd journal"
+          sudo journalctl -u ssh --since '60 sec ago' --no-pager | tail -30
+          echo "::endgroup::"
 
           # Wait for pamsignal's event loop (1 s sd_journal_wait) + curl round-trip.
           sleep 8
