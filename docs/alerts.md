@@ -131,6 +131,8 @@ Sent as the `text` field via [incoming webhook](https://api.slack.com/messaging/
 
 Sent as an [Adaptive Card](https://adaptivecards.io/) to a Teams **Workflows** webhook. Microsoft has retired the Office 365 connector webhooks (`https://<tenant>.webhook.office.com/...`), so a connector URL no longer delivers anything; create a Workflows webhook instead.
 
+> **Not yet tested on a live Teams tenant.** The card format is covered by unit tests, but no alert has been delivered to a real Workflows webhook yet. If you run it, please report the result (works, or the error Teams returns) in an issue.
+
 With `message_style = pretty` the card holds the pretty message (bold headline and labels, monospace values); otherwise it holds the compact line in a monospace font. The request body for a compact alert:
 
 ```json
