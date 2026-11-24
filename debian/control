@@ -29,12 +29,16 @@ Depends: ${shlibs:Depends},
          systemd
 Pre-Depends: adduser
 Description: Real-time PAM login monitor with multi-channel alerts
- PAMSignal monitors PAM authentication events via the systemd journal.
- It detects login attempts, logouts, and brute-force patterns from sshd,
- sudo, su, and login services, sending alerts to Telegram, Slack, Microsoft
- Teams, WhatsApp, Discord, or custom webhooks.
+ PAMSignal follows the systemd journal for PAM authentication events from
+ sshd, sudo, su and login. It reports successful and failed logins and
+ session opens and closes, detects brute-force attempts (remote by source
+ IP, local sudo/su by account) and a successful login that follows
+ repeated failures, and sends alerts to Telegram, Slack, Microsoft Teams,
+ WhatsApp, Discord, or a custom HTTPS webhook (ECS JSON, optional auth
+ header and mTLS).
  .
- The daemon runs as an unprivileged system user with read-only access to
- the journal, isolates the alert dispatch path via fork+exec of curl, and
- ships with systemd hardening directives (NoNewPrivileges, ProtectSystem,
- SystemCallFilter, MemoryDenyWriteExecute, etc.).
+ The daemon runs as an unprivileged system user with read access to the
+ journal, ignores entries not written by the real sshd, sudo, su or login
+ binaries, dispatches alerts through fork+exec of curl with credentials
+ kept out of argv, and ships with systemd sandboxing (NoNewPrivileges,
+ ProtectSystem=strict, SystemCallFilter, MemoryDenyWriteExecute, etc.).

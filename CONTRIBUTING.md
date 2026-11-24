@@ -28,7 +28,7 @@ meson compile -C build
 meson test -C build
 ```
 
-For deeper build / debugging guidance (fuzzing, ASAN runs locally, the journalctl introspection patterns, packaging into `.deb` / `.rpm`), see [`docs/development.md`](./docs/development.md). For systemd unit + sandbox details, [`docs/deployment.md`](./docs/deployment.md).
+For deeper build / debugging guidance (fuzzing, local ASAN/UBSAN builds, manual runs and end-to-end testing with journalctl, the CI workflows), see [`docs/development.md`](./docs/development.md). For systemd unit + sandbox details, [`docs/deployment.md`](./docs/deployment.md).
 
 ## Branch + commit workflow
 
@@ -36,7 +36,7 @@ For deeper build / debugging guidance (fuzzing, ASAN runs locally, the journalct
 2. Make your change. Keep commits small and focused; reviewers should be able to understand each commit on its own.
 3. Run the [pre-commit checklist](#pre-commit-checklist) below. **Every item is required for a PR to merge.**
 4. Push your branch and open a PR against `main`. Fill in the PR template.
-5. CI runs ASAN+UBSAN sanitizers on every push to a PR; both must pass.
+5. CI (`.github/workflows/ci.yml`) runs on every pull request to `main`: the test suites under ASAN+UBSAN, and the `examples/who-did-what` end-to-end test. Both jobs must pass.
 
 ### Commit messages
 
@@ -96,7 +96,7 @@ C source code follows the conventions encoded in `.clang-format` and `.clang-tid
 - **Types** (structs and enums): `_t` suffix (e.g. `ps_pam_event_t`, `ps_event_type_t`).
 - **Enum constants**: `UPPER_SNAKE_CASE` with `PS_` prefix (clang-tidy enforces this; adding an enum without the prefix will fail lint).
 - **Error handling**: return code enums (`PS_OK`, `PS_ERR_*`), early returns over deeply nested success paths.
-- **Logging**: `sd_journal_print()` / `sd_journal_send()`. **Do not** call `printf`, `syslog`, or write to stdout/stderr from production code paths.
+- **Logging**: `sd_journal_print()` / `sd_journal_send()`. **Do not** call `printf`, `syslog`, or write to stdout/stderr from production code paths. The only exception is CLI output in `src/main.c` (`--help`, `--version`, `--check-config`, `--test-alert`, and startup errors).
 
 Comment policy:
 
@@ -113,8 +113,9 @@ The test suites are CMocka-based and live alongside the source modules they cove
 |---|---|
 | `tests/test_utils.c` | parser, helpers (`sanitize_string`, `is_valid_ip`, ECS helpers) |
 | `tests/test_config.c` | config-file parsing, validation, permission checks |
-| `tests/test_notify.c` | notify dispatch path (smoke tests for the no-channel paths and cooldown) |
-| `tests/test_journal_watch.c` | brute-force tracker (#includes the source file directly to drive file-static state) |
+| `tests/test_notify.c` | JSON escaping, webhook JSON, compact and pretty chat text, notification-type gating, cooldown (#includes `src/notify.c` directly) |
+| `tests/test_journal_watch.c` | brute-force tracker, login-after-failures, `_EXE` allowlist (#includes the source file directly to drive file-static state) |
+| `tests/test_integration.c` | parse, track and format pipeline end to end (#includes `src/journal_watch.c` and `src/notify.c`) |
 
 If a change affects parser behavior, also extend `tests/fuzz/parse_message_corpus/` with a representative input.
 
@@ -141,7 +142,7 @@ meson compile -C build-asan
 meson test -C build-asan
 ```
 
-Then update [`CHANGELOG.md`](./CHANGELOG.md) under `## Unreleased`. Use `[x]` for items completed in your branch and `[ ]` for follow-ups you're explicitly leaving for later. Group entries under the existing subsection that fits (`Features`, `Fixes`, `Security`, `Packaging`, `Documentation`, `CI`).
+Then update [`CHANGELOG.md`](./CHANGELOG.md) under `## Unreleased`. Use `[x]` for items completed in your branch and `[ ]` for follow-ups you're explicitly leaving for later. Group entries under the existing subsection that fits (`Features`, `Fixed`, `Security`, `Documentation`, `Examples`, `Tooling`, `Packaging`, `CI`).
 
 ## Code review
 

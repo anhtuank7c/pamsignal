@@ -29,7 +29,7 @@ loki.write "default" {
 		//   password = sys.env("LOKI_PASSWORD")
 		// }
 	}
-	// Cap outbound rate so an event burst can't drown the receiver.
+	// Added to every stream this host pushes.
 	external_labels = {
 		job = "pamsignal",
 	}
@@ -43,9 +43,9 @@ loki.source.journal "pamsignal" {
 	labels         = {
 		app = "pamsignal",
 	}
-	// Limit which fields end up in the journal label namespace.
-	// Without this, every PAMSignal field would arrive as a __journal_<x>
-	// label, increasing the relabeling surface.
+	// Every journal field is exposed as an internal __journal_<field> label
+	// (lowercased) and dropped before sending. These rules keep the few we
+	// want as real labels.
 	relabel_rules = loki.relabel.pamsignal.rules
 }
 
@@ -53,7 +53,11 @@ loki.source.journal "pamsignal" {
 //
 // host         <- _HOSTNAME              (per-host stream)
 // service      <- SERVICE_NAME           (sshd/sudo/su/login/other, 5 max)
-// event_action <- EVENT_ACTION           (6 enum values)
+// event_action <- EVENT_ACTION           (6 values, including the
+//                                         login_after_failures detection)
+//
+// Remote brute_force_detected entries have no SERVICE_NAME, so they arrive
+// without a service label.
 //
 // Everything else (SOURCE_IP, USER_NAME, SOURCE_PORT, ...) stays in the
 // JSON body of the log line and is parsed at query time with `| json`.

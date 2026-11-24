@@ -1,13 +1,15 @@
 # PAMSignal: Grafana-native alert rules
 #
-# Apply via:   grafana-cli admin provision-folders --path ./provisioning
-# Or import:   Grafana → Alerting → Alert rules → Import (this YAML)
+# This is a Grafana alerting provisioning file. Apply it by copying it into
+# /etc/grafana/provisioning/alerting/ and restarting Grafana.
 #
 # Each rule fires on the conditions designed in docs/grafana-integration.md.
 # Operators are expected to:
 #   1. Edit the `folder` field to match their Grafana folder
-#   2. Wire `notifications:` to their contact point (Slack, Telegram, PagerDuty, ...)
-#   3. Tune thresholds (especially #3) to fleet baseline
+#   2. Make `datasourceUid: loki` match the UID of their Loki datasource
+#   3. Route the rules to a contact point (Slack, Telegram, PagerDuty, ...)
+#      through a notification policy
+#   4. Tune thresholds (especially #3) to fleet baseline
 
 apiVersion: 1
 
@@ -55,7 +57,7 @@ groups:
           summary: 'Brute-force pattern detected by PAMSignal (last 5 min)'
           description: |
             PAMSignal detected one or more brute-force patterns in the last 5 minutes.
-            Drill in via the "Recent brute-force alerts" panel on the dashboard.
+            Drill in via the "Recent detections" panel on the dashboard.
         labels:
           severity: critical
           source: pamsignal
@@ -208,4 +210,50 @@ groups:
             Check: systemctl status pamsignal alloy on the host.
         labels:
           severity: medium
+          source: pamsignal
+
+      # ----------------------------------------------------------------------
+      # 5. Login after failures: fire on every match.
+      #    Severity: critical. PAMSignal writes login_after_failures when a
+      #    login succeeds from an IP that failed success_after_fail_threshold
+      #    or more times inside fail_window_sec: the attacker may be in.
+      #    trusted_sources does not suppress this event.
+      # ----------------------------------------------------------------------
+      - uid: pamsignal-login-after-failures
+        title: PAMSignal - login after failures
+        condition: B
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: loki
+            model:
+              datasource: { type: loki, uid: loki }
+              expr: 'sum(count_over_time({app="pamsignal", event_action="login_after_failures"}[5m]))'
+              instant: true
+              refId: A
+              queryType: instant
+          - refId: B
+            relativeTimeRange: { from: 0, to: 0 }
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              refId: B
+              expression: A
+              conditions:
+                - evaluator: { type: gt, params: [0] }
+                  operator: { type: and }
+                  query: { params: [B] }
+                  reducer: { params: [], type: last }
+                  type: query
+        noDataState: OK
+        execErrState: Error
+        for: 0s
+        annotations:
+          summary: 'Login succeeded after repeated failures (last 5 min)'
+          description: |
+            A source that failed to log in several times then logged in successfully.
+            Treat it as a possible compromise: check the "Recent detections" panel,
+            then the account and the host.
+        labels:
+          severity: critical
           source: pamsignal

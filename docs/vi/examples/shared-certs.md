@@ -29,6 +29,8 @@ examples/shared-certs/                       ← real files live here
 
 Các receiver tham chiếu `./certs/server.{crt,key}` và `./certs/ca.crt` trong `.env` của chúng; mục Client Certs của Bruno trỏ đến `certs/client.{crt,key}` tương đối với thư mục gốc của collection. Các symlink làm cho cả ba đường dẫn đều phân giải về đây. Chạy `gen-test-certs.sh` một lần là đã cấp cert cho tất cả cùng lúc.
 
+Bản thân PAMSignal không dùng trực tiếp được các đường dẫn này: nó mở `webhook_client_cert`, `webhook_client_key` và `webhook_ca_bundle` với `O_NOFOLLOW`, yêu cầu mỗi file thuộc sở hữu của `root` hoặc user của daemon (và key không được để group hay người khác đọc), và unit của nó ẩn `/home` bằng `ProtectHome=yes`. README của các receiver hướng dẫn cách sao chép client cert, key và CA vào `/etc/pamsignal/` để kiểm thử end-to-end.
+
 ## Cách dùng
 
 ```bash

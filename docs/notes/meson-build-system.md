@@ -63,7 +63,7 @@ rm -rf build && meson setup build
 If you were to compile this project manually using `gcc`, the command would look something like this:
 
 ```bash
-gcc src/init.c src/journal_watch.c src/main.c src/utils.c \
+gcc src/config.c src/init.c src/journal_watch.c src/main.c src/notify.c src/utils.c \
     -Iinclude -o build/pamsignal \
     $(pkg-config --cflags --libs libsystemd) \
     -Wall -Wextra -Wshadow -std=gnu17 -O2

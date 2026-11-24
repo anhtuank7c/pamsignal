@@ -32,9 +32,8 @@ patterns produced by
 .BR sshd (8),
 .BR sudo (8),
 .BR su (1),
-.BR login (1),
 and
-.BR systemd-logind (8),
+.BR login (1),
 optionally dispatching alerts to Telegram, Slack, Microsoft Teams, WhatsApp,
 Discord, or an arbitrary HTTPS webhook.
 .PP
@@ -44,7 +43,13 @@ as the unprivileged user
 .BR pamsignal ,
 which must be a member of the
 .B systemd-journal
-group to obtain read-only access to the journal. Outbound HTTP requests are
+group to obtain read-only access to the journal. The shipped unit uses
+.B Type=notify
+with
+.BR WatchdogSec=30s :
+the daemon reports readiness once the journal watch is set up and pets
+the watchdog on every loop iteration, so a stalled daemon is restarted.
+Outbound HTTP requests are
 made via
 .BR curl (1)
 launched in a fork+exec child so a network failure cannot crash the parent
@@ -69,14 +74,14 @@ for the meaning of each directive.
 .SH OPTIONS
 .TP
 .BR \-f ", " \-\-foreground
-Stay in the foreground (do not daemonize). Required when running under a
-process supervisor such as
-.BR systemd (1)
-with
-.BR Type=simple .
-This is the mode used by the shipped
+Stay in the foreground (do not daemonize). Use it under a process
+supervisor such as
+.BR systemd (1);
+the shipped
 .B pamsignal.service
-unit. In foreground mode no PID file is created.
+unit
+.RB ( Type=notify )
+runs the daemon this way. In foreground mode no PID file is created.
 .TP
 \fB\-c\fR \fIPATH\fR, \fB\-\-config\fR \fIPATH\fR
 Read configuration from
@@ -94,9 +99,13 @@ misconfigurations).
 Load and validate the configuration file, then exit without starting the
 monitor. Every problem is reported on standard error with its line number;
 on success a short summary (enabled alert channels, number of trusted
-sources) is printed. Exit status is 0 if the file is valid and 1 if it is
-invalid or does not exist. Run it as the service user so that file
-ownership and permission checks match what the daemon will see:
+sources, message style) is printed. Warnings, such as an unknown key, are
+printed too but do not change the exit status. Exit status is 0 if the
+file is valid and 1 if it is invalid or does not exist. It refuses to run
+as root and does not need the
+.B systemd\-journal
+group. Run it as the service user so that file ownership and permission
+checks match what the daemon will see:
 .B sudo \-u pamsignal pamsignal \-\-check\-config
 .TP
 .BR \-T ", " \-\-test\-alert
@@ -105,17 +114,19 @@ alert channel, wait for each delivery to finish, and exit. One result line
 is printed per channel; an HTTP error status from the receiver (for example
 a revoked webhook or a wrong token) counts as a failure, and the underlying
 .BR curl (1)
-error is shown. The test message ignores
+error is shown. The test message uses the configured
+.B message_style
+and ignores
 .B enable_notification_type
 and
 .BR alert_cooldown_sec .
 Exit status is 0 only if every configured channel accepted the message; it
-is 1 if any channel failed or none is configured. Run it as the service
-user, like
-.BR \-\-check\-config .
+is 1 if any channel failed or none is configured. Like
+.BR \-\-check\-config ,
+it refuses to run as root; run it as the service user.
 .TP
 .BR \-V ", " \-\-version
-Print the daemon's version (e.g. "pamsignal 0.6.0") to standard output
+Print the daemon's version (e.g. "pamsignal @VERSION@") to standard output
 and exit with status 0. Runs before any privilege check, so it works
 under any user (root, dpkg/rpm post-install scripts, plain operator).
 .TP
@@ -127,7 +138,7 @@ pointer to this man page and
 Also runs before any privilege check.
 .PP
 An unrecognized option, or
-.B -c
+.B \-c
 without a
 .IR PATH ,
 is an error:
@@ -141,8 +152,10 @@ Reload the configuration file. Parsing happens into a temporary
 .B ps_config_t
 first; on success the new configuration is swapped in atomically. On parse
 failure the previous configuration is preserved. The in-memory brute-force
-tracking table is preserved across reloads, so existing per-source-IP
-attempt counts and alert cooldowns survive the reload.
+tracking table is preserved across reloads, so existing per-source
+attempt counts and alert cooldowns survive the reload; if
+.B max_tracked_ips
+shrinks, entries beyond the new size are dropped.
 .TP
 .B SIGTERM
 Terminate gracefully. The journal watch loop returns, the PID file (if
@@ -214,7 +227,11 @@ journalctl _SYSTEMD_UNIT=pamsignal.service EVENT_ACTION=brute_force_detected
 .PP
 Journal events carry the ECS-aligned
 .BR EVENT_* ", " USER_* ", " SOURCE_* ", " HOST_* ", " SERVICE_* ", and " PROCESS_*
-fields. The legacy
+fields. Session events also carry
+.B PAMSIGNAL_ACTOR
+(the logged-in account that opened the session, as reported by
+.BR pam_unix (8);
+empty when not known). The legacy
 .B PAMSIGNAL_*
 parallel field set retained through 0.2.x for backward compatibility was
 removed in 0.3.0; update any saved
@@ -231,9 +248,19 @@ Successful clean shutdown (typically via SIGTERM/SIGINT).
 .TP
 .B 1
 Refused to start: invoked as root, current user is not in the
-.B systemd-journal
+.B systemd\-journal
 group, the configuration file path could not be resolved, or the
-configuration file failed to load.
+configuration file failed to load. For
+.BR \-\-check\-config :
+the file is invalid or missing. For
+.BR \-\-test\-alert :
+a channel failed or none is configured.
+.TP
+.B 2
+Unrecognized option, or
+.B \-c
+without a
+.IR PATH .
 .TP
 .B non\-zero (other)
 An internal subsystem failed to initialize: signal handlers, daemonize,
@@ -278,8 +305,10 @@ so symlinked targets are rejected at config load.
 .IP \(bu 2
 Journal entries are filtered through an
 .B _EXE
-allowlist (\fBsshd\fR, \fBsudo\fR, \fBsu\fR, \fBlogin\fR,
-\fBsystemd-logind\fR under a system prefix); entries with a missing
+allowlist (\fBsshd\fR, \fBsshd\-session\fR, \fBsudo\fR, \fBsu\fR,
+\fBlogin\fR, \fBsystemd\-logind\fR under
+.IR /usr/ ", " /bin/ ", " /sbin/ ", " /lib/ ", " /lib64/ " or " /opt/ );
+entries with a missing
 .B _EXE
 field are dropped, so an unprivileged user cannot inject fake PAM events
 via
@@ -303,7 +332,7 @@ and
 when the threshold is crossed. Per-event chat alerts are suppressed for
 sudo/su login failures (the journal entry is still written so
 .B journalctl
-history is complete) \(em only the threshold-breach alert fires, so a
+history is complete); only the threshold-breach alert fires, so a
 single mistyped password does not page the operator.
 .SH SEE ALSO
 .BR pamsignal.conf (5),

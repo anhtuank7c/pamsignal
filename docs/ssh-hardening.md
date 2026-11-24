@@ -43,7 +43,7 @@ On a **shared** server, root logins also destroy accountability. When five peopl
 
 | Question after an incident | Shared `root` account | One account per person + `sudo` |
 |---|---|---|
-| Who logged in? | Only the key fingerprint in the sshd log; you have to map it back to a person by hand | The username: `login_success user=alice` |
+| Who logged in? | Only the key fingerprint in the sshd log; you have to map it back to a person by hand | The username: `LOGIN_SUCCESS user=alice` |
 | Who became root? | Everyone already is root | `sudo` logs every elevation with the person's name; PAMSignal alerts show `actor=alice` |
 | Which commands did they run? | One shared `/root/.bash_history`, interleaved, rewritten on every logout, and erasable by anyone | `sudo` logs each command; `auditd` records commands under the person's login ID (see [Part 2](#part-2-know-who-did-what-on-a-shared-server)) |
 | Who changed `/etc/nginx/nginx.conf`? | The audit trail says `uid=0`, every time | `auditd` names the person even when they edited it as root |
@@ -192,10 +192,12 @@ This is the satisfying part. Tail PAMSignal and watch your changes take effect i
 journalctl -t pamsignal -f
 ```
 
-- Your key login shows up as `login_success user=alice ... auth=publickey`, with your name, not `root`.
-- When you run `sudo`, you see `session_opened user=root actor=alice service=sudo`: who became root, not just that someone did.
-- A bot trying a password now fails *instantly*: you'll see `login_failure ... auth=password` with no chance of success.
-- Once a single IP crosses your `fail_threshold`, you get a `brute_force_detected` line (and a chat alert if configured).
+- Your key login shows up as `LOGIN_SUCCESS user=alice ... auth=publickey`, with your name, not `root`.
+- When you run `sudo`, you see `SESSION_OPEN user=root actor=alice service=sudo`: who became root, not just that someone did.
+- A bot trying a password now fails *instantly*: you'll see `LOGIN_FAILED ... auth=password` with no chance of success.
+- Once a single IP reaches your `fail_threshold` inside `fail_window_sec`, you get a `BRUTE_FORCE_DETECTED` line (and a chat alert if configured). If a login from that IP then succeeds, you get a `LOGIN_AFTER_FAILURES` line and a critical alert.
+
+The chat alerts carry the same facts in their own wording (`auth.login_success`, `auth.session_opened`, ...); see [Alerts](./alerts.md#message-format).
 
 You've just closed the loop: prevention (Part 1) made the door strong, and detection (PAMSignal) proves it and watches it.
 
@@ -234,7 +236,7 @@ sudo journalctl -t sudo --since today
 # … sudo[48211]:    alice : TTY=pts/1 ; PWD=/home/alice ; USER=root ; COMMAND=/usr/bin/systemctl restart nginx
 ```
 
-PAMSignal turns the same moment into a `session_opened … actor=alice service=sudo` alert, so you see elevations in real time. `actor=` is the account that logged in to that session: if alice first ran `su - bob` and bob ran `sudo`, the alert still says `alice`, while this log says `bob`. Repeated wrong `sudo` passwords from one person raise a `brute_force_detected actor=… target=root` alert.
+PAMSignal turns the same moment into a `session_opened … actor=alice service=sudo` alert, so you see elevations in real time. `actor=` is the account that logged in to that session: if alice first ran `su - bob` and bob ran `sudo`, the alert still says `alice`, while this log says `bob`. Repeated wrong `sudo` passwords from one person raise a `brute_force_detected actor=… target=root` alert. The `session_opened` alert is a routine alert, and routine alerts share a single `alert_cooldown_sec` timer, so a `sudo` within a minute of another alerted event (alice's own login, say) is recorded in `journalctl -t pamsignal` but not sent to chat; see [Configuration](./configuration.md#brute-force-detection).
 
 The gap: if someone runs `sudo -i`, `sudo su -` or `sudo bash`, this log shows only the shell being started. The next two sections close that gap.
 
@@ -434,7 +436,7 @@ graph LR
     style db1 fill:#6c757d,stroke:#495057,color:#fff
 ```
 
-**Why this pairs so well with PAMSignal:** the bastion becomes the one internet-facing SSH surface, so it absorbs essentially all the brute-force traffic. Install PAMSignal there and your alerts concentrate where the attacks actually land. Install it on the private hosts too, and any login that *didn't* come through the bastion is an immediate red flag.
+**Why this pairs so well with PAMSignal:** the bastion becomes the one internet-facing SSH surface, so it absorbs essentially all the brute-force traffic. Install PAMSignal there and your alerts concentrate where the attacks actually land. Install it on the private hosts too, and any login that *didn't* come through the bastion is an immediate red flag. On those private hosts you can list the bastion's address in [`trusted_sources`](./configuration.md#trusted-sources): routine pings for logins through the bastion go quiet, so the login that came from somewhere else stands out. Brute-force and login-after-failures alerts still fire for trusted addresses.
 
 > **Prefer `ProxyJump` over agent forwarding.** Agent forwarding (`ForwardAgent yes`) exposes your keys to whatever host you land on. `ProxyJump` doesn't: your keys never touch the bastion. Only forward your agent to hosts you fully trust.
 
@@ -542,7 +544,7 @@ That per-host tagging is the foundation of the multi-tenant patterns in [Use Cas
 Keep a single canonical `pamsignal.conf` in your config-management repo and push it everywhere. The keys most worth standardising across a fleet:
 
 - `fail_threshold` / `fail_window_sec`: your fleet-wide definition of "brute force".
-- `enable_notification_type`: narrow the chat noise (e.g. `login_success,brute_force`); the local journal still records everything. See [Configuration](./configuration.md#notification-type-filter).
+- `enable_notification_type`: narrow the chat noise (e.g. `login_success,brute_force,login_after_failures`); the local journal still records everything. See [Configuration](./configuration.md#notification-type-filter).
 - The alert-channel credentials: usually one shared channel for the fleet, or one per environment.
 
 Reload everywhere after a config change without restarting:

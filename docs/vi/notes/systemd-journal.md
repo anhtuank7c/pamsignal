@@ -7,6 +7,8 @@
 - **Ngày hoàn thành**: 17/02/2026
 - **Ngày cập nhật**: 20/02/2026
 
+> **Ghi chú (code hiện tại):** các đoạn code mẫu ở mục 4.2, 5.2 và 6.4 là bản phác thảo ban đầu. Hiện nay `src/journal_watch.c` gọi `sd_journal_wait()` với timeout 1 s (để báo watchdog cho systemd và xử lý SIGHUP), xử lý mọi loại sự kiện PAM chứ không chỉ đăng nhập thành công, vẫn phải phân tích nội dung `MESSAGE` (`ps_parse_message()` trong `src/utils.c`), bỏ qua các entry có `_EXE` không phải binary tin cậy, và gửi cảnh báo qua một tiến trình con `curl` được fork tới Telegram, Slack, Teams, WhatsApp, Discord hoặc custom webhook. Không có kênh email.
+
 ## 1. Mục Tiêu
 
 - **Event-driven**: Thay thế cách quét file log truyền thống bằng cách đăng ký nhận sự kiện từ `libsystemd`, cho phép PAMSignal phản ứng ngay lập tức khi có log mới mà không lãng phí tài nguyên trong thời gian rảnh.
@@ -139,14 +141,14 @@ Khi PAM xác thực người dùng, nó tạo ra các thông điệp log đượ
 
 **Truyền thống (rsyslog):**
 ```
-Feb 17 22:30:15 server sshd[12345]: Accepted password for user from 192.168.1.100 port 54321 ssh2
-Feb 17 22:30:15 server sshd[12345]: pam_unix(sshd:session): session opened for user by (uid=0)
+Feb 17 22:30:15 server sshd[12345]: Accepted password for alice from 192.168.1.100 port 54321 ssh2
+Feb 17 22:30:15 server sshd[12345]: pam_unix(sshd:session): session opened for user alice(uid=1000) by alice(uid=0)
 ```
 
 **Hiện đại (systemd-journald):**
 ```json
 {
-  "MESSAGE": "pam_unix(sshd:session): session opened for user by (uid=0)",
+  "MESSAGE": "pam_unix(sshd:session): session opened for user alice(uid=1000) by alice(uid=0)",
   "_PID": "12345",
   "_UID": "0",
   "_SYSTEMD_UNIT": "sshd.service",

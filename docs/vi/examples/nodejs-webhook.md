@@ -14,11 +14,13 @@ Ví dụ này áp dụng các best practice của Express, bao gồm:
 
 ### 1. Cài đặt Dependencies
 
-Đảm bảo bạn đã cài Node.js, sau đó chạy:
+Đảm bảo bạn đã cài Node.js 20 trở lên và [pnpm](https://pnpm.io/installation), sau đó chạy:
 
 ```bash
-npm install
+pnpm install
 ```
+
+Hãy dùng pnpm thay vì npm: lockfile là `pnpm-lock.yaml`, và các security override cho dependency gián tiếp có lỗ hổng nằm trong `pnpm-workspace.yaml`, thứ mà npm bỏ qua.
 
 ### 2. Cấu hình Environment
 
@@ -34,13 +36,13 @@ Chỉnh sửa `.env` và đặt `WEBHOOK_SECRET` thành một chuỗi ngẫu nhi
 
 ```bash
 # Compile TypeScript sang JavaScript (xuất ra thư mục dist/)
-npm run build
+pnpm run build
 
 # Chạy code đã compile cho môi trường production
-npm start
+pnpm start
 
 # Để phát triển (tự khởi động lại khi file thay đổi, không cần build)
-npm run dev
+pnpm run dev
 ```
 
 Server sẽ bắt đầu lắng nghe tại `http://localhost:3000/webhook/pamsignal`.
@@ -48,6 +50,8 @@ Server sẽ bắt đầu lắng nghe tại `http://localhost:3000/webhook/pamsig
 ## Tích hợp với PAMSignal
 
 Express app này bắt buộc sử dụng `Authorization: Bearer <token>` để tránh lộ secret qua access log của URL. PAMSignal hỗ trợ điều này trực tiếp thông qua config key `webhook_auth_header`, không cần reverse proxy.
+
+PAMSignal chỉ gửi qua HTTPS: `webhook_url` phải bắt đầu bằng `https://` (nếu không, config bị từ chối) và curl chạy với `--proto =https`. Chế độ plain HTTP ở trên chỉ dùng để thử bằng curl và Bruno. Với alert thật, hãy chạy receiver với TLS (xem [Mutual TLS](#mutual-tls-nâng-cao)) hoặc đặt sau một TLS reverse proxy.
 
 ### Cấu hình trực tiếp (khuyến nghị)
 
@@ -62,6 +66,12 @@ Reload PAMSignal để áp dụng các thay đổi:
 
 ```bash
 sudo systemctl reload pamsignal
+```
+
+Sau đó kiểm tra kênh từ đầu đến cuối. `--test-alert` gửi một payload `test_alert` tới mọi kênh đã cấu hình và báo `ok` hoặc `FAILED` cho từng kênh; receiver sẽ ghi một dòng `[TEST_ALERT]`:
+
+```bash
+sudo -u pamsignal pamsignal --test-alert
 ```
 
 Giá trị header được truyền cho curl qua một memfd-backed config file, vì vậy token không bao giờ xuất hiện trong `/proc/<pid>/cmdline`. Đặt quyền `0640 root:pamsignal` trên `pamsignal.conf` để giữ giá trị không đọc được từ disk với các user không phải daemon.
@@ -94,7 +104,7 @@ TLS_REQUIRE_CLIENT_CERT=true
 EOF
 
 # 3. Start the receiver.
-npm run dev   # or: npm run build && npm start
+pnpm run dev   # or: pnpm run build && pnpm start
 ```
 
 Bạn sẽ thấy `PAMSignal Webhook Receiver listening on https://localhost:3000/webhook/pamsignal (mTLS, client cert required)`.
@@ -106,19 +116,48 @@ Trong `/etc/pamsignal/pamsignal.conf`:
 ```ini
 webhook_url = https://localhost:3000/webhook/pamsignal
 webhook_auth_header = Authorization: Bearer your_super_secret_token_here
-webhook_client_cert = /absolute/path/to/certs/client.crt
-webhook_client_key  = /absolute/path/to/certs/client.key
+webhook_client_cert = /etc/pamsignal/webhook-client.crt
+webhook_client_key  = /etc/pamsignal/webhook-client.key
 # Required because the demo CA isn't in the system trust store.
-webhook_ca_bundle   = /absolute/path/to/certs/ca.crt
+webhook_ca_bundle   = /etc/pamsignal/webhook-ca.crt
 ```
 
-Reload pamsignal (`sudo systemctl reload pamsignal`) và kích hoạt một event; receiver sẽ ghi log nó. Một request từ bất kỳ client nào không có cert hợp lệ (ví dụ: `curl https://localhost:3000/webhook/pamsignal`) sẽ bị từ chối ngay tại TLS handshake, trước khi đến được Express.
+PAMSignal sẽ không dùng trực tiếp các file trong `./certs/`: nó mở từng đường dẫn với `O_NOFOLLOW` (symlink bị từ chối), mỗi file phải thuộc sở hữu của `root` hoặc user của daemon, key không được để group hoặc world đọc, và `ProtectHome=yes` của unit ẩn `/home`. Hãy sao chép chúng vào đúng chỗ, với key thuộc sở hữu của `pamsignal` vì curl chạy dưới user đó:
+
+```bash
+sudo install -m 0644 -o root -g root certs/client.crt /etc/pamsignal/webhook-client.crt
+sudo install -m 0644 -o root -g root certs/ca.crt     /etc/pamsignal/webhook-ca.crt
+sudo install -m 0600 -o pamsignal -g pamsignal certs/client.key /etc/pamsignal/webhook-client.key
+sudo -u pamsignal pamsignal --check-config
+```
+
+Reload pamsignal (`sudo systemctl reload pamsignal`) rồi chạy `sudo -u pamsignal pamsignal --test-alert`; receiver sẽ ghi một dòng `[TEST_ALERT]`. Một request từ bất kỳ client nào không có cert hợp lệ (ví dụ: `curl https://localhost:3000/webhook/pamsignal`) sẽ bị từ chối ngay tại TLS handshake, trước khi đến được Express.
 
 #### Cấu hình cho môi trường production
 
-Cho các deployment trên môi trường production, hãy thay `./certs/*` bằng các đường dẫn được quản lý bởi cert pipeline của bạn (cert-manager, certbot, `systemd-creds`, internal CA + ACME, v.v.). Bốn env var và các config key `webhook_*` không thay đổi. `gen-test-certs.sh` chỉ dùng cho kiểm thử local/CI, không đưa output của nó lên production.
+Cho các deployment trên môi trường production, hãy thay các file demo bằng file được quản lý bởi cert pipeline của bạn (cert-manager, certbot, `systemd-creds`, internal CA + ACME, v.v.). Bốn env var và các config key `webhook_*` không thay đổi. `gen-test-certs.sh` chỉ dùng cho kiểm thử local/CI, không đưa output của nó lên production.
 
 mTLS kết hợp cộng thêm với `webhook_auth_header` nếu receiver muốn cả hai (mTLS để xác minh danh tính service ở transport layer, Bearer để ủy quyền từng request). Express middleware trong ví dụ này kiểm tra Bearer token bất kể transport, vì vậy một deployment chỉ dùng mTLS có thể đơn giản để `WEBHOOK_SECRET` trống (hoặc đặt cả hai để tăng cường bảo mật theo chiều sâu).
+
+## PAMSignal gửi những gì
+
+PAMSignal gửi một object ECS JSON cho mỗi alert. Receiver chỉ kiểm tra có `event` và `pamsignal`, sau đó ghi một dòng log theo `event.action`:
+
+| `event.action` | Khi nào | Các trường dòng log sử dụng |
+|---|---|---|
+| `login_success` | Đăng nhập thành công | `user.name`, `source.ip`, `host.hostname`, `process.pid` |
+| `login_failure` | Đăng nhập thất bại (lỗi `sudo`/`su` không được gửi từng lần; chúng chỉ được đếm cho brute force) | `user.name`, `source.ip`, `host.hostname` |
+| `session_opened`, `session_closed` | Mở và đóng phiên | `user.name`, `host.hostname` |
+| `brute_force_detected` | `fail_threshold` lần thất bại trong `fail_window_sec` | `pamsignal.attempts`, `source.ip`, `pamsignal.window_sec` |
+| `login_after_failures` | Đăng nhập thành công ngay sau một chuỗi thất bại từ cùng IP | `user.name`, `source.ip`, `pamsignal.failures`, `host.hostname` |
+| `test_alert` | `pamsignal --test-alert` | `host.hostname` |
+
+Action khác được ghi là `[UNKNOWN_EVENT]`. Có hai dạng payload cần lưu ý nếu bạn mở rộng handler:
+
+- Sự kiện phiên không có object `source`. Khi phiên được mở từ một tài khoản khác (ví dụ một phiên `sudo` do `alice` khởi chạy), `pamsignal.actor` chứa tài khoản đó và `user.name` vẫn là user của phiên.
+- Brute force `sudo`/`su` cục bộ không có object `source`: `user.name` là tài khoản đang gõ mật khẩu và `user.target.name` là tài khoản nó muốn chuyển sang. Dòng log demo in `source.ip`, nên sẽ hiện `undefined` trong trường hợp này.
+
+Ví dụ payload đầy đủ và bảng tham chiếu trường nằm ở [docs/alerts.md](../alerts.md#custom-webhook-ecs-json).
 
 ## Triển khai như Systemd Daemon
 
@@ -126,7 +165,7 @@ mTLS kết hợp cộng thêm với `webhook_auth_header` nếu receiver muốn 
 
 1. Đảm bảo bạn đã compile code:
    ```bash
-   npm run build
+   pnpm run build
    ```
 
 2. Tạo một systemd service file. Mở `/etc/systemd/system/pamsignal-webhook.service`:
@@ -148,7 +187,7 @@ mTLS kết hợp cộng thêm với `webhook_auth_header` nếu receiver muốn 
    # Update this to the absolute path of this example directory
    WorkingDirectory=/opt/pamsignal-nodejs-webhook
    # Path to your Node.js executable (find it with `which node`)
-   ExecStart=/usr/bin/node dist/index.js
+   ExecStart=/usr/bin/node dist/server.js
    Restart=on-failure
    RestartSec=5
    
@@ -195,7 +234,7 @@ Xem [`bruno-collection.md`](bruno-collection.md) để biết cách thiết lậ
 
 ### Dùng Curl
 
-Bạn cũng có thể mô phỏng một PAMSignal brute-force alert bằng `curl` để kiểm thử Express server:
+Bạn cũng có thể mô phỏng một PAMSignal brute-force alert bằng `curl` để kiểm thử Express server. Receiver chỉ kiểm tra có `event` và `pamsignal`, nên một payload rút gọn là đủ:
 
 ```bash
 # Testing with Bearer Token header
@@ -209,14 +248,14 @@ curl -X POST http://localhost:3000/webhook/pamsignal \
      }'
 ```
 
-Bạn sẽ thấy event được parse và ghi log đẹp trong stream `journalctl` hoặc console Node.js của bạn!
+Receiver ghi `[BRUTE_FORCE] 12 failed attempts detected from IP 203.0.113.50 in 300s!` ra console (hoặc `journalctl -u pamsignal-webhook` khi chạy như service).
 
 ## Unit Tests
 
-Project này bao gồm một bộ Jest test toàn diện kiểm tra xác thực (Bearer token) và payload validation.
+Project này bao gồm một bộ Jest test kiểm tra xác thực (Bearer token), payload validation, một vòng request HTTP thật, và đường dẫn mTLS handshake.
 
 Để chạy tests:
 
 ```bash
-npm run test
+pnpm test
 ```

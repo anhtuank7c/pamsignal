@@ -17,7 +17,7 @@ Establish the foundation for the **PAMSignal** project. Ensure the source code i
 
 Since the project focuses on Linux and requires the **libsystemd** library, to run this project you need to use a Linux operating system, such as Ubuntu or any other distribution.
 
-**Why choose Meson build system?** [see details here](./phase-1-meson_guide.md)
+**Why choose Meson build system?** [see details here](./meson-build-system.md)
 
 **Meson documentation** [see details here](https://mesonbuild.com/Quick-guide.html)
 
@@ -51,7 +51,7 @@ pamsignal
 
 The C compiler has several options related to machine code optimization [see details here](https://gcc.gnu.org/onlinedocs/gcc-15.1.0/gcc/Optimize-Options.html)
 
-By default in `meson.build`, I have specified `'buildtype=release'` as the default option. In Meson, a `release` build type automatically applies the `-O3` optimization level and strips debug symbols.
+By default in `meson.build`, I have specified `'buildtype=release'` as the default option. In Meson, the `release` build type sets `optimization=3` (`-O3`) and `debug=false` (no debug info). It does not strip the binary; that is the separate `strip` option (packaging tools strip at install time).
 
 **Why Release mode?**
 

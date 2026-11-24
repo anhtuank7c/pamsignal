@@ -43,7 +43,7 @@ Trên server **dùng chung**, đăng nhập bằng root còn xóa sạch khả n
 
 | Câu hỏi sau sự cố | Dùng chung tài khoản `root` | Mỗi người một tài khoản + `sudo` |
 |---|---|---|
-| Ai đã đăng nhập? | Chỉ có fingerprint của key trong log sshd; bạn phải tự dò ngược ra là ai | Tên user: `login_success user=alice` |
+| Ai đã đăng nhập? | Chỉ có fingerprint của key trong log sshd; bạn phải tự dò ngược ra là ai | Tên user: `LOGIN_SUCCESS user=alice` |
 | Ai đã lên root? | Ai cũng đang là root sẵn rồi | `sudo` ghi lại mỗi lần lên quyền kèm tên người; alert của PAMSignal hiện `actor=alice` |
 | Họ đã chạy những lệnh gì? | Một file `/root/.bash_history` chung, các lệnh lẫn lộn, bị ghi đè mỗi lần logout, và ai cũng xóa được | `sudo` ghi từng lệnh; `auditd` ghi lệnh theo login ID của từng người (xem [Phần 2](#phần-2-biết-ai-đã-làm-gì-trên-server-dùng-chung)) |
 | Ai đã sửa `/etc/nginx/nginx.conf`? | Audit trail chỉ ghi `uid=0`, lần nào cũng vậy | `auditd` ghi đúng tên người, kể cả khi họ sửa file với quyền root |
@@ -192,10 +192,12 @@ sudo systemctl reload sshd
 journalctl -t pamsignal -f
 ```
 
-- Đăng nhập bằng key của bạn hiện ra dưới dạng `login_success user=alice ... auth=publickey`, với tên của bạn, không phải `root`.
-- Khi bạn chạy `sudo`, bạn thấy `session_opened user=root actor=alice service=sudo`: biết ai đã lên root, chứ không chỉ biết là có người lên root.
-- Một con bot thử password giờ thất bại *ngay lập tức*: bạn sẽ thấy `login_failure ... auth=password`, không còn cửa nào để thành công.
-- Khi một IP vượt `fail_threshold`, bạn nhận được một dòng `brute_force_detected` (và một chat alert nếu đã cấu hình).
+- Đăng nhập bằng key của bạn hiện ra dưới dạng `LOGIN_SUCCESS user=alice ... auth=publickey`, với tên của bạn, không phải `root`.
+- Khi bạn chạy `sudo`, bạn thấy `SESSION_OPEN user=root actor=alice service=sudo`: biết ai đã lên root, chứ không chỉ biết là có người lên root.
+- Một con bot thử password giờ thất bại *ngay lập tức*: bạn sẽ thấy `LOGIN_FAILED ... auth=password`, không còn cửa nào để thành công.
+- Khi một IP chạm `fail_threshold` trong khoảng `fail_window_sec`, bạn nhận được một dòng `BRUTE_FORCE_DETECTED` (và một chat alert nếu đã cấu hình). Nếu sau đó một lần đăng nhập từ IP đó thành công, bạn nhận được một dòng `LOGIN_AFTER_FAILURES` và một alert mức critical.
+
+Các chat alert mang cùng thông tin đó theo cách viết riêng (`auth.login_success`, `auth.session_opened`, ...); xem [Alerts](alerts.md#định-dạng-tin-nhắn).
 
 Vậy là vòng tròn đã khép lại: phòng ngừa (Phần 1) làm cánh cửa vững chắc, còn phát hiện (PAMSignal) chứng minh điều đó và canh chừng nó.
 
@@ -234,7 +236,7 @@ sudo journalctl -t sudo --since today
 # … sudo[48211]:    alice : TTY=pts/1 ; PWD=/home/alice ; USER=root ; COMMAND=/usr/bin/systemctl restart nginx
 ```
 
-PAMSignal biến chính khoảnh khắc đó thành một alert `session_opened … actor=alice service=sudo`, nên bạn thấy các lần lên quyền theo thời gian thực. `actor=` là tài khoản đã đăng nhập vào phiên đó: nếu alice chạy `su - bob` trước rồi bob mới chạy `sudo`, alert vẫn ghi `alice`, còn log này ghi `bob`. Một người gõ sai password `sudo` nhiều lần sẽ sinh ra alert `brute_force_detected actor=… target=root`.
+PAMSignal biến chính khoảnh khắc đó thành một alert `session_opened … actor=alice service=sudo`, nên bạn thấy các lần lên quyền theo thời gian thực. `actor=` là tài khoản đã đăng nhập vào phiên đó: nếu alice chạy `su - bob` trước rồi bob mới chạy `sudo`, alert vẫn ghi `alice`, còn log này ghi `bob`. Một người gõ sai password `sudo` nhiều lần sẽ sinh ra alert `brute_force_detected actor=… target=root`. Alert `session_opened` là một alert thường lệ, và các alert thường lệ dùng chung một bộ đếm `alert_cooldown_sec`, nên một lần `sudo` xảy ra trong vòng một phút sau một sự kiện khác đã được cảnh báo (chẳng hạn chính lần đăng nhập của alice) sẽ được ghi vào `journalctl -t pamsignal` nhưng không được gửi lên chat; xem [Configuration](configuration.md#phát-hiện-brute-force).
 
 Lỗ hổng còn lại: nếu ai đó chạy `sudo -i`, `sudo su -` hay `sudo bash`, log này chỉ cho thấy một shell đã được mở. Hai mục tiếp theo lấp lỗ hổng đó.
 
@@ -434,7 +436,7 @@ graph LR
     style db1 fill:#6c757d,stroke:#495057,color:#fff
 ```
 
-**Vì sao nó hợp với PAMSignal đến vậy:** bastion trở thành bề mặt SSH duy nhất hướng ra internet, nên nó hứng gần như toàn bộ lưu lượng brute-force. Cài PAMSignal ở đó thì alert tập trung đúng nơi tấn công đổ về. Cài luôn trên các host private nữa thì bất kỳ lần đăng nhập nào *không* đi qua bastion đều là dấu hiệu đáng nghi ngay lập tức.
+**Vì sao nó hợp với PAMSignal đến vậy:** bastion trở thành bề mặt SSH duy nhất hướng ra internet, nên nó hứng gần như toàn bộ lưu lượng brute-force. Cài PAMSignal ở đó thì alert tập trung đúng nơi tấn công đổ về. Cài luôn trên các host private nữa thì bất kỳ lần đăng nhập nào *không* đi qua bastion đều là dấu hiệu đáng nghi ngay lập tức. Trên các host private đó, bạn có thể đưa địa chỉ của bastion vào [`trusted_sources`](configuration.md#nguồn-tin-cậy): các ping thường lệ cho đăng nhập đi qua bastion sẽ im đi, nên lần đăng nhập đến từ nơi khác sẽ nổi bật. Alert brute-force và login-after-failures vẫn bắn ra với các địa chỉ tin cậy.
 
 > **Ưu tiên `ProxyJump` hơn agent forwarding.** Agent forwarding (`ForwardAgent yes`) phơi key của bạn ra host mà bạn vừa vào. `ProxyJump` thì không: key của bạn không bao giờ chạm tới bastion. Chỉ forward agent tới những host bạn hoàn toàn tin tưởng.
 
@@ -542,7 +544,7 @@ Cách gắn tag theo host như vậy chính là nền tảng cho các mô hình 
 Giữ một file `pamsignal.conf` chuẩn duy nhất trong repo config-management rồi đẩy đi mọi nơi. Những key đáng chuẩn hóa trên cả fleet:
 
 - `fail_threshold` / `fail_window_sec`: định nghĩa "brute force" chung cho cả fleet.
-- `enable_notification_type`: lọc bớt tiếng ồn trên chat (ví dụ `login_success,brute_force`); journal cục bộ vẫn ghi đủ mọi thứ. Xem [Configuration](configuration.md#bộ-lọc-loại-thông-báo).
+- `enable_notification_type`: lọc bớt tiếng ồn trên chat (ví dụ `login_success,brute_force,login_after_failures`); journal cục bộ vẫn ghi đủ mọi thứ. Xem [Configuration](configuration.md#bộ-lọc-loại-thông-báo).
 - Thông tin xác thực kênh cảnh báo: thường là một kênh chung cho cả fleet, hoặc một kênh cho mỗi môi trường.
 
 Reload mọi nơi sau khi đổi cấu hình mà không cần restart:

@@ -60,6 +60,8 @@ Both share the same two variables, `WEBHOOK_URL` and `WEBHOOK_SECRET`, which eve
 
 The other two canned requests (`Login Failure`, `Brute Force Detected`) work identically with different payload shapes and produce different log prefixes on the receiver side.
 
+The canned bodies are trimmed: they carry only the fields the example receivers log, with the same field names PAMSignal uses. The collection has no request for `session_opened`, `session_closed`, `login_after_failures` or `test_alert`. To test those, or to send the full ECS document PAMSignal produces, copy a payload from [docs/alerts.md](../../docs/alerts.md#custom-webhook-ecs-json) into a new request (see [Add a new request](#add-a-new-request)).
+
 ## Testing your receiver's defenses
 
 The receiver implements several defensive checks (authentication, body size, Content-Type, payload shape). You can verify each one by deliberately breaking a request and watching the response code. Each row is a 30-second test:

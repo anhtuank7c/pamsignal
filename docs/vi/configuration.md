@@ -2,7 +2,7 @@
 
 > [English](../configuration.md) · **Tiếng Việt**
 
-`/etc/pamsignal/pamsignal.conf`: định dạng INI, không phụ thuộc thư viện ngoài. Tất cả các giá trị đều là tùy chọn; nếu file bị thiếu hoặc một key không có mặt, các giá trị mặc định hợp lý sẽ được áp dụng.
+`/etc/pamsignal/pamsignal.conf`: mỗi dòng một cặp `key = value`. Mọi key đều là tùy chọn; nếu file bị thiếu hoặc một key không có mặt, giá trị mặc định sẽ được dùng. Các gói cài đặt đặt file mẫu có chú thích [`pamsignal.conf.example`](../../pamsignal.conf.example) vào đúng đường dẫn này.
 
 Vì file này có thể chứa thông tin xác thực của các kênh cảnh báo, quyền truy cập cần được giới hạn:
 
@@ -10,6 +10,14 @@ Vì file này có thể chứa thông tin xác thực của các kênh cảnh b�
 sudo chown root:pamsignal /etc/pamsignal/pamsignal.conf
 sudo chmod 0640 /etc/pamsignal/pamsignal.conf
 ```
+
+## Định dạng file và kiểm tra hợp lệ
+
+- **Cú pháp.** Mỗi dòng một cặp `key = value`; khoảng trắng quanh key và value được bỏ qua. Dòng có ký tự không trắng đầu tiên là `#` là comment. Không có comment cuối dòng: một `#` đứng sau value sẽ trở thành một phần của value. Value không cần đặt trong dấu nháy (dấu nháy được giữ nguyên như ký tự thường). Nếu một key xuất hiện hai lần, lần cuối được dùng.
+- **Key không xác định** bị bỏ qua kèm một cảnh báo (`config:N: unknown key: ...`) trong journal, và trên stderr khi chạy `--check-config`. Vì vậy một key gõ sai không làm daemon dừng; hãy đọc các cảnh báo trong output của `--check-config`.
+- **Value sai** là lỗi: số nằm ngoài khoảng, token không xác định, URL, token hay CIDR sai định dạng, hoặc một dòng không có `=`. Chỉ cần một lỗi là daemon từ chối khởi động, và khi reload thì config hiện tại được giữ nguyên.
+- **Kiểm tra file.** File được mở với `O_NOFOLLOW` (symlink bị từ chối), phải là file thường thuộc sở hữu của root hoặc daemon user, và không được cho group hoặc other quyền ghi. Nếu không, daemon từ chối khởi động.
+- **Thiếu file.** Daemon khởi động với giá trị mặc định (không có kênh cảnh báo nào; sự kiện chỉ được ghi vào journal). Còn `--check-config` và `--test-alert` thì thoát với mã `1`, vì thiếu file trong trường hợp này thường là do gõ sai đường dẫn.
 
 ## Tham chiếu đầy đủ
 
@@ -19,6 +27,10 @@ fail_threshold = 5
 fail_window_sec = 300
 max_tracked_ips = 256
 alert_cooldown_sec = 60
+
+# Context tags (optional)
+provider = aws
+service_name = web-api
 
 # Login-after-failures detection (0 = disabled)
 success_after_fail_threshold = 3
@@ -67,9 +79,16 @@ webhook_ca_bundle   = /etc/pamsignal/webhook-ca.pem
 | Key | Mặc định | Khoảng giá trị | Mô tả |
 |-----|---------|-------|-------------|
 | `fail_threshold` | `5` | 1 - 10000 | Số lần thất bại trước khi kích hoạt cảnh báo |
-| `fail_window_sec` | `300` | 1 - 86400 | Cửa sổ thời gian (giây) để đếm số lần thất bại theo IP |
-| `max_tracked_ips` | `256` | 1 - 100000 | Số IP tối đa được theo dõi cùng lúc |
-| `alert_cooldown_sec` | `60` | 0 - 86400 | Số giây tối thiểu giữa các cảnh báo cho cùng một IP (0 = không có cooldown) |
+| `fail_window_sec` | `300` | 1 - 86400 | Cửa sổ thời gian (giây) để đếm số lần thất bại theo IP, hoặc theo actor nội bộ với `sudo`/`su` |
+| `max_tracked_ips` | `256` | 1 - 100000 | Số IP (và actor nội bộ) tối đa được theo dõi cùng lúc; khi bảng đầy, mục ít hoạt động gần đây nhất bị thay thế |
+| `alert_cooldown_sec` | `60` | 0 - 86400 | Giới hạn tần suất cảnh báo chat (0 = không giới hạn); xem bên dưới |
+
+`alert_cooldown_sec` hoạt động theo hai cách:
+
+- **Cảnh báo brute-force và login-after-failures: tính theo từng nguồn.** Các cảnh báo brute-force lặp lại được giãn cách theo từng IP (hoặc từng actor nội bộ), còn cảnh báo login-after-failures theo từng IP.
+- **Mọi cảnh báo theo từng sự kiện còn lại dùng chung một bộ đếm giờ.** Sau khi một cảnh báo `login_success`, `login_failed`, `session_open` hoặc `session_close` được gửi, mọi cảnh báo loại này khác trong `alert_cooldown_sec` giây tiếp theo, từ bất kỳ user hay IP nào, chỉ được ghi vào journal.
+
+Dù thế nào journal vẫn ghi lại mọi sự kiện và mọi phát hiện. Đặt `0` nếu muốn mọi sự kiện thông thường đều lên chat.
 
 ## Phát hiện đăng nhập thành công sau nhiều lần thất bại
 
@@ -85,6 +104,15 @@ Một lần đăng nhập thành công từ một IP vừa thất bại nhiều 
 - **Chỉ áp dụng cho đăng nhập từ xa.** Cơ chế này đánh key theo source IP; việc leo quyền nội bộ qua `sudo`/`su` không có IP nên không được bao phủ.
 
 Một người gõ sai mật khẩu của chính mình ba lần rồi mới gõ đúng cũng sẽ kích hoạt cảnh báo này. Hãy nâng ngưỡng lên nếu chuyện đó thường xảy ra trên host của bạn.
+
+## Thẻ ngữ cảnh
+
+| Key | Mặc định | Mô tả |
+|-----|---------|-------------|
+| `provider` | *(rỗng)* | Thẻ văn bản tự do, ví dụ `aws` hoặc `hetzner` (tối đa 63 ký tự) |
+| `service_name` | *(rỗng)* | Thẻ văn bản tự do, ví dụ `web-api` (tối đa 63 ký tự) |
+
+Khi được đặt, chúng được gắn vào mọi cảnh báo chat (`provider=aws service_name=web-api` ở kiểu compact, các dòng `Provider` / `Service name` ở kiểu pretty) và được gửi dưới dạng `labels` trong JSON của webhook. Dùng chúng để phân biệt các server khi nhiều máy cùng báo về một kênh.
 
 ## Nguồn tin cậy
 
@@ -111,9 +139,9 @@ Một địa chỉ đứng riêng nghĩa là đúng một host đó. Độ dài 
 
 | Token | Kích hoạt cảnh báo chat khi… |
 |-------|---------------------------|
-| `login_success` | Phát hiện đăng nhập thành công (sshd, login) |
+| `login_success` | Phát hiện đăng nhập thành công (sshd) |
 | `login_failed` | Phát hiện đăng nhập thất bại (sshd, login; lỗi sudo/su vẫn chịu sự chặn lọc riêng theo từng sự kiện; xem bên dưới) |
-| `session_open` | Một PAM session mở ra (bao gồm cả các session nền của systemd như cron) |
+| `session_open` | Một PAM session mở ra (sshd, sudo, su, login) |
 | `session_close` | Một PAM session đóng lại |
 | `brute_force` | Ngưỡng brute-force từ xa (theo IP) hoặc nội bộ (theo actor sudo/su) bị vượt qua |
 | `login_after_failures` | Một lần đăng nhập thành công đến từ IP vừa có chuỗi thất bại gần đây (xem [Phát hiện đăng nhập thành công sau nhiều lần thất bại](#phát-hiện-đăng-nhập-thành-công-sau-nhiều-lần-thất-bại)) |
@@ -167,7 +195,9 @@ Chạy `sudo -u pamsignal pamsignal --test-alert` để xem kiểu đã chọn n
 
 ## Các kênh cảnh báo
 
-Chỉ cấu hình những kênh bạn sử dụng. PAMSignal gửi cảnh báo đến tất cả các kênh đã có thông tin xác thực. Cảnh báo là best-effort: nếu một kênh bị lỗi, pamsignal ghi log cảnh báo và tiếp tục giám sát.
+Chỉ cấu hình những kênh bạn sử dụng. PAMSignal gửi cảnh báo đến tất cả các kênh đã có thông tin xác thực. Cảnh báo theo kiểu fire-and-forget: một lần gửi thất bại sẽ không được thử lại và không bao giờ làm dừng việc giám sát. Dùng `--test-alert` để xác nhận một kênh hoạt động.
+
+Các value được kiểm tra khi load. `slack_webhook_url`, `teams_webhook_url`, `discord_webhook_url` và `webhook_url` phải bắt đầu bằng `https://` và không chứa khoảng trắng, dấu nháy hay ký tự đặc biệt của shell. `telegram_bot_token` phải có dạng `123456:ABC...` (các chữ số, dấu hai chấm, rồi ít nhất 20 ký tự chữ, số, `_` hoặc `-`) và cần có `telegram_chat_id` (một số, âm với group, hoặc `@channelname`). Khi `whatsapp_access_token` được đặt, `whatsapp_phone_number_id` và `whatsapp_recipient` chỉ được chứa chữ số.
 
 Xem [Alerts](./alerts.md) để biết định dạng tin nhắn, hướng dẫn cài đặt và tham chiếu payload.
 
@@ -191,7 +221,7 @@ Kênh `webhook_url` hỗ trợ hai cơ chế xác thực bổ sung tùy chọn: 
 |-----|------|-------------|
 | `webhook_auth_header` | Header | Một HTTP header tùy ý gửi kèm theo mỗi POST. Dạng đầy đủ `Name: value` để hỗ trợ mọi scheme xác thực (Bearer, API key, Splunk HEC, Datadog, HMAC). Giá trị được đưa vào một curl `-K` config file backed bởi memfd, nên secret không bao giờ xuất hiện trong `argv` hay `/proc/<pid>/cmdline`. |
 | `webhook_client_cert` | mTLS | Đường dẫn đến client certificate mã hóa PEM. Phải được đặt cùng với `webhook_client_key`. |
-| `webhook_client_key` | mTLS | Đường dẫn đến private key PEM tương ứng. **Không được phép đọc bởi group hoặc other**; pamsignal sẽ từ chối khởi động nếu vi phạm. Khuyến nghị: `0640 root:pamsignal` (hoặc `0600 pamsignal:pamsignal` nếu chạy daemon dưới user đó). |
+| `webhook_client_key` | mTLS | Đường dẫn đến private key PEM tương ứng. **Không được phép đọc bởi group hoặc other**; pamsignal sẽ từ chối khởi động nếu vi phạm. Hãy dùng `0600 pamsignal:pamsignal`: daemon (user `pamsignal`) phải đọc được file, và không group nào được đọc. |
 | `webhook_ca_bundle` | mTLS | Đường dẫn tùy chọn đến CA bundle PEM. Chỉ cần khi CA của receiver không có trong system trust store (CA nội bộ, internal cert-manager). |
 
 **Các pattern thường dùng:**
@@ -214,7 +244,7 @@ webhook_client_key  = /etc/pamsignal/webhook-client.key
 webhook_ca_bundle   = /etc/pamsignal/internal-ca.pem
 ```
 
-*Bất kỳ pattern nào trong số này đều có thể kết hợp với `enable_notification_type` để thu hẹp loại sự kiện nào được gửi đến webhook. Xem [Bộ lọc loại thông báo](#bộ-lọc-loại-thông-báo) ở trên để biết danh sách đầy đủ các token (`login_success`, `login_failed`, `session_open`, `session_close`, `brute_force`, `all`).*
+*Bất kỳ pattern nào trong số này đều có thể kết hợp với `enable_notification_type` để thu hẹp loại sự kiện nào được gửi đến webhook. Xem [Bộ lọc loại thông báo](#bộ-lọc-loại-thông-báo) ở trên để biết danh sách đầy đủ các token (`login_success`, `login_failed`, `session_open`, `session_close`, `brute_force`, `login_after_failures`, `all`).*
 
 **Các kiểm tra xác thực được thực thi khi load config:**
 
@@ -236,8 +266,10 @@ Xem [Alerts → Custom webhook (ECS JSON)](./alerts.md#custom-webhook-ecs-json) 
 | `--config PATH` | `-c PATH` | Sử dụng file config ở đường dẫn tùy chỉnh |
 | `--check-config` | `-t` | Kiểm tra file config, in ra các lỗi (nếu có) rồi thoát |
 | `--test-alert` | `-T` | Gửi một tin nhắn thử tới mọi kênh đã cấu hình rồi thoát |
+| `--version` | `-V` | In phiên bản rồi thoát |
+| `--help` | `-h` | In tóm tắt cách dùng rồi thoát |
 
-Đường dẫn tương đối sẽ được chuyển thành đường dẫn tuyệt đối trước khi daemonize. Một option không được nhận diện, hoặc `-c` thiếu đường dẫn, là lỗi: pamsignal in ra thông báo và thoát với mã `2` thay vì khởi động.
+Daemon, `--check-config` và `--test-alert` đều từ chối chạy với quyền root; `--version` và `--help` chạy được dưới mọi user. Đường dẫn tương đối sẽ được chuyển thành đường dẫn tuyệt đối trước khi daemonize. Một option không được nhận diện, hoặc `-c` thiếu đường dẫn, là lỗi: pamsignal in ra thông báo và thoát với mã `2` thay vì khởi động.
 
 ## Kiểm tra config và thử cảnh báo
 
@@ -253,13 +285,17 @@ sudo -u pamsignal pamsignal --test-alert
 ```text
 pamsignal: config:2: trusted_sources must be a comma-separated list of at most 32 IPv4/IPv6 addresses or CIDR networks (prefix length 1 or more)
 pamsignal: config has 1 error(s)
+pamsignal: failed to load config: /etc/pamsignal/pamsignal.conf
 ```
 
 ```text
 pamsignal: /etc/pamsignal/pamsignal.conf: configuration OK
   alert channels: telegram slack
   trusted sources: 2
+  message style: compact
 ```
+
+Các cảnh báo như `config:7: unknown key: fail_treshold` cũng được in ra nhưng không làm thay đổi mã thoát, nên hãy đọc output chứ đừng chỉ nhìn mã thoát.
 
 `--test-alert` gửi một tin nhắn thử cho mỗi kênh đã cấu hình, chờ từng kênh hoàn tất, rồi in ra kết quả. Một request bị từ chối (sai token, webhook đã bị thu hồi) được tính là thất bại, và lỗi của chính curl được hiển thị ngay phía trên dòng kết quả:
 
@@ -270,7 +306,7 @@ slack     FAILED (curl exit code 22; see the curl message above)
 pamsignal: 1 alert channel(s) failed
 ```
 
-Lệnh chỉ thoát với mã `0` khi mọi kênh đã cấu hình đều nhận tin nhắn. Tin nhắn thử bỏ qua `enable_notification_type` và `alert_cooldown_sec`.
+Lệnh chỉ thoát với mã `0` khi mọi kênh đã cấu hình đều nhận tin nhắn, và với mã `1` nếu có kênh thất bại hoặc chưa cấu hình kênh nào. Tin nhắn thử dùng `message_style` của bạn và bỏ qua `enable_notification_type` và `alert_cooldown_sec`.
 
 Cả hai lệnh phải chạy bằng service user, không phải root: các kiểm tra ownership trên file config và file TLS key được tính theo user đang chạy lệnh, nên chỉ khi đó kết quả mới khớp với những gì daemon sẽ thấy. Cả hai đều dùng được với `-c PATH`.
 
@@ -280,4 +316,4 @@ Cả hai lệnh phải chạy bằng service user, không phải root: các ki�
 sudo systemctl reload pamsignal
 ```
 
-Lệnh này gửi SIGHUP đến daemon. Nếu config mới hợp lệ, nó có hiệu lực ngay lập tức và bảng theo dõi brute-force sẽ được reset. Nếu config có lỗi, daemon giữ nguyên config hiện tại và ghi log cảnh báo.
+Lệnh này gửi SIGHUP đến daemon. Nếu config mới hợp lệ, nó có hiệu lực ngay lập tức. Bảng theo dõi brute-force được giữ lại (số lần thất bại và cooldown vẫn còn sau khi reload); nếu `max_tracked_ips` giảm, các mục vượt quá kích thước mới bị bỏ đi. Nếu config có lỗi, daemon giữ nguyên config hiện tại và ghi log `config reload failed, keeping current config`.

@@ -60,6 +60,8 @@ Cả hai đều dùng chung hai biến `WEBHOOK_URL` và `WEBHOOK_SECRET`, mà m
 
 Hai request cần sẵn còn lại (`Login Failure`, `Brute Force Detected`) hoạt động tương tự với các dạng payload khác nhau và tạo ra các tiền tố log khác nhau ở phía receiver.
 
+Các body có sẵn đã được rút gọn: chúng chỉ chứa các trường mà receiver mẫu ghi log, với đúng tên trường PAMSignal dùng. Collection không có request cho `session_opened`, `session_closed`, `login_after_failures` hay `test_alert`. Để thử các action đó, hoặc gửi đầy đủ document ECS mà PAMSignal tạo ra, hãy sao chép một payload từ [docs/alerts.md](../alerts.md#custom-webhook-ecs-json) vào một request mới (xem [Thêm một request mới](#thêm-một-request-mới)).
+
 ## Kiểm thử khả năng phòng thủ của receiver
 
 Receiver triển khai nhiều kiểm tra phòng thủ (xác thực, giới hạn kích thước body, Content-Type, hình dạng payload). Bạn có thể xác minh từng cái bằng cách cố tình phá một request và quan sát mã response. Mỗi hàng là một bài kiểm tra 30 giây:

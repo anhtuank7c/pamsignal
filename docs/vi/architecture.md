@@ -20,7 +20,7 @@ Các con số đi theo một sự kiện xác thực:
 
 1. Một SSH client, hoặc một user cục bộ chạy `sudo` / `su` / `login`, thực hiện xác thực.
 2. PAM service ghi một dòng log vào journald, journald gắn thêm metadata đáng tin cậy (`_EXE`, `_PID`, `_UID`, `_HOSTNAME`).
-3. Daemon thức dậy từ `sd_journal_wait()` và đọc entry, đã được lọc chỉ còn sshd, sshd-session, sudo, su và login.
+3. Daemon thức dậy từ `sd_journal_wait()` và đọc entry, đã được lọc theo các syslog identifier sshd, sshd-session, sudo, su và login, cộng với mọi entry từ `ssh.service` / `sshd.service`.
 4. `utils.c` phân tích message thành một sự kiện có cấu trúc.
 5. `journal_watch.c` ghi sự kiện có cấu trúc trở lại journal (xem [Các trường journal có cấu trúc](#các-trường-journal-có-cấu-trúc)).
 6. `notify.c` quyết định sự kiện có cần cảnh báo hay không và định dạng nó.
@@ -30,7 +30,7 @@ Các con số đi theo một sự kiện xác thực:
 
 | Module | Trách nhiệm |
 |--------|-------------|
-| `main.c` | Phân tích CLI, từ chối chạy bằng root, kiểm tra quyền đọc journal, thứ tự khởi động, `PR_SET_NO_NEW_PRIVS` |
+| `main.c` | Phân tích CLI (`--check-config`, `--test-alert`, ...), từ chối chạy bằng root, kiểm tra quyền đọc journal, thứ tự khởi động, `PR_SET_NO_NEW_PRIVS`, giới hạn `RLIMIT_NPROC` cho các tiến trình con curl |
 | `init.c` | Signal handler (cờ atomic), tự động thu hồi các tiến trình con curl, PID file |
 | `config.c` | Bộ phân tích INI, kiểm tra hợp lệ, `trusted_sources`, reload bằng SIGHUP vào một struct tạm |
 | `journal_watch.c` | Đăng ký journal, vòng lặp sự kiện, kiểm tra giả mạo `_EXE`, ghi journal có cấu trúc, theo dõi brute-force và login-after-failures |
@@ -41,7 +41,7 @@ Các con số đi theo một sự kiện xác thực:
 
 [![Sequence diagram: one failed SSH password from log line to chat alert, including the brute-force and login-after-failures trackers](../diagrams/event-flow.drawio.svg)](../diagrams/event-flow.drawio.svg)
 
-Bản ghi journal luôn được ghi trước khi thử gửi bất kỳ cảnh báo nào. Entry không khớp mẫu PAM nào, hoặc có `_EXE` bị thiếu hay không phải binary sshd / sudo / su / login đáng tin cậy, sẽ bị bỏ qua. Cảnh báo chat theo từng sự kiện không được gửi cho các lần sudo/su thất bại (những trường hợp này chỉ cảnh báo dưới dạng brute force) và cho các nguồn nằm trong `trusted_sources`; bộ theo dõi brute-force và login-after-failures vẫn thấy mọi sự kiện.
+Bản ghi journal luôn được ghi trước khi thử gửi bất kỳ cảnh báo nào. Entry không khớp mẫu PAM nào, hoặc có `_EXE` bị thiếu hay không phải binary đáng tin cậy, sẽ bị bỏ qua. Đáng tin cậy nghĩa là đường dẫn nằm dưới `/usr/`, `/bin/`, `/sbin/`, `/lib/`, `/lib64/` hoặc `/opt/` và có basename là `sshd`, `sshd-session`, `sudo`, `su`, `login` hoặc `systemd-logind`. Cảnh báo chat theo từng sự kiện không được gửi cho các lần sudo/su thất bại (những trường hợp này chỉ cảnh báo dưới dạng brute force) và cho các nguồn nằm trong `trusted_sources`; bộ theo dõi brute-force và login-after-failures vẫn thấy mọi sự kiện.
 
 ### Vòng đời
 
@@ -51,7 +51,7 @@ Bản ghi journal luôn được ghi trước khi thử gửi bất kỳ cảnh 
 
 Các cảnh báo là **best-effort và không thể làm gián đoạn việc giám sát cốt lõi**. Đây là cách hoạt động:
 
-Sơ đồ [luồng sự kiện](#luồng-sự-kiện) thể hiện điều này ở bước ②: tiến trình cha fork, tiến trình con chạy curl, còn tiến trình cha quay lại vòng lặp sự kiện mà không chờ.
+Sơ đồ [luồng sự kiện](#luồng-sự-kiện) thể hiện điều này ngay sau bước ② (`ps_notify_event`): tiến trình cha fork, tiến trình con chạy curl, còn tiến trình cha quay lại vòng lặp sự kiện mà không chờ.
 
 **Tại sao thiết kế này an toàn:**
 
@@ -61,7 +61,8 @@ Sơ đồ [luồng sự kiện](#luồng-sự-kiện) thể hiện điều này 
 4. Nếu tiến trình con bị crash, segfault hoặc treo, tiến trình cha hoàn toàn không bị ảnh hưởng
 5. Nếu Telegram/Slack/Discord bị sập, tiến trình con timeout và thoát, pamsignal tiếp tục giám sát
 6. `SIGCHLD` bị bỏ qua (`SA_NOCLDWAIT`) nên các zombie process được tự động thu dọn
-7. Tiến trình con `exec` `curl`; không có HTTP library nào được link vào tiến trình cha
+7. Tiến trình con `exec` `/usr/bin/curl` với môi trường đã được xóa sạch (chỉ còn `PATH=/usr/bin:/bin`); không có HTTP library nào được link vào tiến trình cha
+8. `RLIMIT_NPROC` được giới hạn ở 64 cho user của daemon, nên một cơn lũ cảnh báo không thể fork vô hạn: các lời gọi `fork()` vượt mức sẽ thất bại và những cảnh báo đó bị bỏ kèm một warning trong journal
 
 ### Cách gọi curl (config dùng memfd)
 
@@ -73,33 +74,41 @@ Nội dung trong memfd config:
 - `header = "<full Name: value>"`: có khi kênh cần auth header. WhatsApp dùng nội bộ cho Meta Cloud API Bearer; kênh custom-webhook dùng cho `webhook_auth_header`.
 - `cert = "<path>"`, `key = "<path>"`, `cacert = "<path>"`: có khi kênh custom-webhook được cấu hình mTLS. Bản thân các đường dẫn không phải bí mật (nội dung file mới là bí mật, và nằm trên đĩa trong ranh giới tin cậy của daemon), nhưng việc định tuyến chúng qua cùng memfd config giúp `argv` của tiến trình con curl tối giản và nhất quán bất kể có bao nhiêu tùy chọn xác thực được cấu hình.
 
-Hiệu ứng trên `/proc/<pid>/cmdline` của tiến trình con curl: mỗi lần gửi cảnh báo đều tạo ra một `argv` là `curl -s -S --max-time 10 --proto =https --proto-redir =https -H "Content-Type: application/json" -K /dev/fd/9 -d <body>`, byte-identical dù là kênh nào hay chế độ xác thực nào đang được dùng. Một người dùng không có đặc quyền đọc `/proc/*/cmdline` không thể biết từ command line liệu có token, client cert, hay cả hai được cấu hình, chứ chưa nói đến việc thu thập các giá trị đó.
+Hiệu ứng trên `/proc/<pid>/cmdline` của tiến trình con curl: mỗi lần gửi cảnh báo đều tạo ra một `argv` là `curl -s -S --max-time 10 --proto =https --proto-redir =https -H "Content-Type: application/json" -K /dev/fd/9 -d <body>`, giống hệt nhau ngoại trừ JSON body, dù là kênh nào hay chế độ xác thực nào đang được dùng. (`pamsignal --test-alert` thêm `-f -o /dev/null` để một HTTP status lỗi trở thành exit code khác 0 và response body không hiện ra terminal; nó chờ từng tiến trình con để báo kết quả theo từng kênh.) Một người dùng không có đặc quyền đọc `/proc/*/cmdline` không thể biết từ command line liệu có token, client cert, hay cả hai được cấu hình, chứ chưa nói đến việc thu thập các giá trị đó.
 
 Các flag `--proto =https` / `--proto-redir =https` vẫn ở trên `argv` (không nằm trong file config) để có thể kiểm tra từ bên ngoài như một đảm bảo hardening: bất kỳ ai xem xét tiến trình đang chạy đều có thể xác nhận rằng các scheme cleartext / non-HTTPS bị từ chối ngay cả trước cổng validator.
 
 ## Các trường journal có cấu trúc
 
-PAMSignal ghi sự kiện bằng `sd_journal_send()` với tên trường được căn chỉnh theo [Elastic Common Schema (ECS)] để các công cụ SIEM hiện có có thể ingest journal trực tiếp qua tên trường ECS chuẩn thay vì một từ điển riêng của nhà cung cấp. (Từ series v0.2.x, PAMSignal cũng phát ra song song bộ trường `PAMSIGNAL_*`; các trường legacy đó đã bị loại bỏ trong v0.3.0, vì vậy hãy cập nhật mọi query `journalctl PAMSIGNAL_EVENT=…` sang các dạng ECS bên dưới.)
+PAMSignal ghi sự kiện bằng `sd_journal_send()` với tên trường được căn chỉnh theo [Elastic Common Schema (ECS)] để các công cụ SIEM hiện có có thể ingest journal trực tiếp qua tên trường ECS chuẩn thay vì một từ điển riêng của nhà cung cấp. (Từ series v0.2.x, PAMSignal cũng phát ra song song bộ trường `PAMSIGNAL_*`; các trường legacy đó đã bị loại bỏ trong v0.3.0, vì vậy hãy cập nhật mọi query `journalctl PAMSIGNAL_EVENT=…` sang các dạng ECS bên dưới. `PAMSIGNAL_ACTOR` là một trường mới, riêng biệt, không thuộc nhóm đã bị loại bỏ.)
 
-Cho các sự kiện login / session:
+Mọi entry đều được ghi với `SYSLOG_IDENTIFIER=pamsignal` và một `MESSAGE` dễ đọc (ví dụ `pamsignal: LOGIN_FAILED user=root from=203.0.113.45 port=51234 service=sshd auth=password at <ts>`). Cho các sự kiện login / session:
 
 | Trường | Ví dụ | Mô tả |
 |-------|---------|-------------|
-| `EVENT_ACTION` | `login_failure` | Một trong: `session_opened`, `session_closed`, `login_success`, `login_failure`, `brute_force_detected` |
-| `EVENT_CATEGORY` | `authentication` | Danh sách phân cách bằng dấu phẩy; session thêm `session`, brute-force thêm `intrusion_detection` |
-| `EVENT_KIND` | `event` | `event` cho quan sát, `alert` cho brute-force |
+| `EVENT_ACTION` | `login_failure` | Một trong: `session_opened`, `session_closed`, `login_success`, `login_failure`, `brute_force_detected`, `login_after_failures` |
+| `EVENT_CATEGORY` | `authentication` | Danh sách phân cách bằng dấu phẩy; session thêm `session`, brute-force và login-after-failures thêm `intrusion_detection` |
+| `EVENT_KIND` | `event` | `event` cho quan sát, `alert` cho brute-force và login-after-failures |
 | `EVENT_OUTCOME` | `failure` | `success`, `failure`, hoặc `unknown` |
-| `EVENT_SEVERITY` | `5` | 3=info, 4=notice, 5=warning, 8=alert |
+| `EVENT_SEVERITY` | `5` | 3=info, 4=notice, 5=warning, 8=alert, 9=critical |
 | `EVENT_MODULE` | `pamsignal` | Luôn là `pamsignal` |
-| `USER_NAME` | `root` | Với sshd là tài khoản bị tấn công; với sudo/su là actor cục bộ (`ruser`) |
-| `SOURCE_IP` | `203.0.113.45` | IP từ xa (đã được xác thực). Trống / vắng mặt với brute-force sudo/su thuần cục bộ |
-| `SOURCE_PORT` | `22` | Cổng từ xa (chỉ với sự kiện login) |
+| `USER_NAME` | `root` | Với sshd và session là tài khoản được đăng nhập vào (hoặc bị tấn công); với một lần sudo/su thất bại là actor cục bộ (`ruser`) |
+| `SOURCE_IP` | `203.0.113.45` | Chỉ với sự kiện login. IP từ xa (đã được xác thực); để trống khi dòng log không có IP (ví dụ sudo/su cục bộ hoặc `login` trên console thất bại) |
+| `SOURCE_PORT` | `51234` | Chỉ với sự kiện login. Cổng từ xa (`0` khi không rõ) |
 | `SERVICE_NAME` | `sshd` | PAM service: `sshd`, `sudo`, `su`, `login`, `other` |
 | `HOST_HOSTNAME` | `web-01` | Hostname của máy chủ |
 | `PROCESS_PID` | `12345` | PID của sshd / sudo / su liên quan đến sự kiện |
-| `PAMSIGNAL_ACTOR` | `alice` | Chỉ với sự kiện session: tài khoản đã đăng nhập vào phiên mà `sudo`/`su` chạy từ đó. Để trống khi trùng với `USER_NAME` (một lần đăng nhập SSH), với đăng nhập console (`LOGIN`), hoặc khi pam_unix không ghi tên |
+| `PAMSIGNAL_ACTOR` | `alice` | Chỉ với sự kiện session: tài khoản đã đăng nhập vào phiên mà `sudo`/`su` chạy từ đó. Để trống khi trùng với `USER_NAME` (một lần đăng nhập SSH), với đăng nhập console (`LOGIN`), với `session_closed`, hoặc khi pam_unix không ghi tên |
 
-Với các sự kiện brute-force, bộ `EVENT_*` tương tự được áp dụng, thêm vào đó (chỉ với biến thể local-actor) là `USER_TARGET_NAME` (ví dụ: `root`), tức người dùng mà actor đang cố leo thang đặc quyền đến.
+Entry login và session dùng `PRIORITY=5` (notice). Các phát hiện do chính pamsignal ghi có bộ trường khác và không có `PROCESS_PID`:
+
+| Phát hiện | `PRIORITY` | Giá trị `EVENT_*` | Các trường khác |
+|-----------|-----------|------------------|--------------|
+| Brute force từ xa (theo IP) | 4 (warning) | `brute_force_detected`, `authentication,intrusion_detection`, `alert`, `unknown`, `8` | `USER_NAME` (username thử gần nhất), `SOURCE_IP`, `HOST_HOSTNAME` |
+| Brute force cục bộ sudo/su (theo actor) | 4 (warning) | giống như trên | `USER_NAME` (actor), `USER_TARGET_NAME` (người dùng mà actor cố leo thang đến, ví dụ `root`), `SERVICE_NAME`, `HOST_HOSTNAME` |
+| Đăng nhập sau nhiều lần thất bại | 2 (crit) | `login_after_failures`, `authentication,intrusion_detection`, `alert`, `success`, `9` | `USER_NAME`, `SOURCE_IP`, `SOURCE_PORT`, `SERVICE_NAME`, `HOST_HOSTNAME` |
+
+Một entry phát hiện được ghi mỗi lần vượt ngưỡng; `alert_cooldown_sec` chỉ giãn cách các cảnh báo chat và webhook.
 
 Ví dụ query:
 
@@ -112,6 +121,9 @@ journalctl -t pamsignal EVENT_ACTION=login_failure
 
 # Only brute-force alerts (both IP-keyed and local-actor-keyed)
 journalctl -t pamsignal EVENT_ACTION=brute_force_detected
+
+# Logins that succeeded right after a run of failures
+journalctl -t pamsignal EVENT_ACTION=login_after_failures
 
 # Events from a specific IP
 journalctl -t pamsignal SOURCE_IP=203.0.113.45
@@ -131,7 +143,7 @@ Journal đã có sẵn ở đó. Nó cung cấp các trường có cấu trúc, 
 Ba mối quan tâm được cân bằng:
 - **Khả năng sử dụng:** Một binary, một config file. Không Python, không pip, không service thứ hai để quản lý.
 - **Cô lập:** Crash của tiến trình con không ảnh hưởng đến tiến trình cha. Không có HTTP library nào trong không gian địa chỉ của tiến trình cha.
-- **Đơn giản:** `curl` được cài sẵn trên mọi máy chủ Linux. Không có dependency mới nào để biên dịch hay link.
+- **Đơn giản:** `curl` có sẵn trên hầu hết mọi máy chủ Linux (và các package đều khai báo phụ thuộc vào nó). Không có thư viện mới nào để biên dịch hay link.
 
 Một relay riêng (journal subscriber bằng Python) là cách tiếp cận kiến trúc thuần khiết nhất nhưng làm đôi độ phức tạp vận hành. Fork+exec đạt được sự cô lập lỗi tương tự với zero độ phức tạp phía người dùng.
 
@@ -142,7 +154,7 @@ Daemon chỉ cần đọc journal. Chạy bằng root sẽ mở rộng bề mặ
 Bảng bị giới hạn ở `max_tracked_ips` mục (mặc định 256). Một mảng phẳng với linear scan đơn giản hơn, không có overhead từ allocator, và đủ nhanh cho quy mô này. Nếu bạn theo dõi 100.000 IP, bạn cần một công cụ khác.
 
 **Tại sao dùng INI config (không phải YAML/JSON)?**
-Không cần dependency. Config có khoảng 10 key, và thư viện phân tích YAML/JSON thêm độ phức tạp mà không mang lại lợi ích gì. Quản trị viên có thể chỉnh sửa nó bằng `vi` trong 10 giây.
+Không cần dependency. Config là một danh sách phẳng gồm 23 thiết lập `key = value`, và thư viện phân tích YAML/JSON thêm độ phức tạp mà không mang lại lợi ích gì. Quản trị viên có thể chỉnh sửa nó bằng `vi` trong 10 giây.
 
 **Tại sao không có network code trong tiến trình cha?**
 Mọi dependency mạng (libcurl, socket, TLS) đều là bề mặt tấn công. Một công cụ giám sát bảo mật nên tối thiểu hóa bề mặt tấn công của chính nó. Tiến trình cha đọc từ journal, ghi vào journal, và fork các tiến trình con cho cảnh báo. Các tiến trình con exec `curl` và thoát. Tiến trình cha không bao giờ thực hiện cuộc gọi mạng.

@@ -3,7 +3,7 @@
 Mirrors the behavior of the Node.js example:
   - Bearer-token authentication (Authorization header).
   - Lightweight payload validation for PAMSignal's ECS JSON shape.
-  - Per-action logging with the same emoji prefixes.
+  - Per-action logging with the same [ACTION] tags.
 """
 
 from __future__ import annotations

@@ -4,7 +4,7 @@
 
 PAMSignal sends best-effort alerts to messaging platforms when login events or brute-force patterns are detected. Alerts are sent via `fork()+exec(curl)`, a short-lived child process that cannot affect the core monitoring.
 
-If an alert fails (network down, API error, timeout), pamsignal logs a warning and continues. The event is always persisted in the journal first.
+If an alert fails (network down, API error, timeout), the daemon carries on without knowing: it never waits for the curl child or reads its result. pamsignal logs a journal warning only when it cannot build or start an alert (message too long, `memfd_create()` or `fork()` failure). Run `pamsignal --test-alert` to check each channel end to end. The event is always persisted in the journal first.
 
 ## Supported channels
 
@@ -23,7 +23,7 @@ Only configure the channels you use. PAMSignal sends to all channels that have c
 
 Since v0.2.0, alert payloads follow [Elastic Common Schema (ECS)] conventions:
 
-- **Chat channels** (Telegram / Slack / Teams / WhatsApp / Discord) get a single-line, severity-prefixed `key=value` text message.
+- **Chat channels** (Telegram / Slack / Teams / WhatsApp / Discord) get a single-line, severity-prefixed `key=value` text message (`message_style = compact`, the default) or a multi-line message (`message_style = pretty`, see [Pretty format](#pretty-format)).
 - **Custom webhook** gets a JSON document with nested ECS objects (`event.*`, `host.*`, `user.*`, `source.*`, `service.*`, `process.*`) plus a `pamsignal.*` namespace for vendor-specific fields.
 
 This means the webhook output drops directly into Elastic SIEM and Wazuh without remapping, and is one Vector / Logstash config away from any other modern SIEM.
@@ -44,7 +44,7 @@ Severity bracket is fixed-width (8 chars) so columns align in monospace renderin
 [CRIT]   auth.login_after_failures user=root src=203.0.113.50:40112 failures=7 window=300s host=web-01 service=sshd auth=password pid=12360 ts=2026-03-29T14:24:10+0000
 ```
 
-The last form is emitted when a local user (`alice`) repeatedly fails `sudo`/`su` authentication on the host. There is no `src=` because the attempt has no remote endpoint; ECS `user.name` carries the actor and `user.target.name` the elevation target. Per-event `auth.login_failure` alerts are **not** emitted for sudo/su. Only the brute-force aggregate fires, so a mistyped password does not page the operator. The journal entry from `pamsignal` is still written for every individual failure.
+The `actor=` / `target=` brute-force line is emitted when a local user (`alice`) repeatedly fails `sudo`/`su` authentication on the host. There is no `src=` because the attempt has no remote endpoint; ECS `user.name` carries the actor and `user.target.name` the elevation target. Per-event `auth.login_failure` alerts are **not** emitted for sudo/su. Only the brute-force aggregate fires, so a mistyped password does not page the operator. The journal entry from `pamsignal` is still written for every individual failure.
 
 The `[CRIT]` line is the login-after-failures alert: a login **succeeded** from an IP that had just failed `failures` times, which is what a guessed password looks like. It is sent in addition to the normal `auth.login_success` line, and fires even for `trusted_sources`; repeats for the same IP are spaced by `alert_cooldown_sec`. See [Configuration → Login-after-failures detection](./configuration.md#login-after-failures-detection).
 
@@ -52,7 +52,7 @@ The `[CRIT]` line is the login-after-failures alert: a login **succeeded** from 
 
 ### Pretty format
 
-Set `message_style = pretty` to replace the single line above with a multi-line message: a headline, then one row per field with a bold label and a monospace value. The fields are the same; only the layout changes. What each platform receives:
+Set `message_style = pretty` to replace the single line above with a multi-line message: a headline, then one row per field with a bold label and a monospace value. The headline replaces the severity label and action name, and the rows for each event are listed in the table below. What each platform receives:
 
 ```text
 Telegram (HTML parse mode)
@@ -76,7 +76,7 @@ Discord / Teams
 
 | Headline | Event | Rows |
 |---|---|---|
-| ✅ Login success / ❌ Login failed | `login_success`, `login_failure` | Host, User, Source, Auth, PID, Time |
+| ✅ Login success / ❌ Login failed | `login_success`, `login_failure` | Host, User, Source (remote logins only), Auth, PID, Time |
 | 🔓 Session opened / 🔒 Session closed | `session_opened`, `session_closed` | Host, User, Actor (when known), Service, PID, Time |
 | 🚨 Brute force detected | `brute_force_detected` (remote) | Host, Source, User, Attempts, Time |
 | 🚨 Brute force detected (local) | `brute_force_detected` (sudo/su) | Host, Actor, Target, Service, Attempts, Time |
@@ -109,17 +109,17 @@ The same UTF-8 check applies to the custom webhook's JSON: an invalid byte in a 
 
 ### Telegram
 
-Sent via the [Bot API `sendMessage`](https://core.telegram.org/bots/api#sendmessage). Plain text for the compact style; HTML parse mode for the pretty style.
+Sent via the [Bot API `sendMessage`](https://core.telegram.org/bots/api#sendmessage) with `parse_mode` set to `HTML` in both styles: the compact line is wrapped in `<code>`, the pretty message uses `<b>` and `<code>`.
 
 **Setup:**
 1. Create a bot with [@BotFather](https://t.me/BotFather) and copy the token
 2. Add the bot to your group/channel
 3. Get the chat ID (send a message, then check `https://api.telegram.org/bot<token>/getUpdates`)
-4. Set `telegram_bot_token` and `telegram_chat_id` in `pamsignal.conf`
+4. Set `telegram_bot_token` and `telegram_chat_id` in `pamsignal.conf`. The token must look like `<digits>:<at least 20 of A-Z a-z 0-9 _ ->`; the chat ID is a number (negative for groups) or `@channelusername`. Both are checked at config load.
 
 ### Slack
 
-Sent as a single-line message via [incoming webhook](https://api.slack.com/messaging/webhooks). Same chat text format.
+Sent as the `text` field via [incoming webhook](https://api.slack.com/messaging/webhooks): the compact line wrapped in backticks, or the pretty message in Slack mrkdwn.
 
 **Setup:**
 1. Go to [Slack App Directory](https://api.slack.com/apps) and create an app
@@ -128,7 +128,7 @@ Sent as a single-line message via [incoming webhook](https://api.slack.com/messa
 
 ### Microsoft Teams
 
-Sent as a plain text message via [incoming webhook connector](https://learn.microsoft.com/en-us/microsoftteams/platform/webhooks-and-connectors/how-to/add-incoming-webhook).
+Sent as the `text` field (the compact line in backticks, or the pretty message in markdown) via [incoming webhook connector](https://learn.microsoft.com/en-us/microsoftteams/platform/webhooks-and-connectors/how-to/add-incoming-webhook).
 
 **Setup:**
 1. In your Teams channel, go to **Channel settings > Connectors > Incoming Webhook**
@@ -136,18 +136,18 @@ Sent as a plain text message via [incoming webhook connector](https://learn.micr
 
 ### WhatsApp
 
-Sent as plain text via the [Meta WhatsApp Cloud API](https://developers.facebook.com/docs/whatsapp/cloud-api).
+Sent as a `text` message via the [Meta WhatsApp Cloud API](https://developers.facebook.com/docs/whatsapp/cloud-api) (`POST https://graph.facebook.com/v21.0/<phone_number_id>/messages`, with the token as a Bearer header).
 
 **Setup:**
 1. Create a [Meta Business app](https://developers.facebook.com/apps/) and add WhatsApp
 2. Get your **Phone Number ID** and generate a **permanent access token**
-3. Set `whatsapp_access_token`, `whatsapp_phone_number_id`, and `whatsapp_recipient` in `pamsignal.conf`
+3. Set `whatsapp_access_token`, `whatsapp_phone_number_id`, and `whatsapp_recipient` in `pamsignal.conf`. The phone number ID and the recipient must be digits only (international format without `+`).
 
 > **Note:** WhatsApp Cloud API requires a verified Meta Business account for production use.
 
 ### Discord
 
-Sent as plain text via [Discord webhook](https://support.discord.com/hc/en-us/articles/228383668-Intro-to-Webhooks).
+Sent as the `content` field via [Discord webhook](https://support.discord.com/hc/en-us/articles/228383668-Intro-to-Webhooks), with `allowed_mentions` set so no mention is ever resolved.
 
 **Setup:**
 1. In your Discord channel, go to **Settings > Integrations > Webhooks > New Webhook**
@@ -157,7 +157,7 @@ Sent as plain text via [Discord webhook](https://support.discord.com/hc/en-us/ar
 
 Sent as a `POST` request with `Content-Type: application/json`. Conforms to ECS so it can be ingested into Elastic Stack, Wazuh, or any pipeline that speaks ECS without field remapping.
 
-> **Want to build your own receiver?** Check out the ready-to-deploy **[Node.js Express Webhook Example](../examples/nodejs-webhook/README.md)**! It demonstrates how to authenticate, parse the ECS JSON payload, and route PAMSignal events.
+> **Want to build your own receiver?** See the ready-to-deploy **[Node.js](../examples/nodejs-webhook/README.md)** and **[Python](../examples/python-webhook/README.md)** receivers. They show how to authenticate, parse the ECS JSON payload, and route PAMSignal events.
 
 **Login event:**
 
@@ -191,7 +191,7 @@ Sent as a `POST` request with `Content-Type: application/json`. Conforms to ECS 
 
 *(Note: The `labels` object is only included if you have defined `provider` or `service_name` in your `pamsignal.conf`)*
 
-**Session event** (no `source.*` because it's not a network event):
+**Session event** (no `source.*` because it's not a network event). `pamsignal.actor` is present only on `session_opened` when the actor is known (see [Chat text format](#chat-text-format)):
 
 ```json
 {
@@ -209,7 +209,7 @@ Sent as a `POST` request with `Content-Type: application/json`. Conforms to ECS 
   "user": {"name": "root"},
   "service": {"name": "sudo"},
   "process": {"pid": 12345, "user": {"id": "0"}},
-  "pamsignal": {"event_type": "SESSION_OPEN"}
+  "pamsignal": {"event_type": "SESSION_OPEN", "actor": "alice"}
 }
 ```
 
@@ -265,13 +265,64 @@ Sent as a `POST` request with `Content-Type: application/json`. Conforms to ECS 
 }
 ```
 
+**Login after failures**: a remote login that succeeded right after a run of failures, `event.kind=alert`, `event.outcome=success`, severity 9. No `process.user.id`:
+
+```json
+{
+  "@timestamp": "2026-03-29T14:24:10+0000",
+  "event": {
+    "action": "login_after_failures",
+    "category": ["authentication", "intrusion_detection"],
+    "kind": "alert",
+    "outcome": "success",
+    "severity": 9,
+    "module": "pamsignal",
+    "dataset": "pamsignal.events"
+  },
+  "host": {"hostname": "web-01"},
+  "user": {"name": "root"},
+  "service": {"name": "sshd"},
+  "source": {"ip": "203.0.113.50", "port": 40112},
+  "process": {"pid": 12360},
+  "pamsignal": {
+    "event_type": "LOGIN_AFTER_FAILURES",
+    "auth_method": "password",
+    "failures": 7,
+    "window_sec": 300
+  }
+}
+```
+
+**Test alert** (`pamsignal --test-alert` only; not a detection):
+
+```json
+{
+  "@timestamp": "2026-03-29T14:30:00+0000",
+  "event": {
+    "action": "test_alert",
+    "category": ["configuration"],
+    "kind": "event",
+    "outcome": "success",
+    "severity": 3,
+    "module": "pamsignal",
+    "dataset": "pamsignal.events"
+  },
+  "host": {"hostname": "web-01"},
+  "pamsignal": {"event_type": "TEST_ALERT"}
+}
+```
+
+Every payload gets the same `labels` object when `provider` or `service_name` is set.
+
 **HTTP details:**
 
 | Property | Value |
 |----------|-------|
 | Method | `POST` |
 | Content-Type | `application/json` |
-| Expected response | `2xx` (non-2xx is logged as a warning) |
+| Scheme | HTTPS only: `webhook_url` must start with `https://`, and curl runs with `--proto =https --proto-redir =https` |
+| Timeout | 10 seconds (`--max-time 10`) |
+| Response | Not checked. Delivery is fire-and-forget, so a non-2xx status is not logged. `pamsignal --test-alert` does check it (curl `-f`) and reports each channel as `ok` or `FAILED` |
 
 **Authentication (optional):**
 
@@ -292,7 +343,7 @@ Common patterns:
 | Datadog Logs | `DD-API-KEY: <key>` |
 | Wazuh API | `Authorization: Bearer <jwt>` |
 
-The header value is passed to curl via a memfd-backed `-K` config file, so the secret never appears in `argv`, `/proc/<pid>/cmdline`, or any process listing. Only one header is supported; values containing `\r`, `\n`, `"`, or `\` are rejected at config load.
+The header value is passed to curl via a memfd-backed `-K` config file, so the secret never appears in `argv`, `/proc/<pid>/cmdline`, or any process listing. Only one header is supported. It must be in `Name: value` form and requires `webhook_url`; a value containing control characters (including `\r` and `\n`), `"`, or `\` is rejected at config load.
 
 **Mutual TLS (optional, advanced):**
 
@@ -311,53 +362,57 @@ mTLS combines additively with `webhook_auth_header`. Operators with receivers li
 **Operational requirements:**
 
 - `webhook_client_cert` and `webhook_client_key` must be set together; setting one without the other is a config-load error.
-- `webhook_client_key` must not be group- or world-readable. Recommended layout: `0640 root:pamsignal` (or `0600 pamsignal:pamsignal` if the daemon runs unprivileged), mirroring the protection on `pamsignal.conf` itself.
-- All three paths are opened with `O_NOFOLLOW` (symlinks rejected) and must be regular files owned by `root` or the daemon user.
+- All three keys require `webhook_url`.
+- `webhook_client_key` must not be group- or world-readable (any group or other read bit is a config-load error), and curl runs as the daemon user, so the key must be owned by that user: use `0600 pamsignal:pamsignal` (or `0400`). A `0640 root:pamsignal` key is rejected.
+- All three paths are opened with `O_NOFOLLOW` (symlinks rejected) at config load and must exist as regular files owned by `root` or the daemon user.
 - Path values containing `\r`, `\n`, `"`, or `\` are rejected at config load.
 - Encrypted (passphrase-protected) keys are not supported. Use filesystem permissions, `systemd-creds`, or your cert manager's secret-injection model instead.
 - The cert/key paths flow through the same memfd-backed curl config as the auth header, so they don't appear in `argv` either, which keeps the alert child's process listing minimal.
 
 ### Event types
 
-| `event.action` (ECS) | `pamsignal.event_type` (legacy) | When | Severity | `enable_notification_type` token |
+| `event.action` (ECS) | `pamsignal.event_type` | When | Severity | `enable_notification_type` token |
 |---|---|---|---|---|
 | `session_opened` | `SESSION_OPEN` | A PAM session opens (sshd / sudo / su / login) | 3 (info) | `session_open` |
 | `session_closed` | `SESSION_CLOSE` | A PAM session closes | 3 (info) | `session_close` |
 | `login_success` | `LOGIN_SUCCESS` | Successful SSH auth (password, public key, or keyboard-interactive) | 4 (notice) | `login_success` |
-| `login_failure` | `LOGIN_FAILED` | Failed SSH auth | 5 (warning) | `login_failed` |
+| `login_failure` | `LOGIN_FAILED` | Failed SSH auth (password or keyboard-interactive), or a failed console `login` | 5 (warning) | `login_failed` |
 | `login_failure` (sudo/su) | `LOGIN_FAILED` | Failed sudo/su attempt, **journal-only** (no per-event chat alert; tracked toward the brute-force threshold) | 5 (warning) | `login_failed` (suppression is independent and still applies) |
 | `brute_force_detected` | `BRUTE_FORCE_DETECTED` | Failed attempts from one IP **or** from one local actor (sudo/su) exceeded the threshold within the window | 8 (alert) | `brute_force` |
 | `login_after_failures` | `LOGIN_AFTER_FAILURES` | A login succeeds from an IP with at least `success_after_fail_threshold` recent failures: a likely guessed password | 9 (critical) | `login_after_failures` |
 
-The last column is the token to list in `enable_notification_type` to receive that category as a chat alert. The default (`all`, or the key omitted) enables every category. The filter only gates chat dispatch; `journalctl -t pamsignal` records every event regardless. See [Configuration → Notification-type filter](./configuration.md#notification-type-filter) for the full reference.
+The last column is the token to list in `enable_notification_type` to receive that category as a chat alert. The default (`all`, or the key omitted) enables every category. The filter gates both chat and custom-webhook dispatch; `journalctl -t pamsignal` records every event regardless. See [Configuration → Notification-type filter](./configuration.md#notification-type-filter) for the full reference.
 
-`pamsignal --test-alert` sends one extra payload that is not a detection: `event.action` = `test_alert`, `pamsignal.event_type` = `TEST_ALERT`, severity 3, with only `@timestamp`, `event.*`, `host.hostname` and any `labels`. Receivers can ignore it or use it as a connectivity check.
+`pamsignal --test-alert` sends one extra payload that is not a detection: `event.action` = `test_alert`, `event.category` = `["configuration"]`, `pamsignal.event_type` = `TEST_ALERT`, severity 3, with only `@timestamp`, `event.*`, `host.hostname` and any `labels` (see the example above). Receivers can ignore it or use it as a connectivity check.
 
 ### Field reference (ECS webhook JSON)
 
 | Path | Type | Present in | Description |
 |---|---|---|---|
 | `@timestamp` | string | All | ISO 8601 with timezone offset |
-| `event.action` | string | All | One of the values in the table above |
-| `event.category` | array&lt;string&gt; | All | Always includes `"authentication"`; sessions add `"session"`, brute-force and login-after-failures add `"intrusion_detection"` |
-| `event.kind` | string | All | `"event"` for observations, `"alert"` for brute-force and login-after-failures |
-| `event.outcome` | string | All | `"success"`, `"failure"`, or `"unknown"` |
+| `event.action` | string | All | One of the values in the table above, or `test_alert` |
+| `event.category` | array&lt;string&gt; | All | `"authentication"` first; sessions add `"session"`, brute-force and login-after-failures add `"intrusion_detection"`. The test alert has only `"configuration"` |
+| `event.kind` | string | All | `"event"` for observations and the test alert, `"alert"` for brute-force and login-after-failures |
+| `event.outcome` | string | All | `"success"`, `"failure"`, or `"unknown"` (brute-force) |
 | `event.severity` | integer | All | 3=info, 4=notice, 5=warning, 8=alert, 9=critical |
 | `event.module` | string | All | Always `"pamsignal"` |
 | `event.dataset` | string | All | Always `"pamsignal.events"` |
 | `host.hostname` | string | All | Server hostname |
-| `user.name` | string | All | Username from the PAM message |
-| `service.name` | string | Login/Session | PAM service: `sshd`, `sudo`, `su`, `login`, `other` |
-| `source.ip` | string | Login + Brute + Login-after-failures | Remote IP (validated via `inet_pton`) |
-| `source.port` | integer | Login + Login-after-failures | Remote port |
-| `process.pid` | integer | All | Process ID: the live sshd session for `login_success`/`session_opened`, the (already reaped) auth child for failures and brute-force |
+| `user.name` | string | All except test alert | Username from the PAM message; for local brute-force, the actor |
+| `user.target.name` | string | Local brute-force | The account the actor tried to become |
+| `service.name` | string | Login, session, local brute-force, login-after-failures | PAM service: `sshd`, `sudo`, `su`, `login`, `other` |
+| `source.ip` | string | Login + remote brute-force + login-after-failures | Remote IP (validated via `inet_pton`); empty string when the log line had none (e.g. a local `login` failure) |
+| `source.port` | integer | Login + Login-after-failures | Remote port (0 when unknown) |
+| `process.pid` | integer | All except test alert | Process ID: the live sshd session for `login_success`/`session_opened`, the (already reaped) auth child for failures and brute-force |
 | `process.user.id` | string | Login/Session | UID of the PAM-handled process |
-| `pamsignal.event_type` | string | All | Legacy uppercase enum (kept for backward compat through v0.2.x; retired in v0.3.0) |
+| `pamsignal.event_type` | string | All | Uppercase event name (`SESSION_OPEN`, `LOGIN_FAILED`, `BRUTE_FORCE_DETECTED`, `LOGIN_AFTER_FAILURES`, `TEST_ALERT`, ...). Still sent in every payload |
 | `pamsignal.actor` | string | Session opened (when known) | Account that logged in to the session `sudo`/`su` ran from, usually who ran it (see the chat text format above for the `su` caveat). `user.name` stays the session's user. Absent when it equals `user.name` (an SSH login), for a console login (`LOGIN`), or when pam_unix logs no name |
 | `pamsignal.auth_method` | string | Login + Login-after-failures | `password`, `publickey`, `keyboard-interactive`, or `unknown` |
 | `pamsignal.attempts` | integer | Brute-force | Number of failed attempts that breached the threshold |
 | `pamsignal.failures` | integer | Login-after-failures | Length of the run of failed attempts that preceded the successful login |
 | `pamsignal.window_sec` | integer | Brute-force + Login-after-failures | Configured time window |
+| `labels.provider` | string | All, when set | The `provider` config value |
+| `labels.service_name` | string | All, when set | The `service_name` config value |
 
 ### SIEM compatibility
 
@@ -383,16 +438,19 @@ For legacy enterprise SIEMs that prefer CEF (ArcSight) or LEEF (IBM QRadar), use
 Most production SIEMs don't accept webhooks directly. The conventional flow is:
 
 ```
-pamsignal --HTTP--> ingest layer (Vector / Fluent Bit / Logstash) --> SIEM
+pamsignal --HTTPS--> ingest layer (Vector / Fluent Bit / Logstash) --> SIEM
 ```
 
-Example Vector config receiving from pamsignal and forwarding to Elastic:
+pamsignal only posts to `https://` URLs, so the ingest layer must terminate TLS with a certificate curl trusts (the system store, or `webhook_ca_bundle`). Example Vector config receiving from pamsignal and forwarding to Elastic:
 
 ```toml
 [sources.pamsignal]
 type = "http_server"
-address = "0.0.0.0:8080"
+address = "0.0.0.0:8443"
 encoding = "json"
+tls.enabled = true
+tls.crt_file = "/etc/vector/tls/server.crt"
+tls.key_file = "/etc/vector/tls/server.key"
 
 [sinks.elastic]
 type = "elasticsearch"
@@ -409,7 +467,7 @@ See [Architecture: Alert isolation model](./architecture.md#alert-isolation-mode
 
 1. Event is **always written to journal first** (core record persisted)
 2. Parent `fork()`s a child process
-3. Child `exec("curl", ...)` sends the HTTP request
+3. Child `execv("/usr/bin/curl", ...)` sends the HTTPS request
 4. Parent continues the event loop immediately and does not wait
 5. If child crashes or network is down, the parent is unaffected
 6. No HTTP library exists in the parent process

@@ -29,6 +29,8 @@ examples/shared-certs/                       ← real files live here
 
 The receivers reference `./certs/server.{crt,key}` and `./certs/ca.crt` in their `.env`; Bruno's Client Certs entry points at `certs/client.{crt,key}` relative to the collection root. The symlinks make all three paths resolve here. Running `gen-test-certs.sh` once populates everyone at the same time.
 
+PAMSignal itself cannot use these paths directly: it opens `webhook_client_cert`, `webhook_client_key` and `webhook_ca_bundle` with `O_NOFOLLOW`, requires each file to be owned by `root` or the daemon user (and the key to be unreadable by group and others), and its unit hides `/home` with `ProtectHome=yes`. The receivers' READMEs show how to copy the client cert, key and CA into `/etc/pamsignal/` for an end-to-end test.
+
 ## Usage
 
 ```bash

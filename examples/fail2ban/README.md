@@ -139,6 +139,8 @@ bantime = 24h
 - `maxretry = 1`: ban immediately on a single match. PAMSignal has already counted to the threshold; one `BRUTE_FORCE_DETECTED` line **is** the alert.
 - `bantime = 24h`: block the IP for 24 hours. Change to `1h`, `7d`, or `-1` (permanent) to taste.
 
+PAMSignal writes the `BRUTE_FORCE_DETECTED` journal line every time a source crosses `fail_threshold` inside `fail_window_sec`, even while the chat alert is held back by `alert_cooldown_sec` or `brute_force` is left out of `enable_notification_type`. Those settings only control chat and webhook alerts, so Fail2ban still sees every breach.
+
 ---
 
 ## Step 3: Pick the right firewall backend
@@ -193,6 +195,8 @@ ignoreip = 127.0.0.1/8 ::1 203.0.113.42 10.0.0.0/8
 Replace `203.0.113.42` with your actual public IP (find it via `curl ifconfig.me` from the machine you'll SSH from). Include `10.0.0.0/8`, `192.168.0.0/16`, or `172.16.0.0/12` only if you trust everything on those LAN ranges.
 
 You can also set a *global* whitelist in `/etc/fail2ban/jail.local` that applies to every jail you ever create. That's the safer pattern if you'll add more jails later. See [the `ignoreip` documentation](https://github.com/fail2ban/fail2ban/wiki/MANUAL_0_8#jails) for the full syntax (it accepts CIDR, DNS names, and shell-glob patterns).
+
+PAMSignal's own `trusted_sources` setting does not protect you here. It mutes only the routine per-event chat alerts; a trusted IP that crosses the threshold still produces a `BRUTE_FORCE_DETECTED` line, and Fail2ban will ban it. Put your management IPs in `ignoreip` as well.
 
 ---
 
@@ -401,9 +405,18 @@ The two daemons are completely decoupled: PAMSignal doesn't know Fail2ban exists
 
 ### Why we don't ban local-actor brute-force events
 
-PAMSignal emits brute-force events for both remote attacks (keyed by IP) and local-actor attacks (keyed by username, when someone is hammering `sudo` from a local session). Fail2ban can only block IPs (it can't disable a local UNIX account), so our filter intentionally matches only the IP-keyed events. The local-actor events still appear in the journal and your chat alerts, but they don't trigger Fail2ban.
+PAMSignal writes `BRUTE_FORCE_DETECTED` in two forms:
 
-If you need to lock out local actors, that's a job for `pam_tally2` / `pam_faillock` in your PAM stack, not Fail2ban.
+```
+pamsignal: BRUTE_FORCE_DETECTED ip=203.0.113.99 attempts=5 window=300s user=root
+pamsignal: BRUTE_FORCE_DETECTED actor=alice target=root service=sudo attempts=5 window=300s
+```
+
+The first is a remote attack, keyed by source IP. The second is a local `sudo` or `su` attack with no source IP, keyed by the account typing the passwords (`actor=`). Fail2ban can only block IPs (it can't disable a local UNIX account), so our filter matches only the `ip=` form. The `actor=` events still appear in the journal and your chat alerts, but they don't trigger Fail2ban.
+
+The filter also ignores `LOGIN_AFTER_FAILURES` (a successful login from an IP that just failed several times). By then the attacker may already be logged in, so treat it as an incident to investigate, not just an IP to ban.
+
+If you need to lock out local actors, that's a job for `pam_faillock` in your PAM stack, not Fail2ban.
 
 ---
 

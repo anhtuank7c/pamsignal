@@ -20,7 +20,7 @@ Use one of the private channels below:
 
 When reporting, please include:
 
-- The pamsignal version (`pamsignal --version` once available, otherwise the package version from `apt show pamsignal` / `dnf info pamsignal`).
+- The pamsignal version (`pamsignal --version`, or the package version from `apt show pamsignal` / `dnf info pamsignal`).
 - Whether you reproduced from a published `.deb`/`.rpm` or a `meson install` source build.
 - The minimal sequence of journal events / configuration that triggers the issue, ideally as a unit-test reproducer or a `journalctl --output=export` excerpt.
 - Your assessment of severity and any exploitation prerequisites (local user, particular configuration, specific distribution, etc.).
@@ -40,9 +40,8 @@ Two axes:
 
 | Version | Supported |
 |---------|-----------|
-| `0.3.x` | Yes |
-| `0.2.x` | No (use `0.3.x`) |
-| `0.1.x` | No |
+| `0.7.x` | Yes (current: `0.7.1`) |
+| `< 0.7` | No (upgrade to `0.7.x`) |
 
 The recommended install path is the signed apt or dnf repository documented in [`README.md`](./README.md#1-install); `apt upgrade` / `dnf upgrade` keeps you on the supported line automatically.
 
@@ -54,7 +53,7 @@ The full in-scope / out-of-scope breakdown, including adversary capabilities the
 
 The summary, sufficient for most reports:
 
-**In scope.** Memory-safety bugs in `src/`; logic bugs in `ps_parse_message` that bypass the `_EXE` allowlist; brute-force tracker bypasses; alert-payload injection (JSON-escape escapes, credential leakage into argv, URL hijack of the `curl` child); privilege-escalation paths from the `pamsignal` user; bypasses of the systemd unit hardening directives.
+**In scope.** Memory-safety bugs in `src/`; logic bugs in `ps_parse_message` that bypass the `_EXE` allowlist; brute-force tracker bypasses; alert-payload injection (JSON-escape escapes, markup / mention / link injection into chat alerts, credential leakage into argv, URL hijack of the `curl` child); privilege-escalation paths from the `pamsignal` user; bypasses of the systemd unit hardening directives.
 
 **Out of scope.** Vulnerabilities in `curl`, `libsystemd`, journald, or any alert-channel provider; threat models requiring root on the monitored host; admin misconfiguration; alert-channel rate limits / DoS via legitimate event floods.
 
@@ -62,10 +61,10 @@ The summary, sufficient for most reports:
 
 Reviewing the existing defenses before reporting saves time on both sides:
 
-- `_EXE` allowlist on every journal entry (`src/journal_watch.c`): only entries whose recorded executable path resolves to `sshd`, `sudo`, `su`, `login`, or `systemd-logind` under a system prefix are processed. Spoofed events from `logger(1)` are silently dropped.
+- `_EXE` allowlist on every journal entry (`src/journal_watch.c`): only entries whose recorded executable path resolves to `sshd`, `sshd-session`, `sudo`, `su`, `login`, or `systemd-logind` under a system prefix (`/usr/`, `/bin/`, `/sbin/`, `/lib/`, `/lib64/`, `/opt/`) are processed. Spoofed events from `logger(1)` are silently dropped.
 - Compiler hardening (`meson.build`): `-fstack-protector-strong`, `_FORTIFY_SOURCE=3`, `-fcf-protection=full`, `-fstack-clash-protection`, full RELRO, PIE, separate-code, no-exec-stack.
-- Alert dispatch isolation: `fork()` + `execv()` of an absolute-path `/usr/bin/curl` with `clearenv()`'d environment. Webhook URLs and bearer tokens are written to a `memfd_create()`-backed `--config` file passed via `/dev/fd/9`; they never appear in argv.
-- systemd unit hardening: `NoNewPrivileges`, `ProtectSystem=strict`, `MemoryDenyWriteExecute`, `RestrictNamespaces`, `SystemCallFilter=@system-service ~@privileged @resources`, `CapabilityBoundingSet=` (empty). Verifiable with `systemd-analyze security pamsignal.service`.
-- Continuous fuzzing: `tests/fuzz_parse_message.c` is an opt-in libFuzzer harness for `ps_parse_message`. Run with `meson setup -Dfuzz=enabled build-fuzz` (requires clang).
+- Alert dispatch isolation: `fork()` + `execv()` of an absolute-path `/usr/bin/curl` with `clearenv()`'d environment. Channel URLs and credentials (the Telegram bot token inside its URL, chat webhook URLs, the WhatsApp access token, the `webhook_auth_header` value) and the mTLS paths are written to a `memfd_create()`-backed `--config` file passed via `/dev/fd/9`; they never appear in argv. curl is restricted to HTTPS (`--proto =https`).
+- systemd unit hardening: `NoNewPrivileges`, `ProtectSystem=strict`, `MemoryDenyWriteExecute`, `RestrictNamespaces`, `SystemCallFilter=@system-service ~@privileged @resources`, `CapabilityBoundingSet=` (empty). Verifiable with `systemd-analyze security pamsignal.service`; the full list is in [`docs/deployment.md`](./docs/deployment.md#security-hardening).
+- Testing: every pull request runs the CMocka suites under ASAN+UBSAN. `tests/fuzz_parse_message.c` is an opt-in libFuzzer harness for `ps_parse_message`, run locally (not in CI) with `CC=clang meson setup -Dfuzz=enabled build-fuzz`.
 
 If your finding is a refinement on top of one of these (e.g. a parser case the fuzz corpus didn't cover, or a syscall-filter gap), please call that out in the report so the fix can land alongside a regression test.

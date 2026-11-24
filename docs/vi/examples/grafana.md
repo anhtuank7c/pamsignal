@@ -11,7 +11,7 @@ Thư mục này cung cấp mọi thứ operator cần để đưa các sự ki�
 - `alloy.river`: cấu hình [Grafana Alloy](https://grafana.com/docs/alloy/latest/) cho môi trường production. Cài một instance trên mỗi host. Scrape `SYSLOG_IDENTIFIER=pamsignal` từ systemd journald và đẩy lên Loki.
 - `dashboards/pamsignal-v1.json`: dashboard, sẵn sàng provisioning (datasource UID hardcode là `loki`, khớp với file provisioning đi kèm).
 - `dashboards/pamsignal-v1.grafana-com.json`: cùng dashboard, định dạng "shared externally" với placeholder `${DS_LOKI}` + các block `__inputs`/`__requires`. Upload **file này** lên grafana.com hoặc dùng tính năng UI Import của Grafana (sẽ hỏi bạn chọn datasource Loki của mình).
-- `alerts.yaml`: bốn alert rule Grafana-native.
+- `alerts.yaml`: năm alert rule Grafana-native (định dạng provisioning).
 - `docker-compose.yml`: stack local một lệnh để bạn xem trước dashboard trước khi quyết định deploy thực sự.
 - `verify.sh`: kiểm tra sức khỏe pipeline một lần.
 
@@ -29,7 +29,7 @@ cd examples/grafana
 docker compose up -d
 ```
 
-Mở **http://localhost:3000**: anonymous Admin, không cần đăng nhập. Dashboard nằm trong thư mục **PAMSignal**. Các sự kiện tổng hợp được stream vào với tốc độ ~2/giây; các đợt brute-force bùng phát trung bình mỗi ~25 giây.
+Mở **http://localhost:3000**: anonymous Admin, không cần đăng nhập. Dashboard nằm trong thư mục **PAMSignal**. Các sự kiện tổng hợp được stream vào với tốc độ ~2/giây; các đợt brute-force bùng phát trung bình mỗi ~25 giây, và khoảng một phần ba trong số đó kết thúc bằng việc kẻ tấn công đăng nhập được, sinh ra một phát hiện `login_after_failures`.
 
 Để dừng và xóa (bao gồm cả volume):
 
@@ -106,11 +106,16 @@ sudo journalctl -u alloy -f
 **Tùy chọn A: provision** (khuyến nghị cho Grafana tự host):
 
 ```bash
+sudo mkdir -p /var/lib/grafana/dashboards
 sudo cp dashboards/pamsignal-v1.json /var/lib/grafana/dashboards/
-sudo cp ../grafana/provisioning/dashboards/pamsignal.yml \
+sudo cp provisioning/dashboards/pamsignal.yml \
         /etc/grafana/provisioning/dashboards/
 sudo systemctl restart grafana-server
 ```
+
+`pamsignal-v1.json` tham chiếu datasource bằng UID `loki`. Hãy đặt UID đó cho
+datasource Loki của bạn (file `provisioning/datasources/loki.yml` đi kèm đã làm vậy),
+hoặc dùng Tùy chọn B.
 
 **Tùy chọn B: import qua UI**: Grafana → Dashboards → New → Import → upload
 `dashboards/pamsignal-v1.grafana-com.json` (phiên bản có placeholder `${DS_LOKI}`).
@@ -118,12 +123,13 @@ Chọn datasource Loki của bạn khi được hỏi.
 
 ### 5. Cấu hình alert
 
-Sửa `alerts.yaml` để trỏ `folder:` đến Grafana folder bạn muốn, sau đó
-provision qua `/etc/grafana/provisioning/alerting/` hoặc import qua
-Grafana UI (Alerting → Alert rules → Import).
+`alerts.yaml` là một file provisioning alerting của Grafana. Sửa `folder:` thành
+Grafana folder bạn muốn và cho mọi `datasourceUid: loki` khớp với UID của datasource
+Loki của bạn, rồi copy nó vào `/etc/grafana/provisioning/alerting/` và restart
+Grafana.
 
-Sau khi import, gắn từng rule vào một contact point (Slack, Telegram,
-PagerDuty, email). Bốn rule:
+Sau khi provisioning, định tuyến các rule tới một contact point (Slack, Telegram,
+PagerDuty, email) bằng một notification policy. Năm rule:
 
 | Rule | Severity | Kích hoạt khi |
 | --- | --- | --- |
@@ -131,6 +137,7 @@ PagerDuty, email). Bốn rule:
 | Root login over SSH | high | Có bất kỳ lần đăng nhập SSH thành công bằng root trong 10 phút |
 | ≥10 failed logins from one IP | high | Số lần thất bại từ một IP tăng đột biến trong 5 phút |
 | Host stopped reporting | medium | Đã hoạt động trong 1h gần đây nhưng im lặng 10 phút |
+| Login after failures | critical | Có bất kỳ `event_action="login_after_failures"` nào trong 5 phút |
 
 ### 6. Kiểm tra
 
@@ -186,7 +193,7 @@ graph LR
 
 Chạy `verify.sh --loki-only` trước để cô lập Alloy. Nếu sự kiện probe đến được Loki với đúng label, vấn đề nằm ở relabel pass của Alloy.
 
-Kiểm tra tên các field `__journal_*`. Journald chuyển tên field tùy chỉnh thành chữ thường từ `SERVICE_NAME` sang `__journal_service_name`. Nếu tên label bị sai, relabel rule trong `alloy.river` sẽ không khớp.
+Kiểm tra tên các field `__journal_*`. Alloy đưa mỗi field của journal ra thành một label chữ thường `__journal_<field>`, nên `SERVICE_NAME` thành `__journal_service_name`. Nếu tên label bị sai, relabel rule trong `alloy.river` sẽ không khớp. Mục `brute_force_detected` từ xa không có `SERVICE_NAME`, nên không có label `service`; đó là điều bình thường.
 
 ### Các panel dashboard trống
 
@@ -207,11 +214,11 @@ bạn đã chạy `usermod -aG systemd-journal alloy`.
 
 ### Label `service_name` xuất hiện bên cạnh `service`
 
-Loki 3.x tự động suy ra `service_name` để theo dõi log-volume. Vô hại, vì dashboard query trực tiếp `service=`. Nếu muốn bỏ đi, đặt `discover_log_levels: false` và `discover_service_name: false` trong block `loki.write` của bạn.
+Loki 3.x tự động suy ra `service_name` để theo dõi log-volume. Vô hại, vì dashboard query trực tiếp `service=`. Nếu muốn bỏ đi, đặt `discover_service_name: []` (và `discover_log_levels: false` nếu bạn cũng muốn bỏ `detected_level` được suy ra) trong `limits_config` của config Loki.
 
-### Panel brute-force hiển thị 0 nhưng tôi biết đã có sự kiện brute-force
+### Panel Detections hiển thị 0 nhưng tôi biết đã có các lần thử brute-force
 
-PAMSignal chỉ ghi `EVENT_ACTION=brute_force_detected` khi đạt `fail_threshold` nội bộ. Nếu bạn đặt ngưỡng cao (ví dụ: 50), các host riêng lẻ sẽ không kích hoạt và panel vẫn ở 0. Rule #3 trong `alerts.yaml` là lưới an toàn cho trường hợp này: nó kích hoạt trên các đợt tăng đột biến login thất bại ngay cả khi PAMSignal chưa leo thang.
+PAMSignal chỉ ghi `EVENT_ACTION=brute_force_detected` khi đạt `fail_threshold` nội bộ trong `fail_window_sec`. Nếu bạn đặt ngưỡng cao (ví dụ: 50), các host riêng lẻ sẽ không kích hoạt và panel vẫn ở 0. Tương tự, `login_after_failures` cần đủ `success_after_fail_threshold` lần thất bại trước đó và bị tắt khi giá trị này là `0`. Rule #3 trong `alerts.yaml` là lưới an toàn cho trường hợp này: nó kích hoạt trên các đợt tăng đột biến login thất bại ngay cả khi PAMSignal chưa leo thang.
 
 ---
 

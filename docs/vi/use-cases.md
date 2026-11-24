@@ -19,10 +19,10 @@ Bạn chạy 1–5 VPS cá nhân, một homelab, hay một dự án phụ. Bạn
 **Một cấu hình hợp lý:**
 - Cài qua dòng lệnh ở [Bắt đầu nhanh](README.md#bắt-đầu-nhanh).
 - Thêm một kênh [Telegram](alerts.md#telegram) hoặc [Discord](alerts.md), xong trong hai phút.
-- Đặt `enable_notification_type = login_success,brute_force` để chỉ bị ping về đăng nhập thành công và tấn công, chứ không phải mọi sự kiện.
+- Đặt `enable_notification_type = login_success,brute_force,login_after_failures` để chỉ bị ping về đăng nhập thành công và tấn công, chứ không phải mọi sự kiện. Nhớ giữ `login_after_failures` trong danh sách: đó là alert cho một lần đăng nhập thành công ngay sau một chuỗi thất bại, và loại nào bạn bỏ ra khỏi danh sách thì bị tắt.
 - Thêm [Fail2ban](examples/fail2ban.md) nếu muốn tự động ban kẻ brute-force.
 
-**Bạn được gì:** điện thoại rung lên khi bạn (hoặc bất kỳ ai) đăng nhập thành công, và khi một con bot bắt đầu dò máy bạn. Đó là 90% sự an tâm với 0% gánh nặng vận hành.
+**Bạn được gì:** điện thoại rung lên khi bạn (hoặc bất kỳ ai) đăng nhập thành công, khi một con bot bắt đầu dò máy bạn, và một alert mức critical nếu một trong những con bot đó lọt vào được. Đó là 90% sự an tâm với 0% gánh nặng vận hành.
 
 ### Nhóm nhỏ / vận hành startup
 
@@ -30,7 +30,8 @@ Bạn chạy 5–30 server, dùng chung một lịch on-call, và đã có sẵn
 
 **Một cấu hình hợp lý:**
 - Triển khai ra cả fleet bằng [Ansible playbook](ssh-hardening.md#42-cách-tái-lập-được-ansible), dùng chung một `pamsignal.conf`.
-- Định tuyến alert về một kênh [Slack/Teams](alerts.md) **#security-alerts** riêng.
+- Định tuyến alert về một kênh [Slack/Teams](alerts.md) **#security-alerts** riêng. Nếu muốn tin nhắn dễ đọc trên điện thoại, đặt [`message_style = pretty`](configuration.md#kiểu-hiển-thị-tin-nhắn).
+- Đưa địa chỉ văn phòng, VPN hoặc bastion vào [`trusted_sources`](configuration.md#nguồn-tin-cậy) để các lần đăng nhập thường lệ của chính đội bạn không ping lên kênh. Alert brute-force và login-after-failures vẫn bắn ra với các địa chỉ đó.
 - Dựng [Grafana fleet dashboard](grafana-getting-started.md) để ai trực on-call cũng thấy cả fleet trong một cái nhìn.
 - Nếu đã có SIEM, forward sự kiện vào đó qua [custom webhook](#đã-chạy-một-siem-elastic--wazuh--splunk--datadog).
 
@@ -51,7 +52,7 @@ provider = acme-cloud
 service_name = cust-1042-web01
 ```
 
-Giờ mọi alert và webhook payload đều mang theo `provider=acme-cloud service_name=cust-1042-web01`, nên dù tất cả đổ về một chỗ, bạn vẫn luôn biết một alert đến từ *khách hàng nào, máy nào*. (Xem [Alerts](alerts.md#định-dạng-tin-nhắn).)
+Giờ mọi chat alert đều mang theo `provider=acme-cloud service_name=cust-1042-web01` (thành các dòng riêng ở kiểu `pretty`), còn mọi webhook payload mang chúng dưới dạng `labels.provider` / `labels.service_name`, nên dù tất cả đổ về một chỗ, bạn vẫn luôn biết một alert đến từ *khách hàng nào, máy nào*. (Xem [Alerts](alerts.md#định-dạng-tin-nhắn).) Các tag này không được ghi vào journal, nên pipeline Grafana/Loki (vốn đọc journal) nhận diện host theo hostname.
 
 #### 2. Chọn cách định tuyến alert
 
@@ -69,11 +70,11 @@ Grafana sinh ra để làm multi-tenant. Chọn mức cô lập khớp với mô
 - **Dashboard / folder theo từng khách**, với biến `$host` khóa vào các host của khách đó: đơn giản nhất, ổn khi khách không tự đăng nhập.
 - **Một Grafana Organization (hoặc Grafana RBAC team) cho mỗi tenant**: cô lập thật sự; cấp cho khách một tài khoản chỉ-đọc, giới hạn phạm vi để họ chỉ thấy host của chính mình.
 
-Vì tên host và tag `service_name` của bạn vốn đã là label/trường sẵn, việc giới hạn một góc nhìn cho một khách chỉ là một bộ lọc, không phải một dự án tách dữ liệu.
+Vì pipeline Alloy đi kèm đã biến tên host thành một Loki label (`host`), việc giới hạn một góc nhìn cho một khách chỉ là một bộ lọc, không phải một dự án tách dữ liệu. Hãy đặt tên host sao cho dễ khớp các máy của một khách (ví dụ `cust-1042-*`).
 
 #### 4. Đưa nó vào portal của chính bạn (white-label)
 
-Trỏ [custom webhook](configuration.md#xác-thực-custom-webhook) về backend control-panel của bạn. PAMSignal POST [ECS JSON](alerts.md#custom-webhook-ecs-json) cho mọi sự kiện; backend của bạn lưu lại và render một widget "**Đăng nhập gần đây & tấn công đã chặn**" ngay trong dashboard sẵn có của khách, hoàn toàn theo thương hiệu của bạn. Hai ví dụ webhook [Node.js](examples/nodejs-webhook.md) và [Python](examples/python-webhook.md) là những receiver chạy được mà bạn có thể phát triển tiếp.
+Trỏ [custom webhook](configuration.md#xác-thực-custom-webhook) về backend control-panel của bạn. PAMSignal POST [ECS JSON](alerts.md#custom-webhook-ecs-json) cho mỗi cảnh báo nó gửi; backend của bạn lưu lại và render một widget "**Đăng nhập gần đây & tấn công đã chặn**" ngay trong dashboard sẵn có của khách, hoàn toàn theo thương hiệu của bạn. Hai ví dụ webhook [Node.js](examples/nodejs-webhook.md) và [Python](examples/python-webhook.md) là những receiver chạy được mà bạn có thể phát triển tiếp.
 
 #### 5. Đóng gói thành một gói dịch vụ
 
@@ -90,13 +91,13 @@ Hãy thành thật với khách về việc đây là gì, để nó luôn là m
 
 ### Đơn vị chú trọng compliance
 
-Nếu bạn cần *trình ra* được ai đã đăng nhập và khi nào, đường đi [Grafana + Loki](grafana-getting-started.md) cho bạn một auth trail được giữ lại, tra cứu được, có dấu thời gian trên cả fleet, còn [custom webhook](#đã-chạy-một-siem-elastic--wazuh--splunk--datadog) đẩy cùng những sự kiện đó vào một SIEM lưu hồ sơ. PAMSignal là cảm biến; chính sách retention của bạn biến nó thành một audit trail.
+Nếu bạn cần *trình ra* được ai đã đăng nhập và khi nào, đường đi [Grafana + Loki](grafana-getting-started.md) cho bạn một auth trail được giữ lại, tra cứu được, có dấu thời gian trên cả fleet, còn [custom webhook](#đã-chạy-một-siem-elastic--wazuh--splunk--datadog) đẩy các cảnh báo vào một SIEM lưu hồ sơ. Loki đọc journal nên có đủ mọi sự kiện; webhook chỉ mang những gì được cảnh báo (xem mục tiếp theo). PAMSignal là cảm biến; chính sách retention của bạn biến nó thành một audit trail.
 
 ---
 
 ## Tích hợp vào stack sẵn có của bạn
 
-PAMSignal là một **cảm biến (sensor)**, không phải một điểm đến. Nó phát ra hai định dạng mở: văn bản `key=value` một dòng cho chat, và [ECS JSON](alerts.md#custom-webhook-ecs-json) lồng nhau cho máy đọc, nên nó cấp dữ liệu cho các công cụ bạn đang chạy chứ không thay thế chúng.
+PAMSignal là một **cảm biến (sensor)**, không phải một điểm đến. Nó phát ra hai định dạng mở: văn bản `key=value` cho chat (một dòng, hoặc nhiều dòng với [`message_style = pretty`](configuration.md#kiểu-hiển-thị-tin-nhắn)), và [ECS JSON](alerts.md#custom-webhook-ecs-json) lồng nhau cho máy đọc, nên nó cấp dữ liệu cho các công cụ bạn đang chạy chứ không thay thế chúng.
 
 | Nếu bạn đã chạy… | Lắp vào bằng… | Kết quả |
 |---|---|---|
@@ -110,16 +111,18 @@ PAMSignal là một **cảm biến (sensor)**, không phải một điểm đế
 
 ### Đã dùng chat (Slack / Teams / Discord / Telegram / WhatsApp)?
 
-Đây là đường không tốn công nhất. Thả credential của kênh vào `pamsignal.conf` là xong. PAMSignal gửi tới mọi kênh có credential. Cách cài từng kênh nằm trong [Alerts](alerts.md). Lọc bớt tiếng ồn bằng [`enable_notification_type`](configuration.md#bộ-lọc-loại-thông-báo).
+Đây là đường không tốn công nhất. Thả credential của kênh vào `pamsignal.conf` là xong. PAMSignal gửi tới mọi kênh có credential. Cách cài từng kênh nằm trong [Alerts](alerts.md). Lọc bớt tiếng ồn bằng [`enable_notification_type`](configuration.md#bộ-lọc-loại-thông-báo) và [`trusted_sources`](configuration.md#nguồn-tin-cậy), và chọn cách trình bày bằng [`message_style`](configuration.md#kiểu-hiển-thị-tin-nhắn).
 
 ### Đã chạy một SIEM (Elastic / Wazuh / Splunk / Datadog)?
 
-Trỏ `webhook_url` về endpoint ingest của bạn. PAMSignal POST một tài liệu JSON theo cấu trúc [ECS](https://www.elastic.co/guide/en/ecs/current/index.html) cho mỗi sự kiện (các object lồng nhau `event.*`, `host.*`, `user.*`, `source.*`, `service.*`, `process.*` cùng một namespace `pamsignal.*`), vốn "rơi thẳng vào Elastic SIEM và Wazuh mà không cần remap, và chỉ cách một config Vector/Logstash với bất kỳ SIEM hiện đại nào khác." Xác thực bằng [bearer header hoặc mTLS](configuration.md#xác-thực-custom-webhook):
+Trỏ `webhook_url` về endpoint ingest của bạn. PAMSignal POST một tài liệu JSON theo cấu trúc [ECS](https://www.elastic.co/guide/en/ecs/current/index.html) cho mỗi sự kiện (các object lồng nhau `event.*`, `host.*`, `user.*`, `source.*`, `service.*`, `process.*` cùng một namespace `pamsignal.*`, và `labels.*` khi có đặt `provider` / `service_name`), vốn "rơi thẳng vào Elastic SIEM và Wazuh mà không cần remap, và chỉ cách một config Vector/Logstash với bất kỳ SIEM hiện đại nào khác." Xác thực bằng [bearer header hoặc mTLS](configuration.md#xác-thực-custom-webhook):
 
 ```ini
 webhook_url = https://siem.example.com/ingest/pamsignal
 webhook_auth_header = Authorization: Bearer <token>
 ```
+
+Webhook gửi cùng các cảnh báo như chat, nên nó tuân theo `enable_notification_type` và `trusted_sources`, và các cảnh báo thường lệ theo từng sự kiện dùng chung một bộ đếm `alert_cooldown_sec` (mặc định 60 s; xem [Configuration](configuration.md#phát-hiện-brute-force)). Nếu SIEM phải nhận mọi sự kiện đăng nhập và session, hãy đặt `alert_cooldown_sec = 0`, hoặc dùng log shipper của bạn để chuyển các entry journal (`SYSLOG_IDENTIFIER=pamsignal`).
 
 Payload trên đường truyền cùng một bảng các mẫu receiver (Splunk HEC, Datadog, X-API-Key, Wazuh) nằm ở [Alerts → Custom webhook](alerts.md#custom-webhook-ecs-json). Đây chính là tích hợp biến PAMSignal thành một *nguồn* trong một pipeline phát hiện lớn hơn, thay vì một công cụ đứng một mình.
 
