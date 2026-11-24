@@ -810,7 +810,6 @@ static void format_test_json(const ps_config_t *cfg, const char *host,
 typedef enum {
     PS_MARKUP_TELEGRAM, // HTML parse mode: <b>, <code>
     PS_MARKUP_SLACK,    // mrkdwn: *bold*, `code`
-    PS_MARKUP_TEAMS,    // markdown: **bold**, `code`, blank line = break
     PS_MARKUP_WHATSAPP, // *bold*, `code`
     PS_MARKUP_DISCORD   // markdown: **bold**, `code`
 } ps_markup_t;
@@ -991,8 +990,8 @@ static void sb_put(ps_strbuf_t *sb, const char *s) {
 }
 
 // Copy text into sb with &, < and > as HTML entities. Used for values in the
-// markups where those characters are syntax (Telegram HTML, Slack, Teams) and
-// for whole compact messages sent to Slack and Teams.
+// markups where those characters are syntax (Telegram HTML, Slack) and for
+// whole compact messages sent to Slack.
 static void sb_put_entity_escaped(ps_strbuf_t *sb, const char *s) {
     for (; *s; s++) {
         switch (*s) {
@@ -1041,8 +1040,7 @@ static void sb_put_value(ps_strbuf_t *sb, ps_markup_t markup,
         sb_put(sb, "-");
         return;
     }
-    int entities = markup == PS_MARKUP_TELEGRAM || markup == PS_MARKUP_SLACK ||
-                   markup == PS_MARKUP_TEAMS;
+    int entities = markup == PS_MARKUP_TELEGRAM || markup == PS_MARKUP_SLACK;
     const unsigned char *p = (const unsigned char *)value;
     while (*p) {
         uint32_t cp;
@@ -1076,7 +1074,7 @@ static void sb_put_value(ps_strbuf_t *sb, ps_markup_t markup,
 // Render the one-line compact text for one platform: the whole line as a
 // single code span. The line embeds usernames and hostnames, so sending it
 // as ordinary message text would let a crafted name become a clickable link
-// ([text](url) on Discord and Teams, a bare URL anywhere), a mention, or a
+// ([text](url) on Discord, a bare URL anywhere), a mention, or a
 // bot command. Returns 0 on success, -1 if it does not fit.
 static int render_compact(const char *compact, ps_markup_t markup, char *buf,
                           size_t size) {
@@ -1112,10 +1110,6 @@ static int render_pretty(const ps_pretty_msg_t *m, ps_markup_t markup,
         bold_on = "*";
         bold_off = "*";
         break;
-    case PS_MARKUP_TEAMS:
-        // Teams markdown folds a single newline into a space.
-        newline = "\n\n";
-        break;
     case PS_MARKUP_DISCORD:
         break;
     }
@@ -1145,6 +1139,120 @@ static int render_pretty(const ps_pretty_msg_t *m, ps_markup_t markup,
         sb_put_value(&sb, markup, m->rows[i].value);
         sb_put(&sb, code_off);
     }
+    return sb.overflow ? -1 : 0;
+}
+
+// --- Microsoft Teams: Adaptive Card for a Workflows webhook ---
+//
+// Teams retired the Office 365 connector webhooks in May 2026. Their
+// replacement, a Workflows "Send webhook alerts to a channel" flow, posts the
+// Adaptive Card it finds in "attachments"; a bare {"text": ...} body is not
+// what that template reads. So Teams gets its own body instead of markdown
+// text.
+//
+// Adaptive Card markdown has no code spans, so the code-span defence used for
+// the other platforms does not exist here: "[x](https://evil)" in a TextBlock
+// would become a link. Every piece of text therefore goes into a TextRun
+// inside a RichTextBlock, which the Adaptive Card schema never parses as
+// markdown. Untrusted values still lose control characters and other unsafe
+// code points, and everything is JSON-escaped.
+
+// Copy untrusted text with unsafe code points and malformed UTF-8 replaced by
+// '?' (an empty value becomes "-"), then JSON-escape it into sb.
+static void sb_put_card_text(ps_strbuf_t *sb, const char *value) {
+    char plain[1200];
+    ps_strbuf_t p = {
+        .buf = plain, .size = sizeof(plain), .len = 0, .overflow = 0};
+    plain[0] = '\0';
+    if (value[0] == '\0')
+        sb_put(&p, "-");
+    for (const unsigned char *s = (const unsigned char *)value; *s;) {
+        uint32_t cp;
+        int n = utf8_decode(s, &cp);
+        if (n == 0 || is_unsafe_display_codepoint(cp)) {
+            sb_put(&p, "?");
+            s += n == 0 ? 1 : n;
+            continue;
+        }
+        char seq[5] = {0};
+        memcpy(seq, s, (size_t)n);
+        sb_put(&p, seq);
+        s += n;
+    }
+    if (p.overflow) {
+        sb->overflow = 1;
+        return;
+    }
+
+    char esc[2600];
+    int truncated;
+    json_escape_ex(plain, esc, sizeof(esc), &truncated);
+    if (truncated) {
+        sb->overflow = 1;
+        return;
+    }
+    sb_put(sb, esc);
+}
+
+// One TextRun. style is a literal of extra members such as
+// ",\"weight\":\"Bolder\"" or "".
+static void sb_put_text_run(ps_strbuf_t *sb, const char *text,
+                            const char *style) {
+    sb_put(sb, "{\"type\":\"TextRun\",\"text\":\"");
+    sb_put_card_text(sb, text);
+    sb_put(sb, "\"");
+    sb_put(sb, style);
+    sb_put(sb, "}");
+}
+
+#define PS_TEAMS_BOLD ",\"weight\":\"Bolder\""
+#define PS_TEAMS_MONO ",\"fontType\":\"Monospace\""
+
+// Render the full Teams request body: the pretty message m when given,
+// otherwise the one-line compact text in monospace. Returns 0 on success,
+// -1 if it does not fit in buf.
+static int render_teams_card(const ps_pretty_msg_t *m, const char *compact,
+                             char *buf, size_t size) {
+    if (size == 0)
+        return -1;
+    buf[0] = '\0';
+    ps_strbuf_t sb = {.buf = buf, .size = size, .len = 0, .overflow = 0};
+
+    sb_put(&sb, "{\"type\":\"message\",\"attachments\":[{"
+                "\"contentType\":\"application/vnd.microsoft.card.adaptive\","
+                "\"contentUrl\":null,\"content\":{"
+                "\"$schema\":\"http://adaptivecards.io/schemas/"
+                "adaptive-card.json\","
+                "\"type\":\"AdaptiveCard\",\"version\":\"1.2\",\"body\":[");
+
+    if (m) {
+        char headline[128];
+        snprintf(headline, sizeof(headline), "%s %s", m->emoji, m->title);
+        sb_put(&sb, "{\"type\":\"RichTextBlock\",\"inlines\":[");
+        sb_put_text_run(&sb, headline, PS_TEAMS_BOLD);
+        sb_put(&sb, "]}");
+        if (m->note) {
+            sb_put(&sb, ",{\"type\":\"RichTextBlock\",\"inlines\":[");
+            sb_put_text_run(&sb, m->note, "");
+            sb_put(&sb, "]}");
+        }
+        for (int i = 0; i < m->row_count; i++) {
+            char label[64];
+            snprintf(label, sizeof(label), "%s: ", m->rows[i].label);
+            sb_put(&sb, ",{\"type\":\"RichTextBlock\",\"spacing\":\"None\","
+                        "\"inlines\":[");
+            sb_put_text_run(&sb, label, PS_TEAMS_BOLD);
+            sb_put(&sb, ",");
+            sb_put_text_run(&sb, m->rows[i].value, PS_TEAMS_MONO);
+            sb_put(&sb, "]}");
+        }
+    } else {
+        sb_put(&sb, "{\"type\":\"RichTextBlock\",\"inlines\":[");
+        sb_put_text_run(&sb, compact, PS_TEAMS_MONO);
+        sb_put(&sb, "]}");
+    }
+
+    sb_put(&sb, "]}}]}");
     return sb.overflow ? -1 : 0;
 }
 
@@ -1198,6 +1306,25 @@ static void send_simple_webhook(const char *url, const char *text_key,
     }
 
     post_alert(&(curl_config_t){.url = url}, body);
+}
+
+// Teams posts an Adaptive Card (see render_teams_card): the pretty card when
+// message_style = pretty and it fits, otherwise the compact line.
+static void send_teams(const ps_config_t *cfg, const char *compact,
+                       const ps_pretty_msg_t *pretty) {
+    if (!cfg->teams_webhook_url[0])
+        return;
+
+    char body[8192];
+    if (!pretty || render_teams_card(pretty, NULL, body, sizeof(body)) != 0) {
+        if (render_teams_card(NULL, compact, body, sizeof(body)) != 0) {
+            sd_journal_print(LOG_WARNING,
+                             "pamsignal: teams card truncated, dropping alert");
+            return;
+        }
+    }
+
+    post_alert(&(curl_config_t){.url = cfg->teams_webhook_url}, body);
 }
 
 static void send_whatsapp(const ps_config_t *cfg, const char *text) {
@@ -1303,10 +1430,9 @@ static ps_markup_t channel_markup(ps_channel_t ch) {
         return PS_MARKUP_TELEGRAM;
     case PS_CHANNEL_SLACK:
         return PS_MARKUP_SLACK;
-    case PS_CHANNEL_TEAMS:
-        return PS_MARKUP_TEAMS;
     case PS_CHANNEL_WHATSAPP:
         return PS_MARKUP_WHATSAPP;
+    case PS_CHANNEL_TEAMS: // posts an Adaptive Card, never markup text
     case PS_CHANNEL_DISCORD:
     case PS_CHANNEL_COUNT:
         break;
@@ -1317,10 +1443,17 @@ static ps_markup_t channel_markup(ps_channel_t ch) {
 // Send one alert to one chat channel. compact is the one-line text; pretty is
 // NULL unless message_style = pretty. Nothing reaches a sender except the
 // output of render_pretty or render_compact, so no untrusted byte is ever
-// sent outside a code span.
+// sent outside a code span; Teams instead gets render_teams_card, where every
+// untrusted byte sits in a TextRun, which is never parsed as markdown.
 static void dispatch_channel(const ps_config_t *cfg, ps_channel_t ch,
                              const char *compact,
                              const ps_pretty_msg_t *pretty) {
+    // Teams takes an Adaptive Card rather than markup text.
+    if (ch == PS_CHANNEL_TEAMS) {
+        send_teams(cfg, compact, pretty);
+        return;
+    }
+
     char text[PS_CHAT_TEXT_MAX];
     ps_markup_t markup = channel_markup(ch);
 
@@ -1340,8 +1473,7 @@ static void dispatch_channel(const ps_config_t *cfg, ps_channel_t ch,
     case PS_CHANNEL_SLACK:
         send_simple_webhook(cfg->slack_webhook_url, "text", text, NULL);
         break;
-    case PS_CHANNEL_TEAMS:
-        send_simple_webhook(cfg->teams_webhook_url, "text", text, NULL);
+    case PS_CHANNEL_TEAMS: // handled above
         break;
     case PS_CHANNEL_WHATSAPP:
         send_whatsapp(cfg, text);

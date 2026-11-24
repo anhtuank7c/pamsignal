@@ -299,13 +299,40 @@
             "mode": "thresholds"
           },
           "mappings": []
-        }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byFrameRefID",
+              "options": "A"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Brute force"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byFrameRefID",
+              "options": "B"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Login after failures"
+              }
+            ]
+          }
+        ]
       }
     },
     {
       "id": 5,
       "type": "timeseries",
       "title": "Login attempts/min by outcome",
+      "interval": "15s",
       "description": "Successful vs failed logins per minute. Sudden vertical spikes in failures are the canonical brute-force signature.",
       "gridPos": {
         "x": 0,
@@ -471,6 +498,7 @@
       "id": 7,
       "type": "timeseries",
       "title": "Events per host",
+      "interval": "15s",
       "description": "Top 10 hosts by event volume. Useful to spot a noisy host or one that has fallen silent.",
       "gridPos": {
         "x": 0,
@@ -553,11 +581,13 @@
             },
             "renameByName": {
               "source_ip": "Source IP",
-              "Value": "Failed attempts"
+              "Value": "Failed attempts",
+              "Value #A": "Failed attempts"
             },
             "indexByName": {
               "source_ip": 0,
-              "Value": 1
+              "Value": 1,
+              "Value #A": 1
             }
           }
         },
@@ -652,11 +682,13 @@
             },
             "renameByName": {
               "user_name": "Username",
-              "Value": "Failed attempts"
+              "Value": "Failed attempts",
+              "Value #A": "Failed attempts"
             },
             "indexByName": {
               "user_name": 0,
-              "Value": 1
+              "Value": 1,
+              "Value #A": 1
             }
           }
         },

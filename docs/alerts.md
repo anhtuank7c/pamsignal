@@ -68,7 +68,7 @@ Slack / WhatsApp
 *Host:* `web-01`
 *Source:* `203.0.113.50`
 
-Discord / Teams
+Discord
 🚨 **Brute force detected**
 **Host:** `web-01`
 **Source:** `203.0.113.50`
@@ -83,7 +83,7 @@ Discord / Teams
 | 🔥 Login after failed attempts | `login_after_failures` | Host, User, Source, Failures, Auth, PID, Time |
 | 🔔 PAMSignal test alert | `pamsignal --test-alert` | Host, Time |
 
-`Provider` and `Service name` rows are appended when those tags are configured. Teams separates rows with a blank line, because its markdown folds single line breaks.
+`Provider` and `Service name` rows are appended when those tags are configured. Teams gets the same rows in an Adaptive Card: bold headline and labels, monospace values (see [Microsoft Teams](#microsoft-teams)).
 
 ### How untrusted text is neutralised
 
@@ -91,13 +91,14 @@ User names and host names come from the journal, and a user name is chosen by wh
 
 - **Pretty:** every value is the content of a code span.
 - **Compact:** the whole line is sent as one code span (`<code>…</code>` on Telegram, backticks elsewhere), so it also renders monospace, which is what its fixed-width layout was designed for.
+- **Teams:** there are no code spans in Adaptive Card markdown, so every piece of text is a `TextRun` inside a `RichTextBlock`, which Teams never parses as markdown. The control-character and Unicode rows below apply; the backtick and `&` `<` `>` rows do not, since those characters are harmless there.
 
 Inside a code span no platform parses markup, resolves mentions, or turns text into links. Before the text goes in:
 
 | Input | Becomes | Why |
 |---|---|---|
 | A backtick | `'` | It is the only character that can close a code span |
-| `&` `<` `>` | `&amp;` `&lt;` `&gt;` on Telegram, Slack, Teams | They are syntax there (HTML tags, `<!channel>`, `<url\|text>`) |
+| `&` `<` `>` | `&amp;` `&lt;` `&gt;` on Telegram, Slack | They are syntax there (HTML tags, `<!channel>`, `<url\|text>`) |
 | Control characters, including CR / LF / TAB | `?` | A line break would start a forged row |
 | Unicode line and paragraph separators (U+2028, U+2029), C1 controls | `?` | Same, for clients that treat them as line breaks |
 | Bidirectional overrides and isolates (U+202A–202E, U+2066–2069), zero-width and other invisible format characters | `?` | They reorder or hide the visible text |
@@ -128,11 +129,37 @@ Sent as the `text` field via [incoming webhook](https://api.slack.com/messaging/
 
 ### Microsoft Teams
 
-Sent as the `text` field (the compact line in backticks, or the pretty message in markdown) via [incoming webhook connector](https://learn.microsoft.com/en-us/microsoftteams/platform/webhooks-and-connectors/how-to/add-incoming-webhook).
+Sent as an [Adaptive Card](https://adaptivecards.io/) to a Teams **Workflows** webhook. Microsoft has retired the Office 365 connector webhooks (`https://<tenant>.webhook.office.com/...`), so a connector URL no longer delivers anything; create a Workflows webhook instead.
+
+With `message_style = pretty` the card holds the pretty message (bold headline and labels, monospace values); otherwise it holds the compact line in a monospace font. The request body for a compact alert:
+
+```json
+{
+  "type": "message",
+  "attachments": [{
+    "contentType": "application/vnd.microsoft.card.adaptive",
+    "contentUrl": null,
+    "content": {
+      "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+      "type": "AdaptiveCard",
+      "version": "1.2",
+      "body": [
+        {"type": "RichTextBlock", "inlines": [
+          {"type": "TextRun", "text": "[WARN]   auth.login_failure user=bob src=192.0.2.1:22 ...", "fontType": "Monospace"}
+        ]}
+      ]
+    }
+  }]
+}
+```
 
 **Setup:**
-1. In your Teams channel, go to **Channel settings > Connectors > Incoming Webhook**
-2. Set `teams_webhook_url` in `pamsignal.conf`
+1. In Teams, open the **...** menu next to the channel and choose **Workflows**
+2. Pick the **Send webhook alerts to a channel** template, name the workflow, and confirm the team and channel
+3. Copy the webhook URL it shows and set it as `teams_webhook_url` in `pamsignal.conf`
+4. Run `sudo -u pamsignal pamsignal --test-alert`
+
+The card is posted by the account that created the workflow (shown as "<name> via Workflows"). Treat the URL as a secret: anyone who has it can post to the channel. It must be at most 511 characters.
 
 ### WhatsApp
 

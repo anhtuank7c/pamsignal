@@ -66,7 +66,8 @@
 # --- Chat message layout ---
 #   compact  one line of key=value text (default)
 #   pretty   multi-line, with bold labels and monospace values in each
-#            platform's own markup (Telegram, Slack, Teams, WhatsApp, Discord)
+#            platform's own markup (Telegram, Slack, WhatsApp, Discord; Teams
+#            gets an Adaptive Card)
 # The custom webhook's JSON payload is the same in both styles.
 # Preview either style with:  sudo -u pamsignal pamsignal --test-alert
 # message_style = compact
@@ -89,7 +90,8 @@
 # Slack
 # slack_webhook_url = <webhook_url>
 
-# Microsoft Teams
+# Microsoft Teams: a Workflows webhook URL (channel ... menu > Workflows >
+# "Send webhook alerts to a channel"). Office 365 connector URLs no longer work.
 # teams_webhook_url = <webhook_url>
 
 # WhatsApp (Meta Cloud API; phone number ID and recipient are digits only)

@@ -185,8 +185,8 @@ Attempts: 12 in 300s
 Time: 2026-03-29 14:23:01 +0000
 ```
 
-- **Markup theo từng nền tảng.** Mỗi kênh nhận đúng cú pháp của nó (Telegram HTML, Slack mrkdwn, markdown của Teams và Discord, định dạng của WhatsApp), nên nhãn luôn hiển thị đậm và giá trị luôn ở dạng monospace. Xem [Alerts → Định dạng pretty](./alerts.md#định-dạng-pretty).
-- **An toàn với dữ liệu thù địch.** Tên user và tên host đến từ journal và có thể bị kẻ tấn công chi phối. Ở cả hai kiểu, chúng chỉ được gửi bên trong một code span, sau khi backtick, ký tự markup, ký tự điều khiển và Unicode vô hình đã bị vô hiệu hoá, nên một lần thử đăng nhập với tên `<!channel>`, `@everyone` hay `[click](https://evil.example)` không thể ping ai hay trở thành link. Xem [Alerts → Cách vô hiệu hoá văn bản không đáng tin](./alerts.md#cách-vô-hiệu-hoá-văn-bản-không-đáng-tin).
+- **Markup theo từng nền tảng.** Mỗi kênh nhận đúng cú pháp của nó (Telegram HTML, Slack mrkdwn, markdown của Discord, định dạng của WhatsApp, một Adaptive Card cho Teams), nên nhãn luôn hiển thị đậm và giá trị luôn ở dạng monospace. Xem [Alerts → Định dạng pretty](./alerts.md#định-dạng-pretty).
+- **An toàn với dữ liệu thù địch.** Tên user và tên host đến từ journal và có thể bị kẻ tấn công chi phối. Ở cả hai kiểu, chúng chỉ được gửi bên trong một code span (trên Teams là một text run của card, không bao giờ được phân tích như markdown), sau khi backtick, ký tự markup, ký tự điều khiển và Unicode vô hình đã bị vô hiệu hoá, nên một lần thử đăng nhập với tên `<!channel>`, `@everyone` hay `[click](https://evil.example)` không thể ping ai hay trở thành link. Xem [Alerts → Cách vô hiệu hoá văn bản không đáng tin](./alerts.md#cách-vô-hiệu-hoá-văn-bản-không-đáng-tin).
 - **Tự lùi về compact khi quá dài.** Một tin nhắn pretty không vừa giới hạn sẽ được gửi ở dạng compact thay vì bị cắt cụt.
 - **Compact hiển thị monospace.** Bản thân dòng compact cũng được gửi như một code span, nên nó hiển thị bằng font độ rộng cố định trên mọi nền tảng.
 - **Webhook không bị ảnh hưởng.** ECS JSON của custom webhook giống hệt nhau ở cả hai kiểu.
@@ -197,7 +197,7 @@ Chạy `sudo -u pamsignal pamsignal --test-alert` để xem kiểu đã chọn n
 
 Chỉ cấu hình những kênh bạn sử dụng. PAMSignal gửi cảnh báo đến tất cả các kênh đã có thông tin xác thực. Cảnh báo theo kiểu fire-and-forget: một lần gửi thất bại sẽ không được thử lại và không bao giờ làm dừng việc giám sát. Dùng `--test-alert` để xác nhận một kênh hoạt động.
 
-Các value được kiểm tra khi load. `slack_webhook_url`, `teams_webhook_url`, `discord_webhook_url` và `webhook_url` phải bắt đầu bằng `https://` và không chứa khoảng trắng, dấu nháy hay ký tự đặc biệt của shell. `telegram_bot_token` phải có dạng `123456:ABC...` (các chữ số, dấu hai chấm, rồi ít nhất 20 ký tự chữ, số, `_` hoặc `-`) và cần có `telegram_chat_id` (một số, âm với group, hoặc `@channelname`). Khi `whatsapp_access_token` được đặt, `whatsapp_phone_number_id` và `whatsapp_recipient` chỉ được chứa chữ số.
+Các value được kiểm tra khi load. `slack_webhook_url`, `teams_webhook_url`, `discord_webhook_url` và `webhook_url` phải bắt đầu bằng `https://` và không chứa khoảng trắng, dấu nháy hay ký tự đặc biệt của shell. `telegram_bot_token` phải có dạng `123456:ABC...` (các chữ số, dấu hai chấm, rồi ít nhất 20 ký tự chữ, số, `_` hoặc `-`) và cần có `telegram_chat_id` (một số, âm với group, hoặc `@channelname`). Khi `whatsapp_access_token` được đặt, `whatsapp_phone_number_id` và `whatsapp_recipient` chỉ được chứa chữ số. Một value dài hơn mức key cho phép (511 ký tự với các key URL) là lỗi, không bao giờ bị cắt ngầm, và một dòng dài hơn 1022 ký tự cũng vậy.
 
 Xem [Alerts](./alerts.md) để biết định dạng tin nhắn, hướng dẫn cài đặt và tham chiếu payload.
 
@@ -206,7 +206,7 @@ Xem [Alerts](./alerts.md) để biết định dạng tin nhắn, hướng dẫn
 | `telegram_bot_token` | Telegram | Bot token từ [@BotFather](https://t.me/BotFather) |
 | `telegram_chat_id` | Telegram | ID của chat, group hoặc channel |
 | `slack_webhook_url` | Slack | Incoming webhook URL |
-| `teams_webhook_url` | Teams | Incoming webhook URL |
+| `teams_webhook_url` | Teams | Webhook URL của Workflows ("Send webhook alerts to a channel"); các URL Office 365 connector đã bị ngừng hỗ trợ không còn dùng được |
 | `whatsapp_access_token` | WhatsApp | Meta Cloud API access token |
 | `whatsapp_phone_number_id` | WhatsApp | Phone Number ID từ dashboard |
 | `whatsapp_recipient` | WhatsApp | Số điện thoại người nhận có mã quốc gia (ví dụ: `84901234567`) |

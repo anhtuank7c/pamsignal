@@ -56,10 +56,10 @@ services:
       ALLOY_LOG_PATH: /var/log/pamsignal-demo/pamsignal.jsonl
       HOST_COUNT: "12"
       EVENT_RATE: "2.0"
-      # Push events both directly to Loki (instant labels) and to a file
-      # tailed by Alloy (proves the Alloy → Loki pipeline). The dashboard
-      # works against either path because the data ends up in the same Loki.
-      MODE: both
+      # Write events to a file tailed by Alloy, the same path real hosts use
+      # (Alloy -> Loki). "both" would also push them straight to Loki, so
+      # every event would arrive twice and every panel would count double.
+      MODE: file
     volumes:
       - alloy-shared:/var/log/pamsignal-demo
     depends_on:

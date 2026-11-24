@@ -4,11 +4,13 @@ name: Grafana integration
 # that touches the integration. Confirms:
 #   - Loki, Grafana, Alloy and the synthetic producer all start
 #   - Dashboard provisioning works (uid=pamsignal-v1 is queryable)
-#   - All twelve dashboard panel queries return data
+#   - The dashboard panel queries return data (the detection panels are only
+#     syntax-checked, since attack bursts are random)
 #   - alloy.river and alloy/demo.alloy pass `alloy fmt --test`
 #   - verify.sh exits 0
 #
-# Designed to run quickly (< 2 min) so the maintainer doesn't avoid editing
+# Designed to run in a few minutes (most of it waiting for screenshot data)
+# so the maintainer does not avoid editing
 # the dashboard for fear of slow CI.
 
 on:
@@ -116,7 +118,10 @@ jobs:
             exit 1
           fi
 
-      - name: Validate all 12 dashboard panel queries
+      # Panels whose data comes only from random attack bursts (P6, P10, P11)
+      # are not checked here; P4 always returns a row thanks to `or vector(0)`,
+      # so it checks the detection query syntax without depending on a burst.
+      - name: Validate dashboard panel queries
         run: |
           END=$(date +%s)000000000
           START=$(( $(date +%s) - 600 ))000000000
@@ -141,6 +146,7 @@ jobs:
           run "P1 hosts reporting" 'count(count by (host) (count_over_time({app="pamsignal"}[1h])))' instant
           run "P2 successful logins" 'sum(count_over_time({app="pamsignal", event_action="login_success"}[5m]))' instant
           run "P3 failed logins" 'sum(count_over_time({app="pamsignal", event_action="login_failure"}[5m]))' instant
+          run "P4 detections" 'sum(count_over_time({app="pamsignal", event_action="login_after_failures"}[15m])) or vector(0)' instant
           run "P5 login by outcome" 'sum by (event_action) (rate({app="pamsignal", event_action=~"login_success|login_failure"}[1m]))' range
           run "P7 events per host" 'topk(10, sum by (host) (rate({app="pamsignal"}[1m])))' range
           run "P8 top source IPs" 'topk(10, sum by (source_ip) (count_over_time({app="pamsignal", event_action="login_failure", service="sshd"} | json source_ip="SOURCE_IP" | source_ip != "" [10m])))' instant
@@ -162,8 +168,13 @@ jobs:
 
       - name: Render dashboard screenshot
         run: |
+          # Let a few minutes of events and attack bursts build up so the
+          # charts are not squeezed into the last seconds of the range.
+          # 200 s plus the earlier steps keeps the stack start-up (when Alloy
+          # ships its first batch at once) outside the rendered 3 minutes.
+          sleep 200
           curl -s -o /tmp/dashboard.png \
-            'http://localhost:3000/render/d/pamsignal-v1/pamsignal?width=1600&height=2400&from=now-15m&to=now&kiosk=1&tz=UTC' \
+            'http://localhost:3000/render/d/pamsignal-v1/pamsignal?width=1600&height=1920&from=now-3m&to=now&kiosk=1&tz=UTC' \
             -w 'http_code=%{http_code} size=%{size_download}\n'
           ls -la /tmp/dashboard.png
           file /tmp/dashboard.png | grep -q PNG

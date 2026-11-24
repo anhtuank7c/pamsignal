@@ -34,8 +34,9 @@ is a comment. There are no inline comments: a
 .B #
 after a value is part of the value. Whitespace around the key and the
 value is ignored. Values are not quoted; quote characters are kept
-literally. If a key appears more than once, the last value wins. Lines
-longer than 1023 characters are not supported.
+literally. If a key appears more than once, the last value wins. A line
+longer than 1022 characters, or a value longer than its key allows, is an
+error; nothing is silently cut off.
 
 The file is opened with
 .B O_NOFOLLOW
@@ -175,13 +176,14 @@ One line of key=value text. This is the default.
 .B pretty
 A multi-line message: a headline, then one row per field with a bold
 label and a monospace value, written in each platform's own markup
-(Telegram HTML, Slack mrkdwn, Teams and Discord markdown, WhatsApp
-formatting).
+(Telegram HTML, Slack mrkdwn, Discord markdown, WhatsApp formatting).
+Teams gets the same rows as an Adaptive Card.
 .RE
 .IP
 In both styles, text taken from the journal (user names, host names) is
 only ever sent inside a code span: the compact line as a whole, each
-pretty value on its own. Backticks, markup characters, control characters,
+pretty value on its own. On Teams it is a card text run, which is never
+parsed as markdown. Backticks, markup characters, control characters,
 invisible or direction-changing Unicode and malformed UTF-8 are neutralised
 first, so such text cannot inject formatting, links or mentions. A pretty
 message that would be too long is sent in the compact form instead. The custom webhook's JSON payload is the same in both styles.
@@ -231,7 +233,9 @@ and must not contain whitespace, quotes or shell metacharacters.
 
 .TP
 .B teams_webhook_url
-Incoming webhook URL for Microsoft Teams.
+Microsoft Teams Workflows webhook URL (the "Send webhook alerts to a
+channel" template), at most 511 characters. Alerts are posted as an
+Adaptive Card. The retired Office 365 connector URLs no longer work.
 
 .TP
 .B whatsapp_access_token

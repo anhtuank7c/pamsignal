@@ -66,7 +66,7 @@ Sơ đồ [luồng sự kiện](#luồng-sự-kiện) thể hiện điều này 
 
 ### Cách gọi curl (config dùng memfd)
 
-Mỗi sender theo kênh (Telegram, Slack/Teams/Discord, WhatsApp, custom webhook) đều đi qua một điểm vào nội bộ duy nhất (`post_alert` trong `src/notify.c`). Điểm này ghi cấu hình per-request vào một file được tạo bởi `memfd_create()` trong bộ nhớ và truyền cho curl dưới dạng `-K /dev/fd/9`. Memfd có bit CLOEXEC được xóa bằng `dup2`; mọi file descriptor kế thừa khác đều được đóng trong tiến trình con trước khi `execv`.
+Mỗi sender theo kênh (Telegram, Slack/Discord, Teams, WhatsApp, custom webhook) đều đi qua một điểm vào nội bộ duy nhất (`post_alert` trong `src/notify.c`). Điểm này ghi cấu hình per-request vào một file được tạo bởi `memfd_create()` trong bộ nhớ và truyền cho curl dưới dạng `-K /dev/fd/9`. Memfd có bit CLOEXEC được xóa bằng `dup2`; mọi file descriptor kế thừa khác đều được đóng trong tiến trình con trước khi `execv`.
 
 Nội dung trong memfd config:
 
