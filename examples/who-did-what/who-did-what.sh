@@ -157,7 +157,9 @@ section_logins() {
     local keymap
     keymap=$(mktemp)
     build_key_map >"$keymap"
-    journal -t sshd -t sshd-session |
+    # _UID=0: journald sets it from the kernel, so a local user cannot fake
+    # it with `logger -t sshd`; sshd logs as root.
+    journal -t sshd -t sshd-session _UID=0 |
         awk -v want="$USER_FILTER" -v keymap="$keymap" '
             BEGIN {
                 while ((getline line < keymap) > 0) {
@@ -165,15 +167,17 @@ section_logins() {
                 }
                 printf "  %-25s %-12s %-22s %-10s %s\n", "TIME", "USER", "FROM", "METHOD", "KEY"
             }
-            {
-                for (i = 1; i <= NF; i++) if ($i == "Accepted") break
-                if (i > NF || $(i + 2) != "for" || $(i + 4) != "from") next
-                user = $(i + 3)
+            # Anchored, like skip_prefix in src/utils.c: the message must start
+            # with "Accepted". A failed attempt embeds the client-chosen
+            # username, which may itself read "Accepted password for root ...".
+            # Short-iso layout: $1 time, $2 host, $3 "sshd[pid]:", $4 message.
+            $3 ~ /^sshd(-session)?\[[0-9]+\]:$/ && $4 == "Accepted" && $6 == "for" && $8 == "from" && $10 == "port" {
+                user = $7
                 if (want != "" && user != want) next
                 fp = $NF
                 k = (fp ~ /^SHA256:/) ? (fp in key ? key[fp] : fp " (not in any authorized_keys)") : "-"
-                ip = $(i + 5); if (index(ip, ":")) ip = "[" ip "]"   # IPv6: [addr]:port
-                printf "  %-25s %-12s %-22s %-10s %s\n", $1, user, ip ":" $(i + 7), $(i + 1), k
+                ip = $9; if (index(ip, ":")) ip = "[" ip "]"   # IPv6: [addr]:port
+                printf "  %-25s %-12s %-22s %-10s %s\n", $1, user, ip ":" $11, $5, k
                 n++
             }
             END { if (!n) print "  (no successful SSH logins in this window)" }' | sanitize
@@ -184,7 +188,19 @@ section_logins() {
 
 section_sudo() {
     heading "Became another user (sudo, su)"
-    journal -t sudo -t su |
+    # Only entries written by the real sudo and su binaries: _EXE is set by
+    # journald from the kernel, so `logger -t sudo` cannot match it. (sudo
+    # logs with the caller's UID, so _UID=0 would not work here.)
+    local exe exe_match=()
+    for exe in sudo su; do
+        exe=$(command -v "$exe" 2>/dev/null) || continue
+        exe=$(readlink -f "$exe") && exe_match+=("_EXE=$exe")
+    done
+    if [ ${#exe_match[@]} -eq 0 ]; then
+        note "neither sudo nor su is installed"
+        return 0
+    fi
+    journal -t sudo -t su "${exe_match[@]}" |
         awk -v want="$USER_FILTER" '
             BEGIN { printf "  %-25s %-12s %-8s %-6s %s\n", "TIME", "WHO", "AS", "TSID", "COMMAND / EVENT" }
             {
@@ -200,19 +216,28 @@ section_sudo() {
                 }
                 if (prog != "sudo" || msg ~ /^pam_/) next
                 # sudo: "alice : TTY=pts/1 ; PWD=/home/alice ; USER=root ; TSID=000002 ; COMMAND=..."
+                # PWD (a directory name) and the command arguments are chosen
+                # by the user and sit on both sides of USER=, so a line with
+                # more than one " ; USER=" or " ; COMMAND=" can be read two
+                # ways. Such a line is flagged rather than guessed at.
                 sub(/^ +/, "", msg)
                 c = index(msg, " : "); if (!c) next
                 who = substr(msg, 1, c - 1); rest = substr(msg, c + 3)
                 if (want != "" && who != want) next
+                probe = rest
+                nu = gsub(/ ; USER=/, "", probe); nc = gsub(/ ; COMMAND=/, "", probe)
+                if (nu > 1 || nc > 1) {
+                    printf "  %-25s %-12s %-8s %-6s %s\n", $1, who, "?", "?", "[AMBIGUOUS: a path or argument contains sudo field separators; check by hand] " rest
+                    n++; next
+                }
                 as = "?"; tsid = "-"; cmd = ""; ev = ""
-                if ((q = index(rest, "COMMAND=")) > 0) { cmd = substr(rest, q + 8); rest = substr(rest, 1, q - 1) }
+                if ((q = index(rest, " ; COMMAND=")) > 0) { cmd = substr(rest, q + 11); rest = substr(rest, 1, q - 1) }
                 np = split(rest, f, / ; /)
                 for (j = 1; j <= np; j++) {
                     if (f[j] ~ /^USER=/) as = substr(f[j], 6)
                     else if (f[j] ~ /^TSID=/) tsid = substr(f[j], 6)
                     else if (f[j] !~ /^(TTY|PWD|ENV|GROUP)=/ && f[j] != "") ev = ev (ev == "" ? "" : "; ") f[j]
                 }
-                sub(/ ;$/, "", ev)
                 out = (ev != "" ? "[" ev "] " : "") cmd
                 printf "  %-25s %-12s %-8s %-6s %s\n", $1, who, as, tsid, out; n++
             }
@@ -252,15 +277,23 @@ audit_user_args() {
 # shellcheck disable=SC2016  # awk program text: $i is awk's, not the shell's
 readonly AUDIT_AWK_COMMON='
     function iso(d, t,   p) { split(d, p, "/"); return "20" p[3] "-" p[1] "-" p[2] "T" substr(t, 1, 8) }
+    # comm= and exe= are chosen by whoever runs the program and, once
+    # interpreted, may contain spaces and "name=value" text. Fields before
+    # them are taken at their first occurrence and key= (after them) at its
+    # last, so injected text cannot replace the real values.
     function field(name,   i) {
         for (i = 1; i <= NF; i++) if (index($i, name "=") == 1) return substr($i, length(name) + 2)
+        return ""
+    }
+    function field_last(name,   i) {
+        for (i = NF; i >= 1; i--) if (index($i, name "=") == 1) return substr($i, length(name) + 2)
         return ""
     }
     /^type=SYSCALL / {
         when = iso(substr($2, 11), $3)
         auid = field("auid"); uid = field("uid"); pid = field("pid"); ppid = field("ppid")
         ses = field("ses"); tty = field("tty"); comm = field("comm"); exe = field("exe")
-        sc = field("syscall"); ok = field("success"); key = field("key"); have = 1
+        sc = field("syscall"); ok = field("success"); key = field_last("key"); have = 1
     }
     /^type=EXECVE / {
         argv = ""; cur = ""; started = 0
@@ -286,26 +319,42 @@ section_commands() {
         return 0
     fi
     audit_user_args || return 0
+    # Sessions whose login falls inside the window: the kernel writes a
+    # LOGIN record (with the new ses=) when a login sets the login ID.
+    local logins
+    logins=$(audit_search -m LOGIN | awk "$AUDIT_AWK_COMMON"'
+        /^type=LOGIN / { s = field("ses"); if (s != "" && s != "unset" && s != "4294967295") print s }' | sort -u | tr '\n' ' ')
     audit_search -k user-cmd "${AUDIT_USER_ARGS[@]}" |
-        awk -v raw="$RAW" "$AUDIT_AWK_COMMON"'
-            BEGIN { printf "  %-19s %-10s %-8s %-5s %-6s %s\n", "TIME", "WHO", "AS", "SES", "TTY", "COMMAND" }
-            # Records every login produces on its own: the message of the day,
-            # the systemd user session, and the login shell start-up checks.
-            function background(a) {
-                return a ~ /update-motd/ || a ~ /^\/usr\/lib\/systemd\/systemd --user/ ||
-                       a ~ /^\/usr\/lib\/systemd\/(systemd-executor|user-environment-generators|user-generators)/ ||
-                       a ~ /^\/usr\/bin\/locale-check / || a == "locale" || a == "mesg n" ||
-                       a ~ /^systemctl --user (set|unset)-environment /
+        awk -v raw="$RAW" -v logins="$logins" "$AUDIT_AWK_COMMON"'
+            BEGIN {
+                n_l = split(logins, l, " "); for (i = 1; i <= n_l; i++) login_seen[l[i]] = 1
+                printf "  %-19s %-10s %-8s %-5s %-6s %s\n", "TIME", "WHO", "AS", "SES", "TTY", "COMMAND"
             }
-            # Within a login session, anything run as root before the person'"'"'s
-            # own first program (their shell or command) was started by the
-            # login itself (PAM, message of the day): the person could not
-            # have run it yet. Subshells fork without an execve record, so
-            # following parent PIDs alone would miss some of it.
+            # Records every login produces on its own. Nothing here keys on
+            # text the person controls (argv, comm) or on reusable PIDs:
+            #  - inside a session that logged in during the window, programs
+            #    run as root before the person'"'"'s own first program (their
+            #    shell or command) were started by the login itself (PAM, the
+            #    message of the day); the person could not have run anything
+            #    yet. This also covers subshell children, which have no execve
+            #    of their own to follow.
+            #  - the systemd user manager and its helpers, recognised by the
+            #    real executable path the kernel records (exe=), which argv0
+            #    tricks such as "exec -a" cannot change;
+            #  - the exact start-up commands of a login shell.
+            function background() {
+                if (uid == "root" && (ses in login_seen) && !(ses in shell_started)) return 1
+                if (exe == "/usr/lib/systemd/systemd" && ppid == "1" && argv ~ / --user( |$)/) return 1
+                if (exe == "/usr/lib/systemd/systemd-executor") return 1
+                if (exe ~ /^\/usr\/lib\/systemd\/user-(environment-)?generators\//) return 1
+                if (exe == "/usr/bin/systemctl" && argv ~ /^[^ ]*systemctl --user (set|unset)-environment /) return 1
+                if (exe == "/usr/bin/locale-check" || (exe == "/usr/bin/locale" && argv == "locale") || (exe == "/usr/bin/mesg" && argv == "mesg n")) return 1
+                return 0
+            }
             function flush() {
                 if (have && argv != "") {
                     if (uid == auid) shell_started[ses] = 1
-                    if (!raw && (ppid in quiet || background(argv) || (uid == "root" && !(ses in shell_started)))) quiet[pid] = 1
+                    if (!raw && background()) hidden++
                     else {
                         printf "  %-19s %-10s %-8s %-5s %-6s %s%s\n", when, auid, uid, ses, tty, argv, (ok == "no" ? "   (failed)" : "")
                         n++
@@ -317,7 +366,7 @@ section_commands() {
             END {
                 flush()
                 if (!n) print "  (no commands recorded in this window)"
-                else if (!raw) print "  (records generated by every login are hidden; --raw shows them)"
+                if (hidden) printf "  (%d records generated by logins themselves are hidden; --raw shows them)\n", hidden
             }' | sanitize
 }
 
@@ -327,9 +376,18 @@ section_files() {
     heading "Changes to watched files (auditd)"
     audit_ready || return 0
     local keys
-    keys=$(awk '$1 == "-w" { for (i = 1; i < NF; i++) if ($i == "-k") print $(i + 1) }' <<<"$AUDIT_RULES" | sort -u)
+    # Both rule styles watch files: "-w PATH -p wa -k KEY" and the syscall
+    # form used by CIS benchmarks, "-a always,exit -F path=PATH (or dir=)
+    # -F perm=wa -F key=KEY" (auditctl may print the key as -k or key=).
+    keys=$(awk '
+        $1 == "-w" || / -F (path|dir)=/ {
+            for (i = 1; i < NF; i++) {
+                if ($i == "-k") print $(i + 1)
+                else if ($i == "-F" && index($(i + 1), "key=") == 1) print substr($(i + 1), 5)
+            }
+        }' <<<"$AUDIT_RULES" | grep -vx 'user-cmd' | sort -u || true)
     if [ -z "$keys" ]; then
-        note "no audit file watches (-w ... -k ...) are loaded — see docs/ssh-hardening.md, section 2.4"
+        note "no audit file watches (-w ... or -F path=/dir= with a key) are loaded — see docs/ssh-hardening.md, section 2.4"
         return 0
     fi
     audit_user_args || return 0
