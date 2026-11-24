@@ -8,148 +8,50 @@ Nó đăng ký theo dõi systemd journal, lọc các thông báo liên quan đ�
 
 Single binary. Single config file. Single dependency (`libsystemd`). Không database, không web server, không relay process riêng biệt.
 
-## C4 Model
+## Sơ đồ
 
-Theo quy ước [C4 model](https://c4model.com/), chúng ta ánh xạ kiến trúc từ tổng quan hệ thống cấp cao xuống các thành phần nội bộ.
+Các sơ đồ dưới đây là file SVG có thể chỉnh sửa: GitHub hiển thị chúng như ảnh, còn mở cùng file đó bằng [draw.io](https://www.drawio.com/) thì có thể sửa trực tiếp (xem [Chỉnh sửa sơ đồ](development.md#chỉnh-sửa-sơ-đồ)). Bấm vào sơ đồ để xem kích thước đầy đủ.
 
-### Level 1: System Context
+### Kiến trúc
 
-Sơ đồ System Context cung cấp cái nhìn tổng quan cấp cao về cách người dùng tương tác với các hệ thống nội bộ và bên ngoài để nhận giá trị. Nó cho thấy PAMSignal trong môi trường máy chủ Linux rộng hơn.
+[![PAMSignal architecture: PAM services write to journald; the pamsignal daemon reads, parses and re-journals each event, then forks curl to send alerts](../diagrams/architecture.drawio.svg)](../diagrams/architecture.drawio.svg)
 
-```mermaid
-C4Context
-  title System Context diagram for PAMSignal
+Các con số đi theo một sự kiện xác thực:
 
-  Person(admin, "System Administrator", "A sysadmin who monitors and secures the server")
-  
-  System(pamsignal, "PAMSignal", "Real-time PAM event monitor and alert dispatcher")
-  
-  System_Ext(sshd, "PAM Services", "sshd, sudo, su, login")
-  System_Ext(journald, "systemd-journald", "Centralized binary logging system")
-  System_Ext(platforms, "Messaging Platforms", "Telegram, Slack, Teams, WhatsApp, Discord, Webhooks")
-  System_Ext(fail2ban, "Fail2ban", "Intrusion prevention system (iptables / ufw)")
+1. Một SSH client, hoặc một user cục bộ chạy `sudo` / `su` / `login`, thực hiện xác thực.
+2. PAM service ghi một dòng log vào journald, journald gắn thêm metadata đáng tin cậy (`_EXE`, `_PID`, `_UID`, `_HOSTNAME`).
+3. Daemon thức dậy từ `sd_journal_wait()` và đọc entry, đã được lọc chỉ còn sshd, sshd-session, sudo, su và login.
+4. `utils.c` phân tích message thành một sự kiện có cấu trúc.
+5. `journal_watch.c` ghi sự kiện có cấu trúc trở lại journal (xem [Các trường journal có cấu trúc](#các-trường-journal-có-cấu-trúc)).
+6. `notify.c` quyết định sự kiện có cần cảnh báo hay không và định dạng nó.
+7. Daemon fork một tiến trình con `curl` ngắn hạn và không chờ nó.
+8. curl gửi cảnh báo qua HTTPS.
+9. Quản trị viên nhận được tin nhắn chat.
 
-  Rel(sshd, journald, "Writes PAM auth events to")
-  Rel(pamsignal, journald, "Reads PAM events & writes structured alerts to")
-  Rel(admin, journald, "Queries structured events via journalctl")
-  Rel(pamsignal, platforms, "Dispatches alerts via curl", "HTTPS")
-  Rel(platforms, admin, "Delivers alert messages to")
-  Rel(fail2ban, journald, "Watches for pamsignal BRUTE_FORCE_DETECTED events")
-```
+| Module | Trách nhiệm |
+|--------|-------------|
+| `main.c` | Phân tích CLI, từ chối chạy bằng root, kiểm tra quyền đọc journal, thứ tự khởi động, `PR_SET_NO_NEW_PRIVS` |
+| `init.c` | Signal handler (cờ atomic), tự động thu hồi các tiến trình con curl, PID file |
+| `config.c` | Bộ phân tích INI, kiểm tra hợp lệ, `trusted_sources`, reload bằng SIGHUP vào một struct tạm |
+| `journal_watch.c` | Đăng ký journal, vòng lặp sự kiện, kiểm tra giả mạo `_EXE`, ghi journal có cấu trúc, theo dõi brute-force và login-after-failures |
+| `utils.c` | Các bộ phân tích PAM message neo theo tiền tố, kiểm tra IP (`inet_pton`), làm sạch log |
+| `notify.c` | Lọc theo loại thông báo và cooldown, văn bản chat (compact / pretty), ECS JSON, config curl qua memfd, gửi bằng fork+exec |
 
-### Level 2: Container
+### Luồng sự kiện
 
-Sơ đồ Container phóng to vào ranh giới hệ thống để hiển thị các container có thể chạy/triển khai độc lập. PAMSignal là một daemon đơn tiến trình. Các cảnh báo được gửi bởi các tiến trình con (`curl`) có thời gian sống ngắn và không thể ảnh hưởng đến daemon giám sát cha.
+[![Sequence diagram: one failed SSH password from log line to chat alert, including the brute-force and login-after-failures trackers](../diagrams/event-flow.drawio.svg)](../diagrams/event-flow.drawio.svg)
 
-```mermaid
-C4Container
-  title Container diagram for PAMSignal
-  
-  Person(admin, "System Administrator", "A sysadmin who monitors the server")
-  
-  System_Boundary(server, "Linux Server") {
-      System_Ext(sshd, "PAM Services", "sshd, sudo, su, login")
-      System_Ext(journald, "systemd-journald", "Structured binary log")
-      System_Ext(systemd, "systemd", "Service manager")
-      System_Ext(fail2ban, "Fail2ban", "Intrusion prevention framework")
-      
-      Container(daemon, "PAMSignal Daemon", "C / libsystemd", "Core monitoring process running as an unprivileged service")
-      Container(curl, "curl Child Process", "cURL", "Short-lived fire-and-forget alert dispatcher")
-  }
-  
-  System_Ext(platforms, "External Platforms", "Telegram, Slack, Teams, WhatsApp, Discord, Webhook")
+Bản ghi journal luôn được ghi trước khi thử gửi bất kỳ cảnh báo nào. Entry không khớp mẫu PAM nào, hoặc có `_EXE` bị thiếu hay không phải binary sshd / sudo / su / login đáng tin cậy, sẽ bị bỏ qua. Cảnh báo chat theo từng sự kiện không được gửi cho các lần sudo/su thất bại (những trường hợp này chỉ cảnh báo dưới dạng brute force) và cho các nguồn nằm trong `trusted_sources`; bộ theo dõi brute-force và login-after-failures vẫn thấy mọi sự kiện.
 
-  Rel(sshd, journald, "Writes auth events to")
-  Rel(daemon, journald, "Reads events & writes structured alerts to")
-  Rel(systemd, daemon, "Starts, stops, sandboxes")
-  Rel(admin, journald, "Queries logs via journalctl")
-  Rel(daemon, curl, "fork() & exec()", "Process creation")
-  Rel(curl, platforms, "POSTs JSON/text alerts to", "HTTPS")
-  Rel(fail2ban, journald, "Watches BRUTE_FORCE_DETECTED events")
-```
+### Vòng đời
 
-### Level 3: Component
-
-Sơ đồ Component phóng to vào container PAMSignal daemon để hiển thị các thành phần C nội bộ, ánh xạ đến các file source thực tế trong dự án.
-
-```mermaid
-C4Component
-  title Component diagram for PAMSignal Daemon
-  
-  Container_Ext(journald, "systemd-journald", "System log service")
-  Container_Ext(curl, "curl Child Process", "cURL binary")
-
-  Container_Boundary(daemon, "PAMSignal Daemon") {
-      Component(main, "main.c", "C", "CLI parsing, root rejection, journal group check, daemon lifecycle")
-      Component(config, "config.c", "C", "INI parser, validation, SIGHUP reload support")
-      Component(init, "init.c", "C", "Double-fork daemonization, signal handling, PID file")
-      Component(jw, "journal_watch.c", "C", "Journal subscription, event loop, brute-force state tracking")
-      Component(utils, "utils.c", "C", "PAM message parsing, IP validation, log sanitization")
-      Component(notify, "notify.c", "C", "Alert formatting and fork+exec dispatch")
-  }
-
-  Rel(main, config, "Loads config using")
-  Rel(main, init, "Initializes daemon using")
-  Rel(main, jw, "Starts event loop in")
-  Rel(jw, utils, "Parses messages using")
-  Rel(jw, config, "Reloads on SIGHUP using")
-  
-  Rel(jw, journald, "Reads PAM events & writes structured alerts via sd_journal_send")
-  Rel(jw, notify, "Triggers alerts via")
-  Rel(notify, curl, "fork+exec() (fire-and-forget)")
-```
-
-## Data flow
-
-```
-SSH login attempt
-    → sshd writes to journald
-        → pamsignal reads via sd_journal_wait/next
-            → utils.c parses message, extracts fields
-                → journal_watch.c writes structured event via sd_journal_send
-                    → journald stores event with custom fields
-                        → admin reads with: journalctl -t pamsignal
-                → notify.c fork() → child exec("curl", ...) → Telegram/Slack/etc.
-                    → parent continues immediately (fire-and-forget)
-                    → child exits on its own (success or failure)
-```
+[![Sequence diagram: startup under systemd, the watchdog loop, SIGHUP reload and shutdown](../diagrams/lifecycle.drawio.svg)](../diagrams/lifecycle.drawio.svg)
 
 ## Mô hình cô lập cảnh báo
 
 Các cảnh báo là **best-effort và không thể làm gián đoạn việc giám sát cốt lõi**. Đây là cách hoạt động:
 
-```mermaid
-graph LR
-    subgraph parent ["PAMSignal (parent process)"]
-        event["Event detected"]
-        write_journal["Write to journal"]
-        do_fork["fork()"]
-        continue["Continue event loop"]
-    end
-
-    subgraph child ["Child process (short-lived)"]
-        exec_curl["exec curl"]
-        send["HTTP POST"]
-        exit_child["exit"]
-    end
-
-    event --> write_journal
-    write_journal --> do_fork
-    do_fork --> continue
-    do_fork -. "child" .-> exec_curl
-    exec_curl --> send
-    send --> exit_child
-
-    style parent fill:#f8f9fa,stroke:#2d6a4f,color:#000
-    style child fill:#f8f9fa,stroke:#7f5539,color:#000,stroke-dasharray: 5 5
-    style event fill:#2d6a4f,stroke:#1b4332,color:#fff
-    style write_journal fill:#2d6a4f,stroke:#1b4332,color:#fff
-    style do_fork fill:#2d6a4f,stroke:#1b4332,color:#fff
-    style continue fill:#2d6a4f,stroke:#1b4332,color:#fff
-    style exec_curl fill:#7f5539,stroke:#6c584c,color:#fff
-    style send fill:#7f5539,stroke:#6c584c,color:#fff
-    style exit_child fill:#7f5539,stroke:#6c584c,color:#fff
-```
+Sơ đồ [luồng sự kiện](#luồng-sự-kiện) thể hiện điều này ở bước ②: tiến trình cha fork, tiến trình con chạy curl, còn tiến trình cha quay lại vòng lặp sự kiện mà không chờ.
 
 **Tại sao thiết kế này an toàn:**
 
