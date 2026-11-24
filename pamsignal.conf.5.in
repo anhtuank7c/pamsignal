@@ -83,14 +83,17 @@ Range: 1\(en100000. Default: 256.
 
 .TP
 .B alert_cooldown_sec
-Rate limit for chat alerts, in seconds. Brute-force alerts are limited
-per source (IP or local actor) and login-after-failures alerts per IP.
-All other per-event alerts
+Seconds before the same alert is sent again. Brute-force alerts are
+limited per source (IP or local actor) and login-after-failures alerts
+per IP. All other per-event alerts
 .RB ( login_success ", " login_failed ", " session_open ", " session_close )
-share one timer: after one is sent, every other one in the next
+are limited per event type, user and source IP: a repeat of the same
+key within
 .B alert_cooldown_sec
-seconds, from any user or IP, goes to the journal only. The journal
-records every event either way. 0 disables the limit.
+seconds goes to the journal only, while a different user, IP or event
+type alerts at once. Up to 128 keys are tracked; when the table is full
+the oldest is dropped. The journal records every event either way.
+0 disables the limit.
 Range: 0\(en86400. Default: 60.
 
 .SH LOGIN-AFTER-FAILURES DETECTION

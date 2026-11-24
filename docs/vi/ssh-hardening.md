@@ -236,7 +236,7 @@ sudo journalctl -t sudo --since today
 # … sudo[48211]:    alice : TTY=pts/1 ; PWD=/home/alice ; USER=root ; COMMAND=/usr/bin/systemctl restart nginx
 ```
 
-PAMSignal biến chính khoảnh khắc đó thành một alert `session_opened … actor=alice service=sudo`, nên bạn thấy các lần lên quyền theo thời gian thực. `actor=` là tài khoản đã đăng nhập vào phiên đó: nếu alice chạy `su - bob` trước rồi bob mới chạy `sudo`, alert vẫn ghi `alice`, còn log này ghi `bob`. Một người gõ sai password `sudo` nhiều lần sẽ sinh ra alert `brute_force_detected actor=… target=root`. Alert `session_opened` là một alert thường lệ, và các alert thường lệ dùng chung một bộ đếm `alert_cooldown_sec`, nên một lần `sudo` xảy ra trong vòng một phút sau một sự kiện khác đã được cảnh báo (chẳng hạn chính lần đăng nhập của alice) sẽ được ghi vào `journalctl -t pamsignal` nhưng không được gửi lên chat; xem [Configuration](configuration.md#phát-hiện-brute-force).
+PAMSignal biến chính khoảnh khắc đó thành một alert `session_opened … actor=alice service=sudo`, nên bạn thấy các lần lên quyền theo thời gian thực. `actor=` là tài khoản đã đăng nhập vào phiên đó: nếu alice chạy `su - bob` trước rồi bob mới chạy `sudo`, alert vẫn ghi `alice`, còn log này ghi `bob`. Một người gõ sai password `sudo` nhiều lần sẽ sinh ra alert `brute_force_detected actor=… target=root`. Các phiên `sudo` lặp lại của cùng một người trong `alert_cooldown_sec` (mặc định 60 s) được gom thành một alert chat; mọi phiên vẫn nằm trong `journalctl -t pamsignal`. Xem [Configuration](configuration.md#phát-hiện-brute-force).
 
 Lỗ hổng còn lại: nếu ai đó chạy `sudo -i`, `sudo su -` hay `sudo bash`, log này chỉ cho thấy một shell đã được mở. Hai mục tiếp theo lấp lỗ hổng đó.
 

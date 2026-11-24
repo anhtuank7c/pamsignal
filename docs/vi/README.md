@@ -102,7 +102,7 @@ Cấu hình mặc định dùng được ngay. Những key bạn hay muốn đ�
 | Key | Mặc định | Tác dụng |
 |---|---|---|
 | `fail_threshold` / `fail_window_sec` | `5` / `300` | Số lần thất bại trong khoảng thời gian này thì bị coi là brute force |
-| `alert_cooldown_sec` | `60` | Giới hạn tần suất alert lên chat (brute force: theo từng nguồn; các sự kiện khác: dùng chung một bộ đếm). `0` để tắt |
+| `alert_cooldown_sec` | `60` | Số giây trước khi cùng một alert được gửi lại (cùng sự kiện, user và nguồn; brute force: cùng nguồn). `0` để tắt |
 | `enable_notification_type` | `all` | Những sự kiện nào được gửi lên chat: `login_success`, `login_failed`, `session_open`, `session_close`, `brute_force`, `login_after_failures`, `all` |
 | `trusted_sources` | trống | Danh sách CIDR (văn phòng, VPN, bastion) mà các lần đăng nhập thường ngày không lên chat; tấn công từ đó vẫn được cảnh báo |
 | `message_style` | `compact` | `pretty` để dùng bố cục nhiều dòng |

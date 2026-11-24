@@ -122,7 +122,7 @@ webhook_url = https://siem.example.com/ingest/pamsignal
 webhook_auth_header = Authorization: Bearer <token>
 ```
 
-Webhook gửi cùng các cảnh báo như chat, nên nó tuân theo `enable_notification_type` và `trusted_sources`, và các cảnh báo thường lệ theo từng sự kiện dùng chung một bộ đếm `alert_cooldown_sec` (mặc định 60 s; xem [Configuration](configuration.md#phát-hiện-brute-force)). Nếu SIEM phải nhận mọi sự kiện đăng nhập và session, hãy đặt `alert_cooldown_sec = 0`, hoặc dùng log shipper của bạn để chuyển các entry journal (`SYSLOG_IDENTIFIER=pamsignal`).
+Webhook gửi cùng các cảnh báo như chat, nên nó tuân theo `enable_notification_type`, `trusted_sources` và `alert_cooldown_sec` (các lần lặp lại của cùng sự kiện, user và nguồn trong 60 s theo mặc định được gom lại; xem [Configuration](configuration.md#phát-hiện-brute-force)). Nếu SIEM phải nhận mọi sự kiện đăng nhập và session, hãy đặt `alert_cooldown_sec = 0`, hoặc dùng log shipper của bạn để chuyển các entry journal (`SYSLOG_IDENTIFIER=pamsignal`).
 
 Payload trên đường truyền cùng một bảng các mẫu receiver (Splunk HEC, Datadog, X-API-Key, Wazuh) nằm ở [Alerts → Custom webhook](alerts.md#custom-webhook-ecs-json). Đây chính là tích hợp biến PAMSignal thành một *nguồn* trong một pipeline phát hiện lớn hơn, thay vì một công cụ đứng một mình.
 

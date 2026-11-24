@@ -236,7 +236,7 @@ sudo journalctl -t sudo --since today
 # … sudo[48211]:    alice : TTY=pts/1 ; PWD=/home/alice ; USER=root ; COMMAND=/usr/bin/systemctl restart nginx
 ```
 
-PAMSignal turns the same moment into a `session_opened … actor=alice service=sudo` alert, so you see elevations in real time. `actor=` is the account that logged in to that session: if alice first ran `su - bob` and bob ran `sudo`, the alert still says `alice`, while this log says `bob`. Repeated wrong `sudo` passwords from one person raise a `brute_force_detected actor=… target=root` alert. The `session_opened` alert is a routine alert, and routine alerts share a single `alert_cooldown_sec` timer, so a `sudo` within a minute of another alerted event (alice's own login, say) is recorded in `journalctl -t pamsignal` but not sent to chat; see [Configuration](./configuration.md#brute-force-detection).
+PAMSignal turns the same moment into a `session_opened … actor=alice service=sudo` alert, so you see elevations in real time. `actor=` is the account that logged in to that session: if alice first ran `su - bob` and bob ran `sudo`, the alert still says `alice`, while this log says `bob`. Repeated wrong `sudo` passwords from one person raise a `brute_force_detected actor=… target=root` alert. Repeated `sudo` sessions by the same person within `alert_cooldown_sec` (60 s by default) are collapsed into one chat alert; every one is still in `journalctl -t pamsignal`. See [Configuration](./configuration.md#brute-force-detection).
 
 The gap: if someone runs `sudo -i`, `sudo su -` or `sudo bash`, this log shows only the shell being started. The next two sections close that gap.
 
