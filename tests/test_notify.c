@@ -448,7 +448,7 @@ static void test_notify_event_no_channels(void **state) {
     (void)state;
     ps_config_t cfg;
     make_cfg_default(&cfg);
-    cfg.alert_cooldown_sec = 0; // avoid polluting file-static last_event_alert
+    cfg.alert_cooldown_sec = 0; // keep the file-static cooldown table empty
     ps_pam_event_t e = make_login_failed();
     ps_notify_event(&cfg, &e);
 }
@@ -1191,29 +1191,121 @@ static void test_notify_local_brute_no_channels(void **state) {
                                 "host", 1700000000000000ULL, 12345);
 }
 
-// Cooldown: first call dispatches, subsequent calls within the cooldown
-// window are suppressed. We reset last_event_alert to ensure this test
-// exercises the dispatch-then-suppress path regardless of prior test state.
+// --- Per-key cooldown ---
+
+static void reset_cooldown(void) {
+    memset(cooldown_slots, 0, sizeof(cooldown_slots));
+}
+
+static int used_cooldown_slots(void) {
+    int n = 0;
+    for (size_t i = 0; i < PS_EVENT_COOLDOWN_SLOTS; i++)
+        n += cooldown_slots[i].used;
+    return n;
+}
+
+// Repeats of the same event take one slot: the first dispatches, the rest
+// are suppressed within the window.
 static void test_notify_event_cooldown_repeat(void **state) {
     (void)state;
     ps_config_t cfg;
     make_cfg_default(&cfg);
     cfg.alert_cooldown_sec = 3600;
-
-    // Reset file-static cooldown state so first call goes through dispatch
-    last_event_alert = 0;
+    reset_cooldown();
 
     ps_pam_event_t e = make_login_failed();
-    ps_notify_event(&cfg, &e); // dispatches (bumps last_event_alert)
-    ps_notify_event(&cfg, &e); // suppressed by cooldown
-    ps_notify_event(&cfg, &e); // suppressed by cooldown
+    ps_notify_event(&cfg, &e);
+    ps_notify_event(&cfg, &e);
+    ps_notify_event(&cfg, &e);
+    assert_int_equal(used_cooldown_slots(), 1);
+}
+
+static void test_cooldown_same_key_suppressed_then_released(void **state) {
+    (void)state;
+    ps_config_t cfg;
+    make_cfg_default(&cfg);
+    cfg.alert_cooldown_sec = 60;
+    reset_cooldown();
+
+    ps_pam_event_t e = make_login_success();
+    assert_true(event_cooled_down_at(&cfg, &e, 1000));
+    assert_false(event_cooled_down_at(&cfg, &e, 1001));
+    assert_false(event_cooled_down_at(&cfg, &e, 1059));
+    assert_true(event_cooled_down_at(&cfg, &e, 1060));
+    // The window restarts from the alert that was sent, not the suppressed
+    // ones.
+    assert_false(event_cooled_down_at(&cfg, &e, 1100));
+}
+
+// The bug this replaced: one alert silenced every other login for the whole
+// window. An admin's login must not hide an attacker's.
+static void test_cooldown_other_user_or_source_not_suppressed(void **state) {
+    (void)state;
+    ps_config_t cfg;
+    make_cfg_default(&cfg);
+    cfg.alert_cooldown_sec = 60;
+    reset_cooldown();
+
+    ps_pam_event_t admin = make_login_success();
+    assert_true(event_cooled_down_at(&cfg, &admin, 1000));
+
+    ps_pam_event_t attacker = make_login_success();
+    snprintf(attacker.username, sizeof(attacker.username), "root");
+    snprintf(attacker.source_ip, sizeof(attacker.source_ip), "203.0.113.50");
+    assert_true(event_cooled_down_at(&cfg, &attacker, 1001));
+
+    ps_pam_event_t same_user_new_ip = make_login_success();
+    snprintf(same_user_new_ip.source_ip, sizeof(same_user_new_ip.source_ip),
+             "198.51.100.7");
+    assert_true(event_cooled_down_at(&cfg, &same_user_new_ip, 1002));
+
+    ps_pam_event_t other_type = make_login_failed(); // same user and IP
+    assert_true(event_cooled_down_at(&cfg, &other_type, 1003));
+}
+
+static void test_cooldown_zero_never_suppresses(void **state) {
+    (void)state;
+    ps_config_t cfg;
+    make_cfg_default(&cfg);
+    cfg.alert_cooldown_sec = 0;
+    reset_cooldown();
+
+    ps_pam_event_t e = make_session_open();
+    assert_true(event_cooled_down_at(&cfg, &e, 1000));
+    assert_true(event_cooled_down_at(&cfg, &e, 1000));
+    assert_int_equal(used_cooldown_slots(), 0);
+}
+
+// A full table evicts the least recently alerted key; that key is then
+// treated as new, so eviction can only let an alert through early.
+static void test_cooldown_full_table_evicts_oldest(void **state) {
+    (void)state;
+    ps_config_t cfg;
+    make_cfg_default(&cfg);
+    cfg.alert_cooldown_sec = 3600;
+    reset_cooldown();
+
+    ps_pam_event_t e = make_login_failed();
+    for (int i = 0; i <= PS_EVENT_COOLDOWN_SLOTS; i++) {
+        snprintf(e.source_ip, sizeof(e.source_ip), "10.0.%d.%d", i / 256,
+                 i % 256);
+        assert_true(event_cooled_down_at(&cfg, &e, 1000 + i));
+    }
+    assert_int_equal(used_cooldown_slots(), PS_EVENT_COOLDOWN_SLOTS);
+
+    // 10.0.0.0 (time 1000) was the oldest and has been evicted.
+    snprintf(e.source_ip, sizeof(e.source_ip), "10.0.0.0");
+    assert_true(event_cooled_down_at(&cfg, &e, 2000));
+    // 10.0.0.5 is still tracked and still cooling down.
+    snprintf(e.source_ip, sizeof(e.source_ip), "10.0.0.5");
+    assert_false(event_cooled_down_at(&cfg, &e, 2000));
 }
 
 // --- enable_notification_type gating ---
 //
 // We probe gating without a live HTTP channel by observing the file-static
-// last_event_alert clock: a real dispatch through ps_notify_event sets it,
-// a gated-off call leaves it untouched. Same proxy for brute-force using
+// cooldown table: a real dispatch through ps_notify_event records a key,
+// a gated-off call leaves the table empty. Same proxy for brute-force using
 // time(NULL) bookkeeping is not available, so we rely on the absence of
 // crash + the gating expression being identical to the one we already
 // proved through event_notify_bit().
@@ -1238,11 +1330,11 @@ static void test_notify_event_gated_off(void **state) {
     cfg.enable_notification_type = PS_NOTIFY_LOGIN_SUCCESS; // failures off
     cfg.alert_cooldown_sec = 3600;
 
-    last_event_alert = 0;
+    reset_cooldown();
     ps_pam_event_t e = make_login_failed();
     ps_notify_event(&cfg, &e);
-    // Gated off: cooldown clock never advanced.
-    assert_int_equal(last_event_alert, 0);
+    // Gated off: nothing was recorded.
+    assert_int_equal(used_cooldown_slots(), 0);
 }
 
 static void test_notify_event_gated_on(void **state) {
@@ -1252,11 +1344,11 @@ static void test_notify_event_gated_on(void **state) {
     cfg.enable_notification_type = PS_NOTIFY_LOGIN_SUCCESS;
     cfg.alert_cooldown_sec = 3600;
 
-    last_event_alert = 0;
+    reset_cooldown();
     ps_pam_event_t e = make_login_success();
     ps_notify_event(&cfg, &e);
-    // Gated on: cooldown clock advanced because dispatch ran.
-    assert_true(last_event_alert > 0);
+    // Gated on: dispatch ran and recorded its key.
+    assert_int_equal(used_cooldown_slots(), 1);
 }
 
 static void test_notify_event_unknown_type_never_dispatches(void **state) {
@@ -1265,11 +1357,11 @@ static void test_notify_event_unknown_type_never_dispatches(void **state) {
     make_cfg_default(&cfg); // all bits set
     cfg.alert_cooldown_sec = 3600;
 
-    last_event_alert = 0;
+    reset_cooldown();
     ps_pam_event_t e = make_login_success();
     e.type = PS_EVENT_UNKNOWN;
     ps_notify_event(&cfg, &e);
-    assert_int_equal(last_event_alert, 0);
+    assert_int_equal(used_cooldown_slots(), 0);
 }
 
 int main(void) {
@@ -1338,6 +1430,10 @@ int main(void) {
         cmocka_unit_test(test_format_test_json),
         cmocka_unit_test(test_notify_test_no_channels),
         cmocka_unit_test(test_notify_event_cooldown_repeat),
+        cmocka_unit_test(test_cooldown_same_key_suppressed_then_released),
+        cmocka_unit_test(test_cooldown_other_user_or_source_not_suppressed),
+        cmocka_unit_test(test_cooldown_zero_never_suppresses),
+        cmocka_unit_test(test_cooldown_full_table_evicts_oldest),
         // enable_notification_type gating
         cmocka_unit_test(test_event_notify_bit_mapping),
         cmocka_unit_test(test_notify_event_gated_off),

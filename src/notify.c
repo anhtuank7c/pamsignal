@@ -1369,20 +1369,83 @@ static int use_pretty(const ps_config_t *cfg) {
 
 // --- Cooldown ---
 //
-// Cooldown is split per event class: a flood of login events cannot suppress
-// a brute-force alert (or vice versa). Per-source-IP cooldown for brute-force
-// is handled by the caller in journal_watch.c using fail_entry state.
+// Per-event chat alerts (login success/failure, session open/close) are
+// rate-limited per (event type, user, source IP): the same person logging in
+// again and again from the same place is collapsed, but one alert never
+// silences another. A single shared timer used to do exactly that: after an
+// admin's login alert, an attacker's successful login in the next
+// alert_cooldown_sec seconds reached the journal only. Brute-force and
+// login-after-failures alerts have their own per-source cooldown in
+// journal_watch.c.
+//
+// The table is fixed-size; when it is full the least recently alerted key is
+// replaced, which can only let an alert through early, never hold one back.
+// The clock is CLOCK_MONOTONIC so a wall-clock change cannot stretch or skip
+// a cooldown.
 
-static time_t last_event_alert = 0;
+#define PS_EVENT_COOLDOWN_SLOTS 128
 
-static int event_cooled_down(const ps_config_t *cfg) {
+typedef struct {
+    int used;
+    ps_event_type_t type;
+    char user[sizeof(((ps_pam_event_t *)0)->username)];
+    char source[sizeof(((ps_pam_event_t *)0)->source_ip)];
+    long last_sent;
+} ps_cooldown_slot_t;
+
+static ps_cooldown_slot_t cooldown_slots[PS_EVENT_COOLDOWN_SLOTS];
+
+static int cooldown_key_matches(const ps_cooldown_slot_t *s,
+                                const ps_pam_event_t *event) {
+    return s->used && s->type == event->type &&
+           strcmp(s->user, event->username) == 0 &&
+           strcmp(s->source, event->source_ip) == 0;
+}
+
+// Returns 1 if the alert may be sent at time now (seconds) and records it,
+// 0 if the same key alerted less than alert_cooldown_sec ago.
+static int event_cooled_down_at(const ps_config_t *cfg,
+                                const ps_pam_event_t *event, long now) {
     if (cfg->alert_cooldown_sec <= 0)
         return 1;
-    time_t now = time(NULL);
-    if (now - last_event_alert < cfg->alert_cooldown_sec)
-        return 0;
-    last_event_alert = now;
+
+    ps_cooldown_slot_t *slot = NULL;
+    ps_cooldown_slot_t *oldest = &cooldown_slots[0];
+    for (size_t i = 0; i < PS_EVENT_COOLDOWN_SLOTS; i++) {
+        ps_cooldown_slot_t *s = &cooldown_slots[i];
+        if (cooldown_key_matches(s, event)) {
+            slot = s;
+            break;
+        }
+        if (!s->used) {
+            if (oldest->used)
+                oldest = s;
+        } else if (oldest->used && s->last_sent < oldest->last_sent) {
+            oldest = s;
+        }
+    }
+
+    if (slot) {
+        if (now - slot->last_sent < cfg->alert_cooldown_sec)
+            return 0;
+        slot->last_sent = now;
+        return 1;
+    }
+
+    oldest->used = 1;
+    oldest->type = event->type;
+    snprintf(oldest->user, sizeof(oldest->user), "%s", event->username);
+    snprintf(oldest->source, sizeof(oldest->source), "%s", event->source_ip);
+    oldest->last_sent = now;
     return 1;
+}
+
+static int event_cooled_down(const ps_config_t *cfg,
+                             const ps_pam_event_t *event) {
+    struct timespec ts;
+    if (clock_gettime(CLOCK_MONOTONIC, &ts) != 0)
+        return 1; // no clock: send rather than drop
+    return event_cooled_down_at(cfg, event, (long)ts.tv_sec);
 }
 
 // --- Public API ---
@@ -1410,7 +1473,7 @@ void ps_notify_event(const ps_config_t *cfg, const ps_pam_event_t *event) {
     unsigned int bit = event_notify_bit(event->type);
     if ((cfg->enable_notification_type & bit) == 0)
         return;
-    if (!event_cooled_down(cfg))
+    if (!event_cooled_down(cfg, event))
         return;
 
     char text[1024];
