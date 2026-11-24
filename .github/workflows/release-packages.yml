@@ -748,8 +748,10 @@ jobs:
           # /etc/ssh/sshd_config.d/*.conf before its own settings and the
           # first value wins, so a runner image that ships a drop-in with
           # "PasswordAuthentication no" overrides an edit of sshd_config
-          # itself. "00-" sorts ahead of any such file.
-          printf '%s\n' 'PasswordAuthentication yes' 'KbdInteractiveAuthentication yes' \
+          # itself. "00-" sorts ahead of any such file. Keyboard-interactive
+          # stays off so sshpass uses the "password" method the ECS check
+          # below expects.
+          printf '%s\n' 'PasswordAuthentication yes' 'KbdInteractiveAuthentication no' \
             'UsePAM yes' 'PermitRootLogin no' 'AllowUsers testpamuser' |
             sudo tee /etc/ssh/sshd_config.d/00-pamsignal-test.conf
           sudo systemctl restart ssh
