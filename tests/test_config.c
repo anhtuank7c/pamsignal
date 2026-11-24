@@ -1158,6 +1158,95 @@ static void test_config_rejects_symlink(void **state) {
     cleanup_tmp();
 }
 
+// --- Teams Workflows URLs and over-long values ---
+
+// The Workflows webhook URLs that replaced the retired connector URLs carry
+// a query string with %, & and =. Both known forms must load intact.
+static void test_teams_workflows_urls_accepted(void **state) {
+    (void)state;
+    static const char *urls[] = {
+        "https://prod-12.westus.logic.azure.com:443/workflows/"
+        "0123456789abcdef0123456789abcdef/triggers/manual/paths/invoke"
+        "?api-version=2016-06-01&sp=%2Ftriggers%2Fmanual%2Frun&sv=1.0"
+        "&sig=AbCdEfGhIjKlMnOpQrStUvWxYz0123456789-_AbCd",
+        "https://default0123456789abcdef0123456789ab.cd.environment.api."
+        "powerplatform.com:443/powerautomate/automations/direct/workflows/"
+        "0123456789abcdef0123456789abcdef/triggers/manual/paths/invoke"
+        "?api-version=1&sp=%2Ftriggers%2Fmanual%2Frun&sv=1.0"
+        "&sig=AbCdEfGhIjKlMnOpQrStUvWxYz0123456789-_AbCd",
+    };
+    for (size_t i = 0; i < sizeof(urls) / sizeof(urls[0]); i++) {
+        char content[1024];
+        snprintf(content, sizeof(content), "teams_webhook_url = %s\n", urls[i]);
+        write_tmp_config(content);
+        ps_config_t cfg;
+        assert_int_equal(ps_config_load(tmp_path, &cfg), PS_OK);
+        assert_string_equal(cfg.teams_webhook_url, urls[i]);
+        cleanup_tmp();
+    }
+}
+
+// A value longer than its field used to be cut off silently, which breaks a
+// webhook URL (the signature is at the end) with nothing in the log.
+static void test_string_value_too_long_rejected(void **state) {
+    (void)state;
+    ps_config_t probe;
+    const size_t max = sizeof(probe.teams_webhook_url) - 1;
+
+    static char url[1024];
+    static char content[1100];
+    const char *prefix = "https://example.com/";
+    size_t plen = strlen(prefix);
+
+    // Exactly at the limit: accepted.
+    memcpy(url, prefix, plen);
+    memset(url + plen, 'a', max - plen);
+    url[max] = '\0';
+    snprintf(content, sizeof(content), "teams_webhook_url = %s\n", url);
+    write_tmp_config(content);
+    ps_config_t cfg;
+    assert_int_equal(ps_config_load(tmp_path, &cfg), PS_OK);
+    assert_int_equal(strlen(cfg.teams_webhook_url), max);
+    cleanup_tmp();
+
+    // One character more: rejected instead of truncated.
+    memset(url + plen, 'a', max + 1 - plen);
+    url[max + 1] = '\0';
+    snprintf(content, sizeof(content), "teams_webhook_url = %s\n", url);
+    write_tmp_config(content);
+    assert_int_equal(ps_config_load(tmp_path, &cfg), PS_ERR_CONFIG);
+    cleanup_tmp();
+}
+
+// A line longer than the parser's buffer is one error, not two half-lines.
+// The tail here would otherwise parse as a valid "fail_threshold = 9" line.
+static void test_overlong_line_rejected_whole(void **state) {
+    (void)state;
+    static char content[1400];
+    size_t n = 0;
+    n += (size_t)snprintf(content + n, sizeof(content) - n, "provider = ");
+    memset(content + n, 'x', 1100 - n);
+    n = 1100;
+    snprintf(content + n, sizeof(content) - n,
+             "fail_threshold = 9\nfail_window_sec = 120\n");
+    write_tmp_config(content);
+    ps_config_t cfg;
+    assert_int_equal(ps_config_load(tmp_path, &cfg), PS_ERR_CONFIG);
+    cleanup_tmp();
+
+    // The line after the long one is still read normally.
+    memset(content, 'x', sizeof(content));
+    n = (size_t)snprintf(content, sizeof(content), "# ");
+    memset(content + n, 'x', 1100 - n);
+    snprintf(content + 1100, sizeof(content) - 1100,
+             "\nfail_window_sec = 120\n");
+    write_tmp_config(content);
+    // A long comment is still a line too long: rejected, but the parser
+    // stays in step and reads the next line as a line of its own.
+    assert_int_equal(ps_config_load(tmp_path, &cfg), PS_ERR_CONFIG);
+    cleanup_tmp();
+}
+
 int main(void) {
     const struct CMUnitTest tests[] = {
         cmocka_unit_test(test_config_defaults),
@@ -1234,6 +1323,9 @@ int main(void) {
         cmocka_unit_test(test_mtls_symlink_rejected),
         cmocka_unit_test(test_mtls_nonexistent_path_rejected),
         cmocka_unit_test(test_mtls_without_webhook_url_rejected),
+        cmocka_unit_test(test_teams_workflows_urls_accepted),
+        cmocka_unit_test(test_string_value_too_long_rejected),
+        cmocka_unit_test(test_overlong_line_rejected_whole),
         cmocka_unit_test(test_mtls_path_with_quote_rejected),
         cmocka_unit_test(test_mtls_combined_with_auth_header),
         cmocka_unit_test(test_validate_whatsapp_phone_id_non_numeric),

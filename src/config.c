@@ -721,6 +721,20 @@ int ps_config_load(const char *path, ps_config_t *cfg) {
     while (fgets(line, sizeof(line), f)) {
         lineno++;
 
+        // A line longer than the buffer would otherwise come back as two
+        // lines, the second parsed on its own. Reject it and skip the rest.
+        if (!strchr(line, '\n') && !feof(f)) {
+            cfg_log(LOG_ERR,
+                    "pamsignal: config:%d: line too long (at most %zu "
+                    "characters)",
+                    lineno, sizeof(line) - 2);
+            errors++;
+            int c;
+            while ((c = fgetc(f)) != EOF && c != '\n')
+                ;
+            continue;
+        }
+
         char *p = trim(line);
         if (*p == '\0' || *p == '#')
             continue;
@@ -744,8 +758,17 @@ int ps_config_load(const char *path, ps_config_t *cfg) {
             found = 1;
 
             if (config_keys[i].type == CFG_STRING) {
+                // Never truncate silently: a cut-off webhook URL or token
+                // would fail at every alert with nothing in the log.
                 char *dst = (char *)cfg + config_keys[i].offset;
-                snprintf(dst, config_keys[i].size, "%s", val);
+                int n = snprintf(dst, config_keys[i].size, "%s", val);
+                if (n < 0 || (size_t)n >= config_keys[i].size) {
+                    cfg_log(LOG_ERR,
+                            "pamsignal: config:%d: %s is too long "
+                            "(at most %zu characters)",
+                            lineno, key, config_keys[i].size - 1);
+                    errors++;
+                }
             } else if (config_keys[i].type == CFG_INT) {
                 int *dst = (int *)((char *)cfg + config_keys[i].offset);
                 if (parse_int_range(val, config_keys[i].min, config_keys[i].max,
