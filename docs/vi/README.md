@@ -67,7 +67,7 @@ sudo dnf install pamsignal
 Focal không có apt repository; hãy cài file `.deb` đã ký từ [bản phát hành mới nhất](https://github.com/anhtuank7c/pamsignal/releases):
 
 ```bash
-VERSION=0.7.1
+VERSION=0.8.0
 curl -fLO "https://github.com/anhtuank7c/pamsignal/releases/download/v${VERSION}/pamsignal_${VERSION}-1_focal_amd64.deb"
 sudo apt install "./pamsignal_${VERSION}-1_focal_amd64.deb"
 ```

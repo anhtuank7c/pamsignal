@@ -1,3 +1,18 @@
+pamsignal (0.8.0-1) unstable; urgency=high
+
+  * SECURITY: one per-event alert could silence every other login alert
+    for the cooldown period (60 s by default), whoever it came from, so
+    an attacker's login right after an admin's was never alerted. The
+    cooldown is now kept per event type, user and source IP.
+  * Fix: Microsoft Teams alerts work again. Microsoft retired the Office
+    365 connector webhooks; Teams alerts are now sent as an Adaptive Card
+    to a Workflows webhook. Old connector URLs must be replaced.
+  * Fix: an over-long config value or line is now an error instead of
+    being cut off silently.
+  * Feature: session-opened alerts for sudo/su name the user who ran it.
+
+ -- Tuan Nguyen <anhtuank7c@hotmail.com>  Tue, 24 Nov 2026 14:00:00 +0000
+
 pamsignal (0.7.1-1) unstable; urgency=high
 
   * SECURITY: crafted SSH usernames could inject mentions and links into

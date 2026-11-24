@@ -40,8 +40,8 @@ Two axes:
 
 | Version | Supported |
 |---------|-----------|
-| `0.7.x` | Yes (current: `0.7.1`) |
-| `< 0.7` | No (upgrade to `0.7.x`) |
+| `0.8.x` | Yes (current: `0.8.0`) |
+| `< 0.8` | No (upgrade to `0.8.x`) |
 
 The recommended install path is the signed apt or dnf repository documented in [`README.md`](./README.md#1-install); `apt upgrade` / `dnf upgrade` keeps you on the supported line automatically.
 
