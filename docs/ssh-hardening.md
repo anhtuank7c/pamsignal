@@ -345,6 +345,8 @@ Anyone with root on the server can delete local logs and stop `auditd`. For reco
 | Who changed a file? | `auditd` file watches | `ausearch -k <key> -i` |
 | Can I trust the local logs? | Only if a copy left the server | Your log server / Loki |
 
+To get all of these in one report, use the read-only [`who-did-what`](../examples/who-did-what/README.md) script: `sudo who-did-what --user alice --since yesterday`.
+
 ---
 
 ## Part 3 — Manage many servers without the pain

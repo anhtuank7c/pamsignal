@@ -68,3 +68,19 @@ jobs:
           ASAN_OPTIONS: halt_on_error=1:abort_on_error=1:print_stacktrace=1:detect_leaks=1
           UBSAN_OPTIONS: halt_on_error=1:abort_on_error=1:print_stacktrace=1
         run: meson test -C build --print-errorlogs
+
+  who-did-what:
+    name: who-did-what e2e (real kernel + auditd)
+    # The audit sections need a real kernel, which a container does not
+    # give; the hosted runner is a full VM. The test creates users and
+    # loads audit rules, which is fine on a throwaway runner.
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: shellcheck
+        run: shellcheck examples/who-did-what/who-did-what.sh examples/who-did-what/tests/e2e.sh
+
+      - name: End-to-end test
+        run: sudo bash examples/who-did-what/tests/e2e.sh

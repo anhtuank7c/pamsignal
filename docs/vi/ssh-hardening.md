@@ -345,6 +345,8 @@ Bất kỳ ai có quyền root trên server đều có thể xóa log cục bộ
 | Ai đã sửa một file? | File watch của `auditd` | `ausearch -k <key> -i` |
 | Có tin được log cục bộ không? | Chỉ khi đã có một bản sao rời khỏi server | Log server / Loki của bạn |
 
+Để có tất cả những câu trả lời này trong một báo cáo, hãy dùng script chỉ đọc [`who-did-what`](examples/who-did-what.md): `sudo who-did-what --user alice --since yesterday`.
+
 ---
 
 ## Phần 3 — Quản lý nhiều server mà không đau đầu
