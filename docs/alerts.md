@@ -32,7 +32,7 @@ This means the webhook output drops directly into Elastic SIEM and Wazuh without
 
 ### Chat text format
 
-Severity bracket is fixed-width (8 chars) so columns align in monospace renderings. Field order is severity → action → identity → location → metadata → `pid` → `ts`. The `pid=` field is the live process for `session_opened` and `login_success` events (you can `kill <pid>` to disconnect the user) and the failing-auth child for failures (already reaped — useful as forensic context only). On `session_opened`, `actor=` names the account that ran `sudo`/`su` (pam_unix's `by <name>(uid=N)`); it is left out when it would just repeat `user=` (an SSH login is logged `alice(uid=1001) by alice(uid=0)`) or when pam_unix logs no name (`by (uid=0)`, sudo run outside a login session, e.g. from cron).
+Severity bracket is fixed-width (8 chars) so columns align in monospace renderings. Field order is severity → action → identity → location → metadata → `pid` → `ts`. The `pid=` field is the live process for `session_opened` and `login_success` events (you can `kill <pid>` to disconnect the user) and the failing-auth child for failures (already reaped — useful as forensic context only). On `session_opened`, `actor=` names the account that logged in to the session `sudo`/`su` was run from (pam_unix's `by <name>(uid=N)`). That is usually the person who ran it, but if alice ran `su - bob` and bob then ran `sudo`, the actor is still `alice`; sudo's own log names the account that typed `sudo`. `actor=` is left out when it would just repeat `user=` (an SSH login is logged `alice(uid=1001) by alice(uid=0)`), for a console login (`by LOGIN(uid=0)`, where `LOGIN` is a placeholder) and when pam_unix logs no name (`by (uid=0)`, sudo run outside a login session, e.g. from cron).
 
 ```
 [INFO]   auth.session_opened user=root actor=alice host=web-01 service=sudo pid=12345 ts=2026-03-29T14:23:01+0000 provider=aws service_name=web-api
@@ -353,7 +353,7 @@ The last column is the token to list in `enable_notification_type` to receive th
 | `process.pid` | integer | All | Process ID — the live sshd session for `login_success`/`session_opened`, the (already reaped) auth child for failures and brute-force |
 | `process.user.id` | string | Login/Session | UID of the PAM-handled process |
 | `pamsignal.event_type` | string | All | Legacy uppercase enum (kept for backward compat through v0.2.x; retired in v0.3.0) |
-| `pamsignal.actor` | string | Session opened (when known) | Account that opened the session — who ran `sudo`/`su`. `user.name` stays the session's user. Absent when it equals `user.name` (an SSH login) or pam_unix logs no name |
+| `pamsignal.actor` | string | Session opened (when known) | Account that logged in to the session `sudo`/`su` ran from — usually who ran it (see the chat text format above for the `su` caveat). `user.name` stays the session's user. Absent when it equals `user.name` (an SSH login), for a console login (`LOGIN`), or when pam_unix logs no name |
 | `pamsignal.auth_method` | string | Login + Login-after-failures | `password`, `publickey`, `keyboard-interactive`, or `unknown` |
 | `pamsignal.attempts` | integer | Brute-force | Number of failed attempts that breached the threshold |
 | `pamsignal.failures` | integer | Login-after-failures | Length of the run of failed attempts that preceded the successful login |

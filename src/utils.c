@@ -107,10 +107,13 @@ static const char *pam_unix_tail(const char *message) {
 // elsewhere in the line can never be read as the actor. Leaves actor empty
 // when there is no " by " or pam_unix logged no name ("by (uid=0)").
 //
-// pam_unix takes the name from the session's login ID, so it is the person
-// who logged in: "root(uid=0) by alice(uid=1001)" for alice's sudo, but also
-// "alice(uid=1001) by alice(uid=0)" for alice's own SSH login, and
-// "by (uid=0)" for sudo run outside any login session (cron, scripts).
+// pam_unix takes the name from the login session the process belongs to, so
+// it is the account that logged in, not necessarily the one that typed
+// sudo/su: "root(uid=0) by alice(uid=1001)" for alice's sudo (also when
+// alice first ran "su - bob" and bob ran sudo), "alice(uid=1001) by
+// alice(uid=0)" for alice's own SSH login, "by (uid=0)" for sudo outside
+// any login session (cron, scripts), and "by LOGIN(uid=0)" for a console
+// login, where LOGIN is the getty placeholder, not an account.
 static void parse_session_actor(const char *p, char *actor, size_t len) {
     if (len == 0)
         return;
@@ -204,9 +207,11 @@ int ps_parse_message(const char *message, ps_pam_event_t *event) {
         sanitize_string(event->username);
         parse_session_actor(p, event->actor, sizeof(event->actor));
         // An actor equal to the session user adds nothing (an SSH login by
-        // alice is logged "by alice"); keep it only when someone switched
-        // to a different account.
-        if (strcmp(event->actor, event->username) == 0)
+        // alice is logged "by alice"), and "LOGIN" is the console's getty
+        // placeholder, not a person; keep it only when it names a
+        // different account.
+        if (strcmp(event->actor, event->username) == 0 ||
+            strcmp(event->actor, "LOGIN") == 0)
             event->actor[0] = '\0';
         return PS_OK;
     }

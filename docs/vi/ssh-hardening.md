@@ -234,7 +234,7 @@ sudo journalctl -t sudo --since today
 # … sudo[48211]:    alice : TTY=pts/1 ; PWD=/home/alice ; USER=root ; COMMAND=/usr/bin/systemctl restart nginx
 ```
 
-PAMSignal biến chính khoảnh khắc đó thành một alert `session_opened … actor=alice service=sudo`, nên bạn thấy các lần lên quyền theo thời gian thực. Một người gõ sai password `sudo` nhiều lần sẽ sinh ra alert `brute_force_detected actor=… target=root`.
+PAMSignal biến chính khoảnh khắc đó thành một alert `session_opened … actor=alice service=sudo`, nên bạn thấy các lần lên quyền theo thời gian thực. `actor=` là tài khoản đã đăng nhập vào phiên đó: nếu alice chạy `su - bob` trước rồi bob mới chạy `sudo`, alert vẫn ghi `alice`, còn log này ghi `bob`. Một người gõ sai password `sudo` nhiều lần sẽ sinh ra alert `brute_force_detected actor=… target=root`.
 
 Lỗ hổng còn lại: nếu ai đó chạy `sudo -i`, `sudo su -` hay `sudo bash`, log này chỉ cho thấy một shell đã được mở. Hai mục tiếp theo lấp lỗ hổng đó.
 

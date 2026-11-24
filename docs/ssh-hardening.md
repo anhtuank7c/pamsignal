@@ -234,7 +234,7 @@ sudo journalctl -t sudo --since today
 # … sudo[48211]:    alice : TTY=pts/1 ; PWD=/home/alice ; USER=root ; COMMAND=/usr/bin/systemctl restart nginx
 ```
 
-PAMSignal turns the same moment into a `session_opened … actor=alice service=sudo` alert, so you see elevations in real time. Repeated wrong `sudo` passwords from one person raise a `brute_force_detected actor=… target=root` alert.
+PAMSignal turns the same moment into a `session_opened … actor=alice service=sudo` alert, so you see elevations in real time. `actor=` is the account that logged in to that session: if alice first ran `su - bob` and bob ran `sudo`, the alert still says `alice`, while this log says `bob`. Repeated wrong `sudo` passwords from one person raise a `brute_force_detected actor=… target=root` alert.
 
 The gap: if someone runs `sudo -i`, `sudo su -` or `sudo bash`, this log shows only the shell being started. The next two sections close that gap.
 
