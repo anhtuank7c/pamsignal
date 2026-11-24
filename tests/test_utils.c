@@ -115,6 +115,20 @@ static void test_parse_session_open_actor_same_as_user_dropped(void **state) {
     assert_string_equal(event.actor, "alice");
 }
 
+// /bin/login logs the getty placeholder "LOGIN" as the login name; it is
+// not an account and must not become an actor.
+static void test_parse_session_open_console_login_placeholder(void **state) {
+    (void)state;
+    ps_pam_event_t event;
+    int ret = ps_parse_message("pam_unix(login:session): session opened for "
+                               "user alice(uid=1000) by LOGIN(uid=0)",
+                               &event);
+    assert_int_equal(ret, PS_OK);
+    assert_int_equal(event.service, PS_SERVICE_LOGIN);
+    assert_string_equal(event.username, "alice");
+    assert_string_equal(event.actor, "");
+}
+
 static void test_parse_session_open_no_by_has_no_actor(void **state) {
     (void)state;
     ps_pam_event_t event;
@@ -789,6 +803,7 @@ int main(void) {
         cmocka_unit_test(test_parse_session_open_actor_with_uids),
         cmocka_unit_test(test_parse_session_open_actor_unnamed),
         cmocka_unit_test(test_parse_session_open_actor_same_as_user_dropped),
+        cmocka_unit_test(test_parse_session_open_console_login_placeholder),
         cmocka_unit_test(test_parse_session_open_no_by_has_no_actor),
         cmocka_unit_test(test_parse_session_open_actor_positional),
         cmocka_unit_test(test_parse_session_open_actor_sanitized_and_bounded),

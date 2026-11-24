@@ -32,7 +32,7 @@ Kể từ v0.2.0, các payload cảnh báo tuân theo quy ước [Elastic Common
 
 ### Định dạng văn bản chat
 
-Dấu ngoặc severity có độ rộng cố định (8 ký tự) để các cột thẳng hàng khi hiển thị monospace. Thứ tự trường là severity → action → identity → location → metadata → `pid` → `ts`. Trường `pid=` là tiến trình đang chạy cho các sự kiện `session_opened` và `login_success` (bạn có thể `kill <pid>` để ngắt kết nối người dùng) và là auth child đã kết thúc cho các trường hợp thất bại (đã được thu hồi — chỉ hữu ích như thông tin forensics). Với `session_opened`, `actor=` là tài khoản đã chạy `sudo`/`su` (phần `by <name>(uid=N)` trong log của pam_unix); trường này bị bỏ qua khi nó chỉ lặp lại `user=` (một lần đăng nhập SSH được ghi là `alice(uid=1001) by alice(uid=0)`) hoặc khi pam_unix không ghi tên (`by (uid=0)`, sudo chạy ngoài phiên đăng nhập, ví dụ từ cron).
+Dấu ngoặc severity có độ rộng cố định (8 ký tự) để các cột thẳng hàng khi hiển thị monospace. Thứ tự trường là severity → action → identity → location → metadata → `pid` → `ts`. Trường `pid=` là tiến trình đang chạy cho các sự kiện `session_opened` và `login_success` (bạn có thể `kill <pid>` để ngắt kết nối người dùng) và là auth child đã kết thúc cho các trường hợp thất bại (đã được thu hồi — chỉ hữu ích như thông tin forensics). Với `session_opened`, `actor=` là tài khoản đã đăng nhập vào phiên mà từ đó `sudo`/`su` được chạy (phần `by <name>(uid=N)` trong log của pam_unix). Thường đó chính là người đã chạy lệnh, nhưng nếu alice chạy `su - bob` rồi bob mới chạy `sudo`, actor vẫn là `alice`; log của chính sudo mới ghi tài khoản đã gõ `sudo`. `actor=` bị bỏ qua khi nó chỉ lặp lại `user=` (một lần đăng nhập SSH được ghi là `alice(uid=1001) by alice(uid=0)`), với đăng nhập console (`by LOGIN(uid=0)`, trong đó `LOGIN` chỉ là chuỗi giữ chỗ) và khi pam_unix không ghi tên (`by (uid=0)`, sudo chạy ngoài phiên đăng nhập, ví dụ từ cron).
 
 ```
 [INFO]   auth.session_opened user=root actor=alice host=web-01 service=sudo pid=12345 ts=2026-03-29T14:23:01+0000 provider=aws service_name=web-api
@@ -353,7 +353,7 @@ Cột cuối cùng là token cần liệt kê trong `enable_notification_type` �
 | `process.pid` | integer | Tất cả | Process ID — sshd session đang chạy cho `login_success`/`session_opened`, auth child (đã kết thúc) cho các trường hợp thất bại và brute-force |
 | `process.user.id` | string | Login/Session | UID của tiến trình được PAM xử lý |
 | `pamsignal.event_type` | string | Tất cả | Legacy uppercase enum (giữ để tương thích ngược cho đến v0.2.x; bỏ trong v0.3.0) |
-| `pamsignal.actor` | string | Session opened (nếu có) | Tài khoản đã mở session — người đã chạy `sudo`/`su`. `user.name` vẫn là user của session. Không có mặt khi trùng với `user.name` (một lần đăng nhập SSH) hoặc khi pam_unix không ghi tên |
+| `pamsignal.actor` | string | Session opened (nếu có) | Tài khoản đã đăng nhập vào phiên mà `sudo`/`su` chạy từ đó — thường là người đã chạy lệnh (xem lưu ý về `su` ở phần định dạng văn bản chat phía trên). `user.name` vẫn là user của session. Không có mặt khi trùng với `user.name` (một lần đăng nhập SSH), với đăng nhập console (`LOGIN`), hoặc khi pam_unix không ghi tên |
 | `pamsignal.auth_method` | string | Login + Login-after-failures | `password`, `publickey`, `keyboard-interactive` hoặc `unknown` |
 | `pamsignal.attempts` | integer | Brute-force | Số lần thất bại đã vượt ngưỡng |
 | `pamsignal.failures` | integer | Login-after-failures | Độ dài chuỗi lần thất bại xảy ra ngay trước lần đăng nhập thành công |

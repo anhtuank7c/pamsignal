@@ -97,7 +97,7 @@ Cho các sự kiện login / session:
 | `SERVICE_NAME` | `sshd` | PAM service: `sshd`, `sudo`, `su`, `login`, `other` |
 | `HOST_HOSTNAME` | `web-01` | Hostname của máy chủ |
 | `PROCESS_PID` | `12345` | PID của sshd / sudo / su liên quan đến sự kiện |
-| `PAMSIGNAL_ACTOR` | `alice` | Chỉ với sự kiện session: tài khoản đã chạy `sudo`/`su`. Để trống khi trùng với `USER_NAME` (một lần đăng nhập SSH) hoặc khi pam_unix không ghi tên |
+| `PAMSIGNAL_ACTOR` | `alice` | Chỉ với sự kiện session: tài khoản đã đăng nhập vào phiên mà `sudo`/`su` chạy từ đó. Để trống khi trùng với `USER_NAME` (một lần đăng nhập SSH), với đăng nhập console (`LOGIN`), hoặc khi pam_unix không ghi tên |
 
 Với các sự kiện brute-force, bộ `EVENT_*` tương tự được áp dụng, thêm vào đó — chỉ với biến thể local-actor — là `USER_TARGET_NAME` (ví dụ: `root`) — người dùng mà actor đang cố leo thang đặc quyền đến.
 
