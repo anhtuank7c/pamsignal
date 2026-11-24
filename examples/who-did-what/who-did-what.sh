@@ -65,7 +65,8 @@ heading() { printf '\n== %s ==\n' "$*"; }
 
 # journalctl and ausearch exit non-zero when nothing matches; an empty
 # window is a normal answer here, not an error.
-journal() { journalctl "${JOURNAL_ARGS[@]}" "$@" 2>/dev/null || true; }
+journal() { journalctl "${JOURNAL_ARGS[@]}" -o short-iso "$@" 2>/dev/null || true; }
+journal_verbose() { journalctl "${JOURNAL_ARGS[@]}" -o verbose "$@" 2>/dev/null || true; }
 audit_search() { ausearch "${AUDIT_ARGS[@]}" "$@" -i 2>/dev/null || true; }
 
 parse_args() {
@@ -124,7 +125,7 @@ resolve_window() {
     SINCE_EPOCH=$(date -d "$SINCE" +%s 2>/dev/null) || die "cannot understand --since '$SINCE'"
     UNTIL_EPOCH=$(date -d "$UNTIL" +%s 2>/dev/null) || die "cannot understand --until '$UNTIL'"
     [ "$SINCE_EPOCH" -le "$UNTIL_EPOCH" ] || die "--since is after --until"
-    JOURNAL_ARGS=(--since "@$SINCE_EPOCH" --until "@$UNTIL_EPOCH" -o short-iso --no-pager -q)
+    JOURNAL_ARGS=(--since "@$SINCE_EPOCH" --until "@$UNTIL_EPOCH" --no-pager -q)
     # ausearch takes the date and the time as two separate arguments, and
     # with LC_ALL=C reads the date as MM/DD/YY. --input-logs makes it read the
     # audit log even when stdin is not a terminal (cron, ssh host cmd).
@@ -188,47 +189,57 @@ section_logins() {
 
 section_sudo() {
     heading "Became another user (sudo, su)"
-    # Only entries written by the real sudo and su binaries: _EXE is set by
-    # journald from the kernel, so `logger -t sudo` cannot match it. (sudo
-    # logs with the caller's UID, so _UID=0 would not work here.)
-    local exe exe_match=()
-    for exe in sudo su; do
-        exe=$(command -v "$exe" 2>/dev/null) || continue
-        exe=$(readlink -f "$exe") && exe_match+=("_EXE=$exe")
-    done
-    if [ ${#exe_match[@]} -eq 0 ]; then
+    # Trust comes from _EXE, which journald fills in from /proc/<pid>/exe, so
+    # `logger -t sudo` cannot fake it (sudo logs with the caller's UID, so
+    # _UID=0 would not work here). journald reads it after the message
+    # arrives, though: a sudo that is refused logs and exits at once, and its
+    # entry may have no _EXE at all. Such entries are shown and marked
+    # UNVERIFIED instead of being dropped; entries whose _EXE is some other
+    # program (logger) are dropped.
+    local exe sudo_exe="" su_exe=""
+    if exe=$(command -v sudo 2>/dev/null); then sudo_exe=$(readlink -f "$exe"); fi
+    if exe=$(command -v su 2>/dev/null); then su_exe=$(readlink -f "$exe"); fi
+    if [ -z "$sudo_exe" ] && [ -z "$su_exe" ]; then
         note "neither sudo nor su is installed"
         return 0
     fi
-    journal -t sudo -t su "${exe_match[@]}" |
-        awk -v want="$USER_FILTER" '
+    # -o verbose prints one field per line and shows any value with
+    # unprintable bytes as "[N bytes blob data]", so a field cannot spill
+    # into the next one.
+    journal_verbose -t sudo -t su |
+        awk -v want="$USER_FILTER" -v sudo_exe="$sudo_exe" -v su_exe="$su_exe" '
             BEGIN { printf "  %-25s %-12s %-8s %-6s %s\n", "TIME", "WHO", "AS", "TSID", "COMMAND / EVENT" }
-            {
-                p = index($0, "]: "); if (!p) next
-                msg = substr($0, p + 3); prog = $3; sub(/\[.*/, "", prog)
+            function row(t, who, as, tsid, text) {
+                printf "  %-25s %-12s %-8s %-6s %s%s\n", t, who, as, tsid, mark, text; n++
+            }
+            function entry(   t, w, who, rest, probe, nu, nc, as, tsid, cmd, ev, q, np, f, j) {
+                if (!have) return
+                have = 0
+                if (exe != "" && exe != sudo_exe && exe != su_exe) return
+                mark = (exe == "") ? "[UNVERIFIED: the sender exited before journald could check it] " : ""
                 # su sessions, from pam_unix: "... for user root(uid=0) by alice(uid=1000)"
                 if (msg ~ /^pam_unix\(su(-l)?:session\): session opened for user /) {
                     t = msg; sub(/.* for user /, "", t); sub(/\(.*/, "", t)
                     w = msg; if (!sub(/.* by /, "", w)) w = ""; sub(/\(.*/, "", w)
                     if (w == "") w = "?"
-                    if (want != "" && w != want) next
-                    printf "  %-25s %-12s %-8s %-6s %s\n", $1, w, t, "-", "su session opened"; n++; next
+                    if (want != "" && w != want) return
+                    row(when, w, t, "-", "su session opened"); return
                 }
-                if (prog != "sudo" || msg ~ /^pam_/) next
+                if (ident != "sudo" || msg ~ /^pam_/) return
                 # sudo: "alice : TTY=pts/1 ; PWD=/home/alice ; USER=root ; TSID=000002 ; COMMAND=..."
                 # PWD (a directory name) and the command arguments are chosen
                 # by the user and sit on both sides of USER=, so a line with
                 # more than one " ; USER=" or " ; COMMAND=" can be read two
                 # ways. Such a line is flagged rather than guessed at.
                 sub(/^ +/, "", msg)
-                c = index(msg, " : "); if (!c) next
-                who = substr(msg, 1, c - 1); rest = substr(msg, c + 3)
-                if (want != "" && who != want) next
+                q = index(msg, " : "); if (!q) return
+                who = substr(msg, 1, q - 1); rest = substr(msg, q + 3)
+                if (want != "" && who != want) return
                 probe = rest
                 nu = gsub(/ ; USER=/, "", probe); nc = gsub(/ ; COMMAND=/, "", probe)
                 if (nu > 1 || nc > 1) {
-                    printf "  %-25s %-12s %-8s %-6s %s\n", $1, who, "?", "?", "[AMBIGUOUS: a path or argument contains sudo field separators; check by hand] " rest
-                    n++; next
+                    row(when, who, "?", "?", "[AMBIGUOUS: a path or argument contains sudo field separators; check by hand] " rest)
+                    return
                 }
                 as = "?"; tsid = "-"; cmd = ""; ev = ""
                 if ((q = index(rest, " ; COMMAND=")) > 0) { cmd = substr(rest, q + 11); rest = substr(rest, 1, q - 1) }
@@ -238,10 +249,25 @@ section_sudo() {
                     else if (f[j] ~ /^TSID=/) tsid = substr(f[j], 6)
                     else if (f[j] !~ /^(TTY|PWD|ENV|GROUP)=/ && f[j] != "") ev = ev (ev == "" ? "" : "; ") f[j]
                 }
-                out = (ev != "" ? "[" ev "] " : "") cmd
-                printf "  %-25s %-12s %-8s %-6s %s\n", $1, who, as, tsid, out; n++
+                row(when, who, as, tsid, (ev != "" ? "[" ev "] " : "") cmd)
             }
-            END { if (!n) print "  (no sudo or su activity in this window)" }' | sanitize
+            # Entry header: "Tue 2026-11-24 06:33:06.123456 +0000 [s=...]"
+            /^[^ ]/ {
+                entry()
+                have = 1; exe = ""; ident = ""; msg = ""
+                when = $2 "T" substr($3, 1, 8) ($4 ~ /^[+-][0-9]{4}$/ ? substr($4, 1, 3) ":" substr($4, 4) : "")
+                next
+            }
+            /^    [A-Z_]+=/ {
+                k = substr($0, 5, index($0, "=") - 5); v = substr($0, index($0, "=") + 1)
+                if (k == "_EXE") exe = v
+                else if (k == "SYSLOG_IDENTIFIER") ident = v
+                else if (k == "MESSAGE") msg = v
+            }
+            END {
+                entry()
+                if (!n) print "  (no sudo or su activity in this window)"
+            }' | sanitize
 }
 
 # --- auditd helpers -------------------------------------------------------------

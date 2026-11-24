@@ -87,6 +87,11 @@ as alice "printf '%s\n' '$PW' 'systemctl is-active cron' 'echo \"# edited\" >> /
 ESC=$'\033'
 as alice "echo '$PW' | sudo -S printf 'x${ESC}[2Jhidden\n'"
 as bob "echo '$PW' | sudo -S id"
+# A refused sudo logs and exits at once, often before journald can read
+# its _EXE. Repeat it so the report is checked against that race: every
+# refusal must be listed (marked UNVERIFIED when _EXE was missed).
+REFUSALS=6
+for _ in $(seq 2 "$REFUSALS"); do as bob "echo '$PW' | sudo -S id"; done
 
 # --- attempts to forge or hide entries (each must fail) ---
 # A failed login whose client-chosen username reads like a successful one.
@@ -115,7 +120,9 @@ cat "$OUT"
 expect "logins: alice with her key comment" '^  [^ ]+ +alice +(127\.0\.0\.1|\[::1\]):[0-9]+ +publickey +alice: alice@laptop' "$OUT"
 expect "logins: bob" '^  [^ ]+ +bob +(127\.0\.0\.1|\[::1\])' "$OUT"
 expect "sudo: alice ran systemctl as root" 'alice +root +[0-9A-Z]+ +/usr/bin/systemctl is-active ssh' "$OUT"
-expect "sudo: bob refused" 'bob +root .*NOT in sudoers' "$OUT"
+got=$(grep -cE 'bob +root .*NOT in sudoers' "$OUT")
+if [ "$got" -eq "$REFUSALS" ]; then ok "sudo: all $REFUSALS refusals of bob are listed"; else bad "sudo: $got of $REFUSALS refusals of bob are listed"; fi
+echo "   ($(grep -E 'bob +root .*NOT in sudoers' "$OUT" | grep -c UNVERIFIED) of them marked UNVERIFIED)"
 expect "commands: command typed inside sudo -i, attributed to alice as root" 'alice +root .*systemctl is-active cron' "$OUT"
 expect "commands: rm inside sudo -i" 'alice +root .*rm -f /var/www/old.html' "$OUT"
 expect_not "commands: login background (motd) hidden by default" 'run-parts --lsbsysinit|/proc/uptime|sort -r' "$OUT"
@@ -124,7 +131,13 @@ expect "files: delete in /var/www by alice" 'alice +root +delete +webroot +rm +/
 if grep -q $'\033' "$OUT"; then bad "output contains a raw ESC byte"; else ok "no terminal escape bytes reach the output"; fi
 expect_not_in "forgery: a failed login named 'Accepted ...' is not a login" '8\.8\.8\.8' 'Logins' "$OUT"
 expect_not_in "forgery: logger -t sshd by a user is ignored" '9\.9\.9\.9' 'Logins' "$OUT"
-expect_not_in "forgery: logger -t sudo by a user is ignored" 'forged-by-bob' 'Became another user' "$OUT"
+# logger usually lives long enough for journald to record _EXE=logger, and
+# the line is dropped; if it exits first, the line may appear, but never
+# without the UNVERIFIED mark.
+sudo_section=$(awk '/^== /{ p = index($0, "Became another user") > 0 } p' "$OUT")
+if grep 'forged-by-bob' <<<"$sudo_section" | grep -qv 'UNVERIFIED'; then
+    bad "forgery: logger -t sudo line shown as verified"
+else ok "forgery: logger -t sudo line is never shown as verified"; fi
 expect "hiding: a command naming update-motd is still shown" 'alice +root .*id -un' "$OUT"
 expect "spoofing: a PWD imitating sudo fields is flagged" 'alice +\? +\? +\[AMBIGUOUS' "$OUT"
 expect_not "spoofing: the fake AS value is not shown" 'alice +nobody ' "$OUT"
