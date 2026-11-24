@@ -418,9 +418,13 @@ static void format_event_text(const ps_config_t *cfg,
 
     if (event->type == PS_EVENT_SESSION_OPEN ||
         event->type == PS_EVENT_SESSION_CLOSE) {
+        // actor= (who ran sudo/su) sits right after the user it became.
+        char actor[80] = "";
+        if (event->actor[0])
+            snprintf(actor, sizeof(actor), " actor=%s", event->actor);
         snprintf(
-            buf, len, "%s auth.%s user=%s host=%s service=%s pid=%d ts=%s%s",
-            severity, action, event->username, event->hostname,
+            buf, len, "%s auth.%s user=%s%s host=%s service=%s pid=%d ts=%s%s",
+            severity, action, event->username, actor, event->hostname,
             ps_service_str(event->service), (int)event->pid, timebuf, context);
     } else {
         snprintf(buf, len,
@@ -496,22 +500,32 @@ static void format_event_json(const ps_config_t *cfg,
 
     if (event->type == PS_EVENT_SESSION_OPEN ||
         event->type == PS_EVENT_SESSION_CLOSE) {
-        snprintf(buf, len,
-                 "{\"@timestamp\":\"%s\","
-                 "\"event\":{\"action\":\"%s\",\"category\":%s,"
-                 "\"kind\":\"%s\",\"outcome\":\"%s\",\"severity\":%d,"
-                 "\"module\":\"pamsignal\",\"dataset\":\"pamsignal.events\"},"
-                 "\"host\":{\"hostname\":\"%s\"},"
-                 "\"user\":{\"name\":\"%s\"},"
-                 "\"service\":{\"name\":\"%s\"},"
-                 "\"process\":{\"pid\":%d,\"user\":{\"id\":\"%d\"}},"
-                 "\"pamsignal\":{\"event_type\":\"%s\"}%s}",
-                 timebuf, ps_event_action_str(event->type), category_array,
-                 ps_event_kind_str(event->type),
-                 ps_event_outcome_str(event->type),
-                 ps_event_severity_num(event->type), esc_host, esc_user,
-                 ps_service_str(event->service), (int)event->pid,
-                 (int)event->uid, ps_event_type_str(event->type), labels_json);
+        // pamsignal.actor (who ran sudo/su) is added only when known.
+        // user.name keeps meaning the session's user so existing consumers
+        // see no change.
+        char actor_json[160] = "";
+        if (event->actor[0]) {
+            char esc_actor[128];
+            json_escape(event->actor, esc_actor, sizeof(esc_actor));
+            snprintf(actor_json, sizeof(actor_json), ",\"actor\":\"%s\"",
+                     esc_actor);
+        }
+        snprintf(
+            buf, len,
+            "{\"@timestamp\":\"%s\","
+            "\"event\":{\"action\":\"%s\",\"category\":%s,"
+            "\"kind\":\"%s\",\"outcome\":\"%s\",\"severity\":%d,"
+            "\"module\":\"pamsignal\",\"dataset\":\"pamsignal.events\"},"
+            "\"host\":{\"hostname\":\"%s\"},"
+            "\"user\":{\"name\":\"%s\"},"
+            "\"service\":{\"name\":\"%s\"},"
+            "\"process\":{\"pid\":%d,\"user\":{\"id\":\"%d\"}},"
+            "\"pamsignal\":{\"event_type\":\"%s\"%s}%s}",
+            timebuf, ps_event_action_str(event->type), category_array,
+            ps_event_kind_str(event->type), ps_event_outcome_str(event->type),
+            ps_event_severity_num(event->type), esc_host, esc_user,
+            ps_service_str(event->service), (int)event->pid, (int)event->uid,
+            ps_event_type_str(event->type), actor_json, labels_json);
     } else {
         snprintf(
             buf, len,
@@ -889,6 +903,8 @@ static void build_pretty_event(const ps_config_t *cfg,
         pretty_add(m, "Auth", "%s (%s)", ps_auth_method_str(event->auth_method),
                    ps_service_str(event->service));
     } else {
+        if (event->actor[0])
+            pretty_add(m, "Actor", "%s", event->actor);
         pretty_add(m, "Service", "%s", ps_service_str(event->service));
     }
     pretty_add(m, "PID", "%d", (int)event->pid);

@@ -101,6 +101,39 @@ static const char *pam_unix_tail(const char *message) {
     return *p == ':' ? p : NULL;
 }
 
+// Parse the invoking account out of a session-open tail
+// "USER[(uid=N)] by ACTOR(uid=N)". Matching is positional: the " by " must
+// follow the target user (and its optional "(uid=N)") directly, so text
+// elsewhere in the line can never be read as the actor. Leaves actor empty
+// when there is no " by " or pam_unix logged no name ("by (uid=0)").
+//
+// pam_unix takes the name from the session's login ID, so it is the person
+// who logged in: "root(uid=0) by alice(uid=1001)" for alice's sudo, but also
+// "alice(uid=1001) by alice(uid=0)" for alice's own SSH login, and
+// "by (uid=0)" for sudo run outside any login session (cron, scripts).
+static void parse_session_actor(const char *p, char *actor, size_t len) {
+    if (len == 0)
+        return;
+    actor[0] = '\0';
+    while (*p && *p != ' ' && *p != '\n' && *p != '(')
+        p++;
+    if (*p == '(') {
+        const char *q = skip_prefix(p, "(uid=");
+        if (!q)
+            return;
+        while (*q >= '0' && *q <= '9')
+            q++;
+        if (*q != ')')
+            return;
+        p = q + 1;
+    }
+    p = skip_prefix(p, " by ");
+    if (!p)
+        return;
+    extract_username(p, actor, len);
+    sanitize_string(actor);
+}
+
 // Parse "USER from IP [port PORT] [ssh2]" into event fields.
 //
 // sshd writes the peer address itself, after the client-supplied username,
@@ -161,7 +194,7 @@ int ps_parse_message(const char *message, ps_pam_event_t *event) {
     const char *pam_tail = pam_unix_tail(message);
 
     // Session opened: "pam_unix(sshd:session): session opened for user
-    // USERNAME"
+    // USERNAME[(uid=N)] [by [ACTOR](uid=N)]"
     p = pam_tail ? skip_prefix(pam_tail, ":session): session opened for user ")
                  : NULL;
     if (p) {
@@ -169,6 +202,12 @@ int ps_parse_message(const char *message, ps_pam_event_t *event) {
         event->service = parse_service_from_pam(message);
         extract_username(p, event->username, sizeof(event->username));
         sanitize_string(event->username);
+        parse_session_actor(p, event->actor, sizeof(event->actor));
+        // An actor equal to the session user adds nothing (an SSH login by
+        // alice is logged "by alice"); keep it only when someone switched
+        // to a different account.
+        if (strcmp(event->actor, event->username) == 0)
+            event->actor[0] = '\0';
         return PS_OK;
     }
 

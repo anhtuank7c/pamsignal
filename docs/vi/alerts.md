@@ -32,10 +32,10 @@ Kể từ v0.2.0, các payload cảnh báo tuân theo quy ước [Elastic Common
 
 ### Định dạng văn bản chat
 
-Dấu ngoặc severity có độ rộng cố định (8 ký tự) để các cột thẳng hàng khi hiển thị monospace. Thứ tự trường là severity → action → identity → location → metadata → `pid` → `ts`. Trường `pid=` là tiến trình đang chạy cho các sự kiện `session_opened` và `login_success` (bạn có thể `kill <pid>` để ngắt kết nối người dùng) và là auth child đã kết thúc cho các trường hợp thất bại (đã được thu hồi — chỉ hữu ích như thông tin forensics).
+Dấu ngoặc severity có độ rộng cố định (8 ký tự) để các cột thẳng hàng khi hiển thị monospace. Thứ tự trường là severity → action → identity → location → metadata → `pid` → `ts`. Trường `pid=` là tiến trình đang chạy cho các sự kiện `session_opened` và `login_success` (bạn có thể `kill <pid>` để ngắt kết nối người dùng) và là auth child đã kết thúc cho các trường hợp thất bại (đã được thu hồi — chỉ hữu ích như thông tin forensics). Với `session_opened`, `actor=` là tài khoản đã chạy `sudo`/`su` (phần `by <name>(uid=N)` trong log của pam_unix); trường này bị bỏ qua khi nó chỉ lặp lại `user=` (một lần đăng nhập SSH được ghi là `alice(uid=1001) by alice(uid=0)`) hoặc khi pam_unix không ghi tên (`by (uid=0)`, sudo chạy ngoài phiên đăng nhập, ví dụ từ cron).
 
 ```
-[INFO]   auth.session_opened user=root host=web-01 service=sudo pid=12345 ts=2026-03-29T14:23:01+0000 provider=aws service_name=web-api
+[INFO]   auth.session_opened user=root actor=alice host=web-01 service=sudo pid=12345 ts=2026-03-29T14:23:01+0000 provider=aws service_name=web-api
 [INFO]   auth.session_closed user=root host=web-01 service=sshd pid=12346 ts=2026-03-29T14:25:10+0000 provider=aws service_name=web-api
 [NOTICE] auth.login_success user=admin src=192.168.1.100:52341 host=web-01 service=sshd auth=password pid=12345 ts=2026-03-29T14:23:01+0000
 [WARN]   auth.login_failure user=root src=203.0.113.50:39182 host=web-01 service=sshd auth=password pid=12347 ts=2026-03-29T14:23:01+0000
@@ -77,7 +77,7 @@ Discord / Teams
 | Tiêu đề | Sự kiện | Các dòng |
 |---|---|---|
 | ✅ Login success / ❌ Login failed | `login_success`, `login_failure` | Host, User, Source, Auth, PID, Time |
-| 🔓 Session opened / 🔒 Session closed | `session_opened`, `session_closed` | Host, User, Service, PID, Time |
+| 🔓 Session opened / 🔒 Session closed | `session_opened`, `session_closed` | Host, User, Actor (nếu có), Service, PID, Time |
 | 🚨 Brute force detected | `brute_force_detected` (từ xa) | Host, Source, User, Attempts, Time |
 | 🚨 Brute force detected (local) | `brute_force_detected` (sudo/su) | Host, Actor, Target, Service, Attempts, Time |
 | 🔥 Login after failed attempts | `login_after_failures` | Host, User, Source, Failures, Auth, PID, Time |
@@ -353,6 +353,7 @@ Cột cuối cùng là token cần liệt kê trong `enable_notification_type` �
 | `process.pid` | integer | Tất cả | Process ID — sshd session đang chạy cho `login_success`/`session_opened`, auth child (đã kết thúc) cho các trường hợp thất bại và brute-force |
 | `process.user.id` | string | Login/Session | UID của tiến trình được PAM xử lý |
 | `pamsignal.event_type` | string | Tất cả | Legacy uppercase enum (giữ để tương thích ngược cho đến v0.2.x; bỏ trong v0.3.0) |
+| `pamsignal.actor` | string | Session opened (nếu có) | Tài khoản đã mở session — người đã chạy `sudo`/`su`. `user.name` vẫn là user của session. Không có mặt khi trùng với `user.name` (một lần đăng nhập SSH) hoặc khi pam_unix không ghi tên |
 | `pamsignal.auth_method` | string | Login + Login-after-failures | `password`, `publickey`, `keyboard-interactive` hoặc `unknown` |
 | `pamsignal.attempts` | integer | Brute-force | Số lần thất bại đã vượt ngưỡng |
 | `pamsignal.failures` | integer | Login-after-failures | Độ dài chuỗi lần thất bại xảy ra ngay trước lần đăng nhập thành công |

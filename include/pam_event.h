@@ -39,6 +39,13 @@ typedef struct {
     // target_username is populated only for sudo/su auth failures, where the
     // PAM message has ruser=<actor> and user=<target>. Empty for sshd.
     char target_username[64];
+    // actor is populated only for session-open events whose pam_unix line
+    // names a login account different from the session user ("session
+    // opened for user root(uid=0) by alice(uid=1000)") — the person who ran
+    // sudo/su. Empty when pam_unix logs no name ("by (uid=0)", sudo outside
+    // a login session), when the name equals the session user (an SSH login
+    // is logged "alice(uid=1000) by alice(uid=0)"), or when "by" is absent.
+    char actor[64];
     char source_ip[INET6_ADDRSTRLEN];
     int port;
     pid_t pid;

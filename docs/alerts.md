@@ -32,10 +32,10 @@ This means the webhook output drops directly into Elastic SIEM and Wazuh without
 
 ### Chat text format
 
-Severity bracket is fixed-width (8 chars) so columns align in monospace renderings. Field order is severity → action → identity → location → metadata → `pid` → `ts`. The `pid=` field is the live process for `session_opened` and `login_success` events (you can `kill <pid>` to disconnect the user) and the failing-auth child for failures (already reaped — useful as forensic context only).
+Severity bracket is fixed-width (8 chars) so columns align in monospace renderings. Field order is severity → action → identity → location → metadata → `pid` → `ts`. The `pid=` field is the live process for `session_opened` and `login_success` events (you can `kill <pid>` to disconnect the user) and the failing-auth child for failures (already reaped — useful as forensic context only). On `session_opened`, `actor=` names the account that ran `sudo`/`su` (pam_unix's `by <name>(uid=N)`); it is left out when it would just repeat `user=` (an SSH login is logged `alice(uid=1001) by alice(uid=0)`) or when pam_unix logs no name (`by (uid=0)`, sudo run outside a login session, e.g. from cron).
 
 ```
-[INFO]   auth.session_opened user=root host=web-01 service=sudo pid=12345 ts=2026-03-29T14:23:01+0000 provider=aws service_name=web-api
+[INFO]   auth.session_opened user=root actor=alice host=web-01 service=sudo pid=12345 ts=2026-03-29T14:23:01+0000 provider=aws service_name=web-api
 [INFO]   auth.session_closed user=root host=web-01 service=sshd pid=12346 ts=2026-03-29T14:25:10+0000 provider=aws service_name=web-api
 [NOTICE] auth.login_success user=admin src=192.168.1.100:52341 host=web-01 service=sshd auth=password pid=12345 ts=2026-03-29T14:23:01+0000
 [WARN]   auth.login_failure user=root src=203.0.113.50:39182 host=web-01 service=sshd auth=password pid=12347 ts=2026-03-29T14:23:01+0000
@@ -77,7 +77,7 @@ Discord / Teams
 | Headline | Event | Rows |
 |---|---|---|
 | ✅ Login success / ❌ Login failed | `login_success`, `login_failure` | Host, User, Source, Auth, PID, Time |
-| 🔓 Session opened / 🔒 Session closed | `session_opened`, `session_closed` | Host, User, Service, PID, Time |
+| 🔓 Session opened / 🔒 Session closed | `session_opened`, `session_closed` | Host, User, Actor (when known), Service, PID, Time |
 | 🚨 Brute force detected | `brute_force_detected` (remote) | Host, Source, User, Attempts, Time |
 | 🚨 Brute force detected (local) | `brute_force_detected` (sudo/su) | Host, Actor, Target, Service, Attempts, Time |
 | 🔥 Login after failed attempts | `login_after_failures` | Host, User, Source, Failures, Auth, PID, Time |
@@ -353,6 +353,7 @@ The last column is the token to list in `enable_notification_type` to receive th
 | `process.pid` | integer | All | Process ID — the live sshd session for `login_success`/`session_opened`, the (already reaped) auth child for failures and brute-force |
 | `process.user.id` | string | Login/Session | UID of the PAM-handled process |
 | `pamsignal.event_type` | string | All | Legacy uppercase enum (kept for backward compat through v0.2.x; retired in v0.3.0) |
+| `pamsignal.actor` | string | Session opened (when known) | Account that opened the session — who ran `sudo`/`su`. `user.name` stays the session's user. Absent when it equals `user.name` (an SSH login) or pam_unix logs no name |
 | `pamsignal.auth_method` | string | Login + Login-after-failures | `password`, `publickey`, `keyboard-interactive`, or `unknown` |
 | `pamsignal.attempts` | integer | Brute-force | Number of failed attempts that breached the threshold |
 | `pamsignal.failures` | integer | Login-after-failures | Length of the run of failed attempts that preceded the successful login |
