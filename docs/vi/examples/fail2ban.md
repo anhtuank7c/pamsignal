@@ -139,6 +139,8 @@ bantime = 24h
 - `maxretry = 1`: cấm ngay lập tức khi có một lần khớp. PAMSignal đã đếm đến ngưỡng rồi; một dòng `BRUTE_FORCE_DETECTED` **chính là** cảnh báo.
 - `bantime = 24h`: chặn IP trong 24 giờ. Thay bằng `1h`, `7d` hoặc `-1` (vĩnh viễn) tùy ý.
 
+PAMSignal ghi dòng `BRUTE_FORCE_DETECTED` vào journal mỗi lần một nguồn vượt `fail_threshold` trong `fail_window_sec`, kể cả khi chat alert đang bị `alert_cooldown_sec` giữ lại hoặc `brute_force` không có trong `enable_notification_type`. Các thiết lập đó chỉ điều khiển chat alert và webhook, nên Fail2ban vẫn thấy mọi lần vượt ngưỡng.
+
 ---
 
 ## Bước 3: Chọn đúng firewall backend
@@ -193,6 +195,8 @@ ignoreip = 127.0.0.1/8 ::1 203.0.113.42 10.0.0.0/8
 Thay `203.0.113.42` bằng IP công khai thực của bạn (tìm bằng `curl ifconfig.me` từ máy bạn sẽ SSH đến). Chỉ thêm `10.0.0.0/8`, `192.168.0.0/16` hoặc `172.16.0.0/12` nếu bạn tin tưởng mọi thiết bị trong các dải LAN đó.
 
 Bạn cũng có thể đặt một whitelist *toàn cục* trong `/etc/fail2ban/jail.local` áp dụng cho mọi jail. Đây là cách an toàn hơn nếu bạn định tạo thêm jail sau này. Xem [tài liệu `ignoreip`](https://github.com/fail2ban/fail2ban/wiki/MANUAL_0_8#jails) để biết cú pháp đầy đủ (chấp nhận CIDR, DNS, và shell-glob pattern).
+
+Thiết lập `trusted_sources` của PAMSignal không bảo vệ bạn ở đây. Nó chỉ tắt chat alert thông thường cho từng sự kiện; một IP tin cậy vượt ngưỡng vẫn tạo ra dòng `BRUTE_FORCE_DETECTED`, và Fail2ban sẽ cấm IP đó. Hãy đưa cả các IP quản trị vào `ignoreip`.
 
 ---
 
@@ -401,9 +405,18 @@ Hai daemon hoàn toàn độc lập với nhau: PAMSignal không biết Fail2ban
 
 ### Tại sao ta không cấm sự kiện brute-force từ actor nội bộ
 
-PAMSignal phát ra sự kiện brute-force cho cả tấn công từ xa (theo IP) lẫn tấn công từ actor nội bộ (theo username, khi ai đó liên tục dùng `sudo` từ phiên local). Fail2ban chỉ có thể chặn IP (nó không thể vô hiệu hóa tài khoản UNIX nội bộ), vì vậy filter của ta chỉ cố tình khớp với sự kiện có khóa là IP. Các sự kiện actor nội bộ vẫn xuất hiện trong journal và chat alert của bạn, nhưng không kích hoạt Fail2ban.
+PAMSignal ghi `BRUTE_FORCE_DETECTED` theo hai dạng:
 
-Nếu bạn cần khóa actor nội bộ, đó là việc của `pam_tally2` / `pam_faillock` trong PAM stack của bạn, không phải Fail2ban.
+```
+pamsignal: BRUTE_FORCE_DETECTED ip=203.0.113.99 attempts=5 window=300s user=root
+pamsignal: BRUTE_FORCE_DETECTED actor=alice target=root service=sudo attempts=5 window=300s
+```
+
+Dạng đầu là tấn công từ xa, có khóa là IP nguồn. Dạng thứ hai là tấn công `sudo` hoặc `su` cục bộ, không có IP nguồn, có khóa là tài khoản đang gõ mật khẩu (`actor=`). Fail2ban chỉ có thể chặn IP (nó không thể vô hiệu hóa tài khoản UNIX nội bộ), vì vậy filter của ta chỉ khớp dạng `ip=`. Các sự kiện `actor=` vẫn xuất hiện trong journal và chat alert của bạn, nhưng không kích hoạt Fail2ban.
+
+Filter cũng bỏ qua `LOGIN_AFTER_FAILURES` (đăng nhập thành công từ một IP vừa thất bại nhiều lần). Lúc đó kẻ tấn công có thể đã vào được máy, nên hãy coi đây là sự cố cần điều tra, không chỉ là một IP cần cấm.
+
+Nếu bạn cần khóa actor nội bộ, đó là việc của `pam_faillock` trong PAM stack của bạn, không phải Fail2ban.
 
 ---
 

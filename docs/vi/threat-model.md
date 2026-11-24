@@ -4,15 +4,15 @@
 
 Tài liệu này mô tả những gì PAMSignal bảo vệ, những gì nó chủ động không bảo vệ, và các lựa chọn thiết kế tạo nên tư thế đó. Đây là tài liệu tham chiếu để đánh giá các đóng góp trong tương lai: một thay đổi củng cố biện pháp giảm thiểu trong phạm vi là chào đón; một thay đổi kéo công việc vào daemon từ một lĩnh vực ngoài phạm vi thì không, dù về mặt kỹ thuật có thể thực hiện được.
 
-Để báo cáo lỗ hổng bảo mật riêng tư, xem [`SECURITY.md`](../../SECURITY.md). Hai tài liệu bổ sung cho nhau: `SECURITY.md` hướng đến operator (cách báo cáo, phiên bản nào được hỗ trợ); tài liệu này hướng đến contributor (trách nhiệm của daemon là gì và không phải là gì).
+Để báo cáo lỗ hổng bảo mật riêng tư, xem [`SECURITY.md`](SECURITY.md). Hai tài liệu bổ sung cho nhau: `SECURITY.md` hướng đến operator (cách báo cáo, phiên bản nào được hỗ trợ); tài liệu này hướng đến contributor (trách nhiệm của daemon là gì và không phải là gì).
 
 ## Mục đích
 
-PAMSignal quan sát các sự kiện xác thực PAM trên một host duy nhất qua systemd journal và, khi các mẫu được cấu hình xảy ra (đăng nhập thất bại, ngưỡng brute-force), gửi cảnh báo qua HTTPS đến các kênh do operator lựa chọn. Nhiệm vụ của daemon là trở thành một **tín hiệu phát hiện đáng tin cậy** cho operator. Mọi biện pháp bảo vệ trong tài liệu này đều tồn tại để bảo tồn thuộc tính đó: cảnh báo operator nhận được phản ánh chính xác những gì đã xảy ra trên host.
+PAMSignal quan sát các sự kiện xác thực PAM trên một host duy nhất qua systemd journal và, khi các mẫu được cấu hình xảy ra (đăng nhập, đăng nhập thất bại, ngưỡng brute-force, một lần thành công ngay sau một chuỗi thất bại), gửi cảnh báo qua HTTPS đến các kênh do operator lựa chọn. Nhiệm vụ của daemon là trở thành một **tín hiệu phát hiện đáng tin cậy** cho operator. Mọi biện pháp bảo vệ trong tài liệu này đều tồn tại để bảo tồn thuộc tính đó: cảnh báo operator nhận được phản ánh chính xác những gì đã xảy ra trên host.
 
 ## Phạm vi quan sát
 
-PAMSignal quan sát các sự kiện chạy qua PAM stack của host và vào journal của systemd. Đây là một nguồn tín hiệu *cụ thể*. Nó nắm bắt các kênh truy cập từ xa hàng ngày mà operator quan tâm: ssh, sftp, scp, rsync over ssh, sudo, su, login, xrdp + PAM, vsftpd / proftpd được cấu hình với PAM. Nó **không** quan sát mọi kênh qua đó một kết nối có thể đến host. Việc biết ranh giới một cách rõ ràng là một phần của threat model.
+PAMSignal quan sát các sự kiện chạy qua PAM stack của host và vào journal của systemd. Đây là một nguồn tín hiệu *cụ thể*. Nó chỉ đọc các entry do `sshd` / `sshd-session`, `sudo`, `su` và `login` ghi ra (journal match theo các `SYSLOG_IDENTIFIER` đó cộng với các unit `ssh.service` / `sshd.service`, sau đó là bước kiểm tra `_EXE` ở [mục 1](#1-log-injection-qua-logger1-b)). Như vậy là phủ các kênh hàng ngày mà operator quan tâm: ssh, sftp, scp, rsync over ssh, sudo, su và console login. Các daemon khác có dùng PAM thì không được đọc, kể cả khi chúng xác thực qua PAM. Nó **không** quan sát mọi kênh qua đó một kết nối có thể đến host. Việc biết ranh giới một cách rõ ràng là một phần của threat model.
 
 ### Các kênh PAMSignal quan sát
 
@@ -22,11 +22,10 @@ PAMSignal quan sát các sự kiện chạy qua PAM stack của host và vào jo
 | SFTP | `sshd` (subsystem) | Cùng các mục auth + session như SSH |
 | SCP | `sshd` | Tương tự |
 | Rsync over SSH | `sshd` | Tương tự |
-| sudo / su | `pam_unix(sudo:auth)` / `pam_unix(su:auth)` | LOGIN_FAILED (với brute-force tracker keyed by `ruser`), SESSION_OPEN/CLOSE khi thành công |
-| TTY / console login | `login` | SESSION_OPEN/CLOSE |
-| xrdp với PAM | xrdp + `pam_unix` | SESSION_OPEN/CLOSE nếu được cấu hình dùng PAM |
-| vsftpd / proftpd với PAM | self + `pam_unix` | Nếu FTP daemon được cấu hình xác thực qua PAM |
-| systemd-logind sessions | `systemd-logind` | SESSION_OPEN/CLOSE khi mỗi session được tạo |
+| sudo / su | `sudo` / `su` (`pam_unix(sudo:...)` / `pam_unix(su:...)`) | LOGIN_FAILED (chỉ ghi journal, không có chat alert cho từng sự kiện; brute-force tracker keyed by `ruser`, hoặc theo IP khi `rhost` là một IP), SESSION_OPEN/CLOSE khi thành công (SESSION_OPEN mang `actor` khi tài khoản đã đăng nhập khác với tài khoản đích) |
+| TTY / console login | `login` (`pam_unix(login:...)`) | LOGIN_FAILED, SESSION_OPEN/CLOSE (các lần thất bại không có `rhost` là IP thì không được brute-force tracker đếm) |
+
+Ngoài các sự kiện theo từng entry này, PAMSignal còn tự ghi các phát hiện của nó: BRUTE_FORCE_DETECTED và LOGIN_AFTER_FAILURES (xem mục [2](#2-bypass-brute-force-tracker-a-b) và [11](#11-mật-khẩu-bị-đoán-trúng-ẩn-trong-một-chuỗi-thất-bại-a)).
 
 ### Các kênh PAMSignal KHÔNG quan sát
 
@@ -46,6 +45,7 @@ Các kênh này xác thực qua các cơ chế mà journald không bao giờ th�
 | NFS / SMB mounts | NFS/Kerberos / SMB | nfsd / smbd logs |
 | `rclone` với HTTP/S3/GCS backend | API tokens | Log truy cập của cloud provider |
 | Custom HTTP / REST / gRPC APIs | application-level | Audit log của ứng dụng |
+| xrdp, vsftpd / proftpd, systemd-logind và các daemon khác có dùng PAM | PAM, nhưng được ghi log dưới identifier riêng của daemon | Các entry journal riêng của daemon đó (ví dụ `journalctl -t xrdp-sesman`) |
 
 ### Hàm ý cho operator
 
@@ -110,34 +110,35 @@ Những gì chúng có thể làm mà PAMSignal quan tâm:
 
 ## Trong phạm vi: các cuộc tấn công mà daemon bảo vệ
 
-Mỗi mục nêu tên cuộc tấn công, lớp kẻ tấn công từ trên, biện pháp giảm thiểu và vị trí source. Một regression trong bất kỳ mục nào là một lỗi bảo mật và thuộc [`SECURITY.md`](../../SECURITY.md).
+Mỗi mục nêu tên cuộc tấn công, lớp kẻ tấn công từ trên, biện pháp giảm thiểu và vị trí source. Một regression trong bất kỳ mục nào là một lỗi bảo mật và thuộc [`SECURITY.md`](SECURITY.md).
 
 ### 1. Log injection qua `logger(1)` (B)
 
 **Cuộc tấn công.** Một người dùng không có đặc quyền cục bộ chạy `logger -t sshd "Failed password for root from 1.2.3.4 port 22 ssh2"` để giả mạo một mục journal trông như lỗi xác thực sshd thực. Không có filtering, PAMSignal sẽ cảnh báo và brute-force tracker sẽ đếm nó.
 
-**Biện pháp giảm thiểu.** `_EXE` allowlist trong `src/journal_watch.c:345-381`. Trường `_EXE` được ghi lại của mỗi mục journal (do journald tự đặt dựa trên binary thực sự được execve'd) phải resolve thành `sshd`, `sudo`, `su`, `login`, hoặc `systemd-logind` dưới một prefix hệ thống (`/usr/`, `/bin/`, `/sbin/`, `/lib/`, `/lib64/`, `/opt/`). Các mục không có `_EXE` (injection tổng hợp từ `/dev/log`) bị drop. `_EXE` của `logger` là `/usr/bin/logger`, không có trong allowlist, nên mục bị drop thầm lặng.
+**Biện pháp giảm thiểu.** `_EXE` allowlist, tức `ps_is_trusted_exe()` trong `src/journal_watch.c`, được áp cho mọi entry đã parse trong `ps_process_entry()`. Trường `_EXE` được ghi lại của mỗi mục journal (do journald tự đặt dựa trên binary thực sự được execve'd) phải bắt đầu bằng một prefix hệ thống (`/usr/`, `/bin/`, `/sbin/`, `/lib/`, `/lib64/`, `/opt/`) và có basename là `sshd`, `sshd-session` (OpenSSH 9.8+ chuyển phần xác thực theo từng kết nối sang binary này), `sudo`, `su`, `login`, hoặc `systemd-logind`. (`systemd-logind` có trong danh sách, nhưng journal match không bao giờ chọn entry của nó, nên hiện tại mục này không có tác dụng.) Các mục không có `_EXE` (injection tổng hợp từ `/dev/log`) bị drop. `_EXE` của `logger` là `/usr/bin/logger`, không có trong allowlist, nên mục bị drop thầm lặng.
 
 ### 2. Bypass brute-force tracker (A, B)
 
 **Cuộc tấn công.** Gửi các sự kiện failed-auth được tính thời gian cẩn thận để tăng bộ đếm per-key mà không bao giờ vượt ngưỡng; hoặc tạo đủ key kẻ tấn công riêng biệt để đẩy mục của target hợp lệ ra khỏi bảng.
 
 **Biện pháp giảm thiểu.**
-- `fail_window_sec` (`src/config.c:95`, mặc định 300s, phạm vi 1–86400) giới hạn time window để tổng hợp các lần thử. Logic sliding-window trong `src/journal_watch.c` reset count một khi `event->timestamp_usec - first_attempt_usec > window_usec`, nên kẻ tấn công không thể trải đều thất bại trên một window tùy ý dài để ở dưới ngưỡng.
+- `fail_window_sec` (mặc định 300s, phạm vi 1–86400) giới hạn time window để tổng hợp các lần thử. `ps_track_failed_login()` trong `src/journal_watch.c` reset count một khi `event->timestamp_usec - first_attempt_usec > window_usec`, nên kẻ tấn công không thể trải đều thất bại trên một window tùy ý dài để ở dưới ngưỡng.
 - Eviction chọn **cũ nhất theo `last_attempt_usec`**, không phải theo `first_attempt_usec`. Một kẻ tấn công liên tục làm mới `last_attempt_usec` bằng các thất bại mới không thể đẩy entry của chính họ ra; chúng đẩy một entry khác, ưu tiên thấp hơn ra.
-- Per-key cooldown (`alert_cooldown_sec`, `src/journal_watch.c:223-232`) ngăn alert flooding từ một key đơn mà không mất bộ đếm bên dưới.
+- Per-key cooldown (`alert_cooldown_sec`, trong `ps_track_failed_login()`) ngăn alert flooding từ một key đơn mà không mất bộ đếm bên dưới.
+- Key: source IP cho các lần thất bại từ xa (và cho các lần thất bại sudo/su có `rhost` là IP); `ruser` cục bộ cho các lần thất bại sudo/su thuần cục bộ, nên một người dùng cục bộ đoán mật khẩu sudo cũng bị theo dõi. Bản sao `pam_unix(sshd:auth)` của một lần thất bại sshd không được đếm, nên mỗi lần thất bại SSH chỉ tính một lần.
 
 ### 3. Lộ thông tin xác thực cảnh báo qua process metadata (B, D)
 
 **Cuộc tấn công.** Đọc `/proc/<pamsignal-pid>/cmdline` hoặc `/proc/<pamsignal-curl-child-pid>/cmdline` để thu thập token bot Telegram, URL webhook, bearer token custom-webhook, hoặc đường dẫn trên đĩa của file cert / key mTLS client.
 
-**Biện pháp giảm thiểu.** Mỗi sender theo kênh đều đi qua file curl `-K` config được tạo bởi `memfd_create()` (`src/notify.c:101`) mang URL, `webhook_auth_header` tùy chọn (từ v0.4.0), và các đường dẫn `cert =` / `key =` / `cacert =` tùy chọn (từ v0.4.0). Memfd được pin ở `fd 9` qua `dup2` (xóa `O_CLOEXEC` trên đích); mọi descriptor kế thừa khác được đóng trong tiến trình con trước `execv`. argv của tiến trình con curl byte-identical cho mọi lần gửi cảnh báo (`curl -s -S --max-time 10 --proto =https --proto-redir =https -H "Content-Type: application/json" -K /dev/fd/9 -d <body>`), bất kể kênh nào hay chế độ xác thực nào đang được dùng. Một người dùng không có đặc quyền đọc `/proc/*/cmdline` không thể biết liệu có token, client cert, hay cả hai được cấu hình, chứ chưa nói đến việc thu thập các giá trị đó. argv của daemon cha là `pamsignal --foreground` cộng với `--config <path>` tùy chọn, không có thông tin xác thực nào ở đó.
+**Biện pháp giảm thiểu.** Mỗi sender theo kênh đều đi qua file curl `-K` config được tạo bởi `memfd_create()` (`build_secrets_memfd()` trong `src/notify.c`) mang URL, auth header tùy chọn (`webhook_auth_header` từ v0.4.0, hoặc bearer token của WhatsApp), và các đường dẫn `cert =` / `key =` / `cacert =` tùy chọn (từ v0.4.0). Memfd được pin ở `fd 9` qua `dup2` (xóa `O_CLOEXEC` trên đích); mọi descriptor kế thừa khác được đóng trong tiến trình con trước `execv`. argv của tiến trình con curl có cùng một dạng cho mọi lần gửi cảnh báo (`curl -s -S --max-time 10 --proto =https --proto-redir =https -H "Content-Type: application/json" -K /dev/fd/9 -d <body>`; `--test-alert` thêm `-f -o /dev/null`), bất kể kênh nào hay chế độ xác thực nào đang được dùng. Chỉ có `<body>` thay đổi: đó là payload cảnh báo (user, source IP, host), mà người dùng cục bộ đọc được từ `/proc/*/cmdline` trong lúc curl chạy, nhưng nó không bao giờ chứa thông tin xác thực. Một người dùng không có đặc quyền đọc `/proc/*/cmdline` không thể biết liệu có token, client cert, hay cả hai được cấu hình, chứ chưa nói đến việc thu thập các giá trị đó. argv của daemon cha là `pamsignal --foreground` cộng với `--config <path>` tùy chọn, không có thông tin xác thực nào ở đó.
 
 ### 4. Hijack alert dispatch qua `PATH` / `LD_PRELOAD` (D)
 
 **Cuộc tấn công.** Một daemon pamsignal bị xâm phạm thao túng môi trường của tiến trình con curl để chuyển hướng nó qua một binary hoặc library do kẻ tấn công kiểm soát.
 
-**Biện pháp giảm thiểu.** Tiến trình con curl thực hiện `clearenv()` (`src/notify.c:184`), rồi `setenv("PATH", "/usr/bin:/bin", 1)`, rồi `execv("/usr/bin/curl", …)` với đường dẫn tuyệt đối nên `PATH` không được tham khảo. `LD_PRELOAD` bị drop bởi `clearenv()`. systemd unit cũng đặt `Environment=PATH=/usr/bin:/bin` (`pamsignal.service.in:30`) để phòng thủ theo chiều sâu khi daemon được khởi động ngoài unit.
+**Biện pháp giảm thiểu.** Tiến trình con curl (`fire_curl()` trong `src/notify.c`) thực hiện `clearenv()`, rồi `setenv("PATH", "/usr/bin:/bin", 1)`, rồi `execv("/usr/bin/curl", …)` với đường dẫn tuyệt đối nên `PATH` không được tham khảo. `LD_PRELOAD` bị drop bởi `clearenv()`. systemd unit cũng đặt `Environment=PATH=/usr/bin:/bin` (`pamsignal.service.in`) để phòng thủ theo chiều sâu khi daemon được khởi động ngoài unit.
 
 ### 5. TLS downgrade / cleartext webhook (E)
 
@@ -150,10 +151,10 @@ Mỗi mục nêu tên cuộc tấn công, lớp kẻ tấn công từ trên, bi�
 **Cuộc tấn công.** Một username, hostname, hoặc trường PAM-message chứa các ký tự có ý nghĩa JSON hoặc control byte, dẫn đến payload bị dị dạng hoặc thoát ra khỏi JSON quoting.
 
 **Biện pháp giảm thiểu.**
-- `sanitize_string()` (`src/utils.c:13`) thay thế tất cả control character (0x00–0x1F + 0x7F) bằng `?` trên mọi username và target_username đã trích xuất, ngay sau khi parsing.
-- `is_valid_ip()` (`src/utils.c:21`) yêu cầu `inet_pton` chấp nhận source IP; thất bại xóa trường.
-- `json_escape()` (`src/notify.c:27`) RFC 8259 escape `"`, `\`, tất cả byte 0x00–0x1F, cộng với các short escape chuẩn cho `\b\f\n\r\t`. Ngay cả khi `sanitize_string` bị regression, JSON quoting vẫn giữ.
-- Tất cả extraction được bounded: username vào buffer 64-byte với marker truncation `+` (`src/utils.c:63-77`), hostname bounded bởi `event.hostname[256]`, `sscanf` dùng width specifier ở mọi nơi.
+- `sanitize_string()` (`src/utils.c`) thay thế tất cả control character (0x00–0x1F + 0x7F) bằng `?` trên mọi username, target username và actor đã trích xuất, ngay sau khi parsing.
+- `is_valid_ip()` (`src/utils.c`) yêu cầu `inet_pton` chấp nhận source IP; thất bại xóa trường.
+- `json_escape()` (`src/notify.c`) RFC 8259 escape `"`, `\`, tất cả byte 0x00–0x1F, cộng với các short escape chuẩn cho `\b\f\n\r\t`, và thay các byte không phải UTF-8 hợp lệ bằng `?` (một body có UTF-8 không hợp lệ sẽ bị các chat API từ chối, làm mất cảnh báo). Ngay cả khi `sanitize_string` bị regression, JSON quoting vẫn giữ.
+- Tất cả extraction được bounded: username vào buffer 64-byte với marker truncation `+` (`extract_username()` trong `src/utils.c`), hostname bounded bởi `event.hostname[256]`, `sscanf` dùng width specifier ở mọi nơi.
 
 ### 7. Thoát sandbox từ daemon bị xâm phạm (D)
 
@@ -161,16 +162,17 @@ Mỗi mục nêu tên cuộc tấn công, lớp kẻ tấn công từ trên, bi�
 
 **Biện pháp giảm thiểu (chiều sâu, không hoàn hảo):**
 - `User=pamsignal Group=pamsignal` (không có đặc quyền để bắt đầu).
-- `CapabilityBoundingSet=` trống (`pamsignal.service.in:53`).
-- `NoNewPrivileges=yes` (`pamsignal.service.in:38`): các binary SUID `setuid` trở thành no-op.
-- `MemoryDenyWriteExecute=yes` (`pamsignal.service.in:46`): shellcode injection đòi hỏi một kernel bug riêng biệt.
+- `CapabilityBoundingSet=` trống.
+- `NoNewPrivileges=yes`: các binary SUID `setuid` trở thành no-op.
+- `MemoryDenyWriteExecute=yes`: shellcode injection đòi hỏi một kernel bug riêng biệt.
 - `ProtectSystem=strict`, `ProtectHome=yes`, `PrivateTmp=yes`, `PrivateDevices=yes`, `ProtectKernelTunables=yes`, `ProtectKernelModules=yes`, `ProtectKernelLogs=yes`, `ProtectControlGroups=yes`.
 - `RestrictNamespaces=yes`, `RestrictRealtime=yes`, `RestrictSUIDSGID=yes`, `LockPersonality=yes`.
-- `SystemCallFilter=@system-service ~@privileged @resources`: bpf, mount, kexec, finit_module, v.v. đều bị từ chối.
+- `SystemCallFilter=@system-service ~@privileged @resources`: bpf, mount, kexec, finit_module, v.v. đều bị từ chối. `SystemCallArchitectures=native` chặn syscall ABI compat.
+- `RestrictAddressFamilies=AF_UNIX AF_NETLINK AF_INET AF_INET6`, `ProtectClock=yes`, `ProtectHostname=yes`, `ProtectProc=invisible`, `ProcSubset=pid`, `RemoveIPC=yes`, `DevicePolicy=closed`, `UMask=0077`.
 - `RLIMIT_NPROC` giới hạn ở 64 trong `src/main.c` nên fork-bomb trong đường cảnh báo không thể làm cạn kiệt process slot.
 - `prctl(PR_SET_NO_NEW_PRIVS, 1)` được đặt sớm trong `src/main.c` ngay cả bên ngoài unit.
 
-Điểm systemd-analyze security (CI-gated ở ≤30 trên thang 0–100 nội bộ; hiện tại 22) là guard regression cho các directive này.
+Điểm systemd-analyze security là guard regression cho các directive này: workflow release-packaging (`.github/workflows/release-packages.yml`) chạy `systemd-analyze security --threshold=20` trên unit đã cài (thang 0–100 nội bộ; điểm hiện tại là 13). Tất cả directive nằm trong `pamsignal.service.in`.
 
 ### 8. Lỗi memory-safety trong C parser (A → D)
 
@@ -178,15 +180,31 @@ Mỗi mục nêu tên cuộc tấn công, lớp kẻ tấn công từ trên, bi�
 
 **Biện pháp giảm thiểu.**
 - Compiler hardening: `-fstack-protector-strong`, `-D_FORTIFY_SOURCE=3`, `-fcf-protection=full` (Intel CET), `-fstack-clash-protection`, full RELRO, PIE, `-z noexecstack`, `-z separate-code` (`meson.build`).
-- Harness libFuzzer trong `tests/fuzz_parse_message.c` bao phủ điểm vào chính của parser. Chạy với `CC=clang meson setup -Dfuzz=enabled build-fuzz && build-fuzz/fuzz_parse_message tests/fuzz/parse_message_corpus -max_total_time=60`.
-- 98 test CMocka trên bốn suite, bao gồm parser edge case (username bị truncate, control character, IP-validation failure, thông báo PAM multi-`user=`, IPv6 literal).
-- clang-tidy + clang-analyzer trong CI với `WarningsAsErrors` trên family checker `clang-analyzer-security.*`.
+- Harness libFuzzer trong `tests/fuzz_parse_message.c` bao phủ điểm vào chính của parser. Chạy với `CC=clang meson setup -Dfuzz=enabled build-fuzz && meson compile -C build-fuzz fuzz_parse_message && ./build-fuzz/fuzz_parse_message tests/fuzz/parse_message_corpus -max_total_time=60`.
+- Các suite CMocka (`test_utils`, `test_config`, `test_journal_watch`, `test_notify`, `test_integration`), bao gồm parser edge case (username bị truncate, control character, IP-validation failure, thông báo PAM multi-`user=`, IPv6 literal, username do client chọn nhằm bắt chước các dòng log khác). CI build và chạy chúng dưới AddressSanitizer + UndefinedBehaviorSanitizer.
+- clang-tidy với clang-analyzer (`.clang-tidy` đặt `WarningsAsErrors` trên family checker `clang-analyzer-security.*`) là một bước trong quy trình pre-commit ở `CLAUDE.md`; nó không phải một job CI.
 
 ### 9. Alert-volume DoS từ một source IP đơn (A)
 
 **Cuộc tấn công.** Một máy quét chạy mãi mãi chống lại một IP, tạo ra hàng nghìn cảnh báo brute-force làm ngập kênh chat của operator.
 
-**Biện pháp giảm thiểu.** Per-source-IP cooldown trong `src/journal_watch.c:223-232`. Sau khi một cảnh báo threshold-breach được kích hoạt, cùng IP đó không thể kích hoạt cảnh báo khác trong `alert_cooldown_sec` giây (mặc định 60s), nhưng bộ đếm bên dưới và các mục journal vẫn tiếp tục. Điều này nén các cảnh báo tấn công liên tục thành một ping chat mỗi cooldown period mà không mất khả năng quan sát.
+**Biện pháp giảm thiểu.** Per-key cooldown trong `ps_track_failed_login()` (`src/journal_watch.c`). Sau khi một cảnh báo threshold-breach được kích hoạt, cùng IP đó (hoặc cùng actor cục bộ) không thể kích hoạt chat alert khác trong `alert_cooldown_sec` giây (mặc định 60s; 0 là tắt cooldown), nhưng bộ đếm bên dưới và các mục journal vẫn tiếp tục. Cảnh báo login-after-failures dùng cùng per-key cooldown đó. Điều này nén các cảnh báo tấn công liên tục thành một ping chat mỗi cooldown period mà không mất khả năng quan sát.
+
+Các cảnh báo thường lệ theo từng sự kiện (`login_success`, `login_failed`, `session_open`, `session_close`) bị giới hạn theo cách khác: chúng dùng chung **một** bộ đếm thời gian cho mọi user và mọi IP (`event_cooled_down()` trong `src/notify.c`). Sau khi một cảnh báo được gửi, mọi cảnh báo theo sự kiện khác trong `alert_cooldown_sec` giây tiếp theo chỉ được ghi vào journal, cho cả chat lẫn webhook. Cách này giữ lượng tin nhắn chat có giới hạn, nhưng cũng khiến một sự kiện có thể dùng hết bộ đếm của sự kiện khác: khi các lần đăng nhập thất bại đổ về liên tục, chat alert của một lần đăng nhập thành công rơi vào khoảng đó sẽ bị bỏ qua. BRUTE_FORCE_DETECTED và LOGIN_AFTER_FAILURES không dùng bộ đếm này. Operator muốn được ping cho mọi lần đăng nhập nên bỏ `login_failed` khỏi `enable_notification_type` (các loại đã bị lọc thì không được gửi và không dùng bộ đếm), hoặc đặt `alert_cooldown_sec = 0`, việc này cũng bỏ luôn per-key cooldown ở trên.
+
+### 10. Giả mạo sự kiện qua username do client chọn (A)
+
+**Cuộc tấn công.** Username trong một dòng sshd do client từ xa chọn trước khi xác thực và có thể chứa dấu cách. Một client tự đặt tên là `Accepted password for root from 8.8.8.8 port 1 ssh2`, khiến sshd ghi `Failed password for invalid user Accepted password for root from ...`; hoặc tự đặt tên là `x from 203.0.113.9 port 1` để đổ các lần thất bại của mình cho địa chỉ của người khác.
+
+**Biện pháp giảm thiểu.** `ps_parse_message()` (`src/utils.c`) khớp mọi mẫu neo ở đầu message (`skip_prefix()`), không bao giờ khớp kiểu substring, nên đoạn text nhúng vào không thể bị đọc thành một lần đăng nhập thành công. Với các dòng failed và invalid-user, nó lấy ` from ` **cuối cùng** trên dòng, tức là cái do chính sshd ghi. Username bị cắt còn token đầu tiên trước dấu cách, nên nó không thể mang thêm trường `key=value` vào dòng journal của chính pamsignal, vào chat alert, hay vào filter fail2ban.
+
+### 11. Mật khẩu bị đoán trúng ẩn trong một chuỗi thất bại (A)
+
+**Cuộc tấn công.** Một đợt brute-force cuối cùng đoán trúng mật khẩu. Lần thành công đó chỉ là một lần đăng nhập bình thường giữa rất nhiều lần thất bại, và operator có thể đã tắt các ping đăng nhập thường lệ hoặc đưa mạng của kẻ tấn công vào `trusted_sources`.
+
+**Biện pháp giảm thiểu.** `ps_check_login_after_failures()` (`src/journal_watch.c`) kiểm tra mọi LOGIN_SUCCESS từ xa. Nếu cùng IP đó đã tạo ra ít nhất `success_after_fail_threshold` lần thất bại (mặc định 3; 0 là tắt) trong một chuỗi liền mạch mà lần thất bại cuối nằm trong `fail_window_sec`, nó ghi một entry journal LOGIN_AFTER_FAILURES (priority `LOG_CRIT`, `EVENT_SEVERITY=9`) và gửi một cảnh báo mức critical. Lần thành công xóa chuỗi đó, nên một lần đột nhập cho đúng một cảnh báo. Ngoài việc tắt hẳn bước kiểm tra này, chat alert của nó chỉ bị tắt khi bạn bỏ `login_after_failures` khỏi `enable_notification_type`.
+
+`trusted_sources` chỉ tắt các chat alert thường lệ theo từng sự kiện. Các lần thất bại và thành công từ địa chỉ tin cậy vẫn được đưa vào brute-force tracker và login-after-failures tracker, nên một máy bị chiếm quyền bên trong mạng tin cậy không thể tấn công một cách lặng lẽ.
 
 ## Ngoài phạm vi: các cuộc tấn công PAMSignal không bảo vệ
 
@@ -226,7 +244,7 @@ Kể từ v0.4.0, kênh custom-webhook có thể xác thực đến receiver c�
 
 ### NS9. Bảo vệ chống admin misconfiguration
 
-Nếu operator đặt `pamsignal.conf` ở quyền `0644` (world-readable) và lưu thông tin xác thực trong đó, PAMSignal sẽ khởi động (sau khi cảnh báo tại thời điểm load config) nhưng thông tin xác thực bị lộ. Cải thiện mặc định là chào đón như feature request; coi đây là lỗi bảo mật thì không phù hợp.
+Nếu operator đặt `pamsignal.conf` ở quyền `0644` (world-readable) và lưu thông tin xác thực trong đó, PAMSignal sẽ khởi động mà không cảnh báo gì (nó chỉ từ chối một config có thể *ghi* bởi group hoặc world, hoặc thuộc sở hữu của ai đó khác root hay daemon user), và thông tin xác thực bị lộ. Cải thiện mặc định là chào đón như feature request; coi đây là lỗi bảo mật thì không phù hợp.
 
 ### NS10. Network-side DoS nhắm vào tài nguyên của chính daemon
 
@@ -238,11 +256,11 @@ Ranh giới tin tưởng là nơi trong hệ thống mà dữ liệu không tin 
 
 | Ranh giới | Phía không tin cậy | Validator | Source |
 |---|---|---|---|
-| Journal entry → parser | Trường `MESSAGE` được journald ghi lại | `ps_parse_message` + `_EXE` allowlist | `src/utils.c`, `src/journal_watch.c:345-381` |
-| Conf file → daemon config | Nội dung file (do root kiểm soát nhưng trên đĩa) | `ps_config_load` + kiểm tra permission/ownership | `src/config.c:249-300` |
-| Event → JSON webhook payload | `event->username`, `event->source_ip`, `event->hostname` | `sanitize_string` + `json_escape` | `src/utils.c:13`, `src/notify.c:27` |
-| Daemon → curl child | URL webhook, bearer token, đường dẫn cert/key/CA mTLS, body | memfd-backed `--config` (URL + `header =` tùy chọn + `cert/key/cacert =` tùy chọn), fixed argv, `--proto =https`, absolute-path `execv` | `src/notify.c:101-209` |
-| Config → curl `-K` parser | Giá trị chuỗi từ `pamsignal.conf` | `is_https_url` (URL), `is_http_header` (auth header), `validate_tls_path` (cert/key/CA paths từ chối `"`, `\`, control char, follow-symlinks, world-readable key) | `src/config.c:140-330` |
+| Journal entry → parser | Trường `MESSAGE` được journald ghi lại | `ps_parse_message` (mẫu neo đầu dòng) + `_EXE` allowlist (`ps_is_trusted_exe`) | `src/utils.c`, `src/journal_watch.c` |
+| Conf file → daemon config | Nội dung file (do root kiểm soát nhưng trên đĩa) | `ps_config_load` + `open_config_secure` (`O_NOFOLLOW`, file thường, không ghi được bởi group/world, thuộc sở hữu root hoặc daemon user) | `src/config.c` |
+| Event → JSON webhook payload | `event->username`, `event->actor`, `event->source_ip`, `event->hostname` | `sanitize_string` + `is_valid_ip` + `json_escape` | `src/utils.c`, `src/notify.c` |
+| Daemon → curl child | URL webhook, bearer token, đường dẫn cert/key/CA mTLS, body | memfd-backed `-K` config (`build_secrets_memfd`: URL + `header =` tùy chọn + `cert/key/cacert =` tùy chọn), fixed argv, `--proto =https`, absolute-path `execv` (`fire_curl`) | `src/notify.c` |
+| Config → curl `-K` parser | Giá trị chuỗi từ `pamsignal.conf` | `is_https_url` (URL), `is_http_header` (auth header), `validate_tls_path` (cert/key/CA paths: từ chối `"`, `\`, control char và symlink; yêu cầu file thường thuộc sở hữu root hoặc daemon user; từ chối key đọc được bởi group hoặc world) | `src/config.c` |
 
 ## Hạn chế thiết kế (đánh đổi có chủ đích)
 
@@ -253,6 +271,7 @@ Ranh giới tin tưởng là nơi trong hệ thống mà dữ liệu không tin 
 - **Không có persistent state trên đĩa.** Daemon không ghi gì vào `/var/lib/`. Chi phí: không có lịch sử brute-force qua các lần restart, không có state offline-analysis. Lợi ích: không có gì để corrupt, không có gì để disk-fill, không có gì để rò rỉ.
 - **Phạm vi một host.** Không có clustering, không có shared state, không có central server. Chi phí: aggregation là mối quan tâm SIEM ngoài băng. Lợi ích: daemon đơn tiến trình, không có network listening port, không có xác thực giữa các instance.
 - **Fire-and-forget alerts.** Đã thảo luận trong NS6 ở trên.
+- **Một bộ đếm thời gian chung cho các cảnh báo theo sự kiện.** Chi phí: một cảnh báo thường lệ có thể bị bỏ qua vì một sự kiện khác đã dùng bộ đếm (xem [mục 9](#9-alert-volume-dos-từ-một-source-ip-đơn-a)). Lợi ích: lượng tin nhắn chat có giới hạn mà không cần giữ state theo từng user. Journal luôn có đủ mọi sự kiện.
 
 Đây là những ranh giới mà người đề xuất tính năng nên dừng lại và hỏi liệu tính năng có đáng với chi phí, và câu trả lời thường là "không, hãy dùng custom-webhook escape hatch."
 
@@ -261,13 +280,13 @@ Ranh giới tin tưởng là nơi trong hệ thống mà dữ liệu không tin 
 Một cài đặt PAMSignal chỉ an toàn như cấu hình xung quanh nó. Threat model giả định operator tuân theo các hướng dẫn này:
 
 1. **Không thêm người dùng không tin tưởng vào group `pamsignal`.** Làm vậy mở rộng quyền đọc file cấu hình (và do đó quyền truy cập thông tin xác thực cảnh báo) cho những người dùng đó. `postinst` của package không thêm ai; thành viên duy nhất theo mặc định là daemon.
-2. **Giữ `/etc/pamsignal/pamsignal.conf` ở `0640 root:pamsignal`.** Package đặt điều này khi cài đặt lần đầu. PAMSignal cảnh báo khi khởi động nếu quyền lỏng hơn; nó không từ chối khởi động, phòng trường hợp operator cố tình chạy với quyền nghiêm ngặt hơn.
+2. **Giữ `/etc/pamsignal/pamsignal.conf` ở `0640 root:pamsignal`.** Package đặt điều này khi cài đặt lần đầu. PAMSignal từ chối load một config có thể ghi bởi group hoặc world, hoặc thuộc sở hữu của ai khác ngoài root hay daemon user. Nó không kiểm tra quyền đọc, nên một file `0644` world-readable vẫn được load mà không có cảnh báo (xem NS9).
 3. **Với triển khai high-assurance, hãy gửi cảnh báo đến custom webhook bạn kiểm soát.** Các nhà cung cấp chat bên thứ ba (Telegram, Slack, Teams, Discord, WhatsApp) thấy metadata cảnh báo của bạn. Một webhook trên cơ sở hạ tầng bạn kiểm soát cho bạn storage bền vững, aggregation đa host, và kiểm soát đầy đủ về retention. Xác thực kết nối đến receiver bằng `webhook_auth_header` (Bearer / API key / Splunk HEC / Datadog), hoặc, nếu môi trường của bạn chạy PKI, `webhook_client_cert` + `webhook_client_key` cho mTLS. Hai cách kết hợp theo kiểu cộng thêm. Xem [Configuration → Custom webhook authentication](configuration.md#xác-thực-custom-webhook).
-4. **Đặt `webhook_client_key` ở quyền `0640 root:pamsignal`** (hoặc `0600 pamsignal:pamsignal` nếu bạn chạy daemon bằng người dùng đó). PAMSignal từ chối khởi động nếu key có thể đọc bởi group hoặc world. Cert và CA bundle không có ràng buộc tương tự; chúng là tài liệu công khai.
+4. **Đặt `webhook_client_key` ở quyền `0600 pamsignal:pamsignal`.** PAMSignal từ chối khởi động nếu key có thể đọc bởi group hoặc world (nên `0640 root:pamsignal` bị từ chối), là một symlink, hoặc thuộc sở hữu của ai khác ngoài root hay daemon user. Cert và CA bundle không có ràng buộc về quyền đọc; chúng là tài liệu công khai.
 5. **Rotate thông tin xác thực cảnh báo định kỳ.** PAMSignal không tự rotate thông tin xác thực; rotation là trách nhiệm của operator. Với token shared-secret (token bot Telegram, `webhook_auth_header`, v.v.), cập nhật `pamsignal.conf` và `systemctl reload pamsignal`. Với `webhook_client_cert` / `webhook_client_key`, thay thế file tại chỗ: cert manager (cert-manager / certbot / `systemd-creds`) xử lý atomic rotation; lần gửi cảnh báo tiếp theo tự động lấy file mới. SIGHUP không cần thiết để rotate cert/key vì các đường dẫn trong config không thay đổi.
 6. **Không chạy PAMSignal bằng `root`.** Nó từ chối dù sao, nhưng kỳ vọng cơ bản là daemon ở lại người dùng `pamsignal` do package tạo. Override unit tùy chỉnh thay đổi `User=` làm mất hiệu lực threat model.
 7. **Để phòng thủ theo chiều sâu trên đường cảnh báo, kết hợp PAMSignal với một instance fail2ban (hoặc tương đương)** tiêu thụ cùng các mục journal để thêm firewall rule. PAMSignal quan sát; fail2ban hành động. Hai cái bổ sung nhau, không dư thừa; xem `../../examples/fail2ban/` trong repo này để xem integration mẫu.
 
 ## Báo cáo vấn đề
 
-Các lỗ hổng nên được báo cáo riêng tư theo kênh và timeline trong [`SECURITY.md`](../../SECURITY.md). Phân chia in-scope/out-of-scope trong `SECURITY.md` khớp với tài liệu này; tài liệu này cung cấp lý luận kỹ thuật đằng sau phân chia đó.
+Các lỗ hổng nên được báo cáo riêng tư theo kênh và timeline trong [`SECURITY.md`](SECURITY.md). Phân chia in-scope/out-of-scope trong `SECURITY.md` khớp với tài liệu này; tài liệu này cung cấp lý luận kỹ thuật đằng sau phân chia đó.

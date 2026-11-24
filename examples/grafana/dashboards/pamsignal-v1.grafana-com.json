@@ -69,15 +69,15 @@
         },
         "enable": true,
         "iconColor": "red",
-        "name": "Brute-force alerts",
+        "name": "Detections",
         "target": {
-          "expr": "{app=\"pamsignal\", event_action=\"brute_force_detected\", host=~\"$host\"}",
+          "expr": "{app=\"pamsignal\", event_action=~\"brute_force_detected|login_after_failures\", host=~\"$host\"}",
           "refId": "Anno"
         }
       }
     ]
   },
-  "description": "PAMSignal fleet auth dashboard: login activity, brute-force detection, and drill-downs by source IP / user.",
+  "description": "PAMSignal fleet auth dashboard: login activity, brute-force and login-after-failures detections, and drill-downs by source IP / user.",
   "editable": true,
   "fiscalYearStartMonth": 0,
   "graphTooltip": 1,
@@ -242,8 +242,8 @@
     {
       "id": 4,
       "type": "stat",
-      "title": "Brute-force alerts",
-      "description": "PAMSignal-detected brute-force events across the selected range. Red if non-zero.",
+      "title": "Detections",
+      "description": "PAMSignal detections in the selected range: brute_force_detected (fail_threshold crossed) and login_after_failures (a source that kept failing then logged in; treat as a possible compromise). Red if non-zero.",
       "gridPos": {
         "x": 18,
         "y": 0,
@@ -256,9 +256,16 @@
       },
       "targets": [
         {
-          "expr": "sum(count_over_time({app=\"pamsignal\", event_action=\"brute_force_detected\", host=~\"$host\"}[$__range]))",
+          "expr": "sum(count_over_time({app=\"pamsignal\", event_action=\"brute_force_detected\", host=~\"$host\"}[$__range])) or vector(0)",
+          "legendFormat": "Brute force",
           "queryType": "instant",
           "refId": "A"
+        },
+        {
+          "expr": "sum(count_over_time({app=\"pamsignal\", event_action=\"login_after_failures\", host=~\"$host\"}[$__range])) or vector(0)",
+          "legendFormat": "Login after failures",
+          "queryType": "instant",
+          "refId": "B"
         }
       ],
       "options": {
@@ -271,7 +278,7 @@
         },
         "colorMode": "background",
         "graphMode": "none",
-        "textMode": "auto"
+        "textMode": "value_and_name"
       },
       "fieldConfig": {
         "defaults": {
@@ -381,8 +388,8 @@
     {
       "id": 6,
       "type": "timeseries",
-      "title": "Brute-force detections by service",
-      "description": "Counts of brute_force_detected events grouped by service.",
+      "title": "Detections by type",
+      "description": "brute_force_detected and login_after_failures events over time. Remote brute-force entries carry no service field, so this groups by event_action.",
       "gridPos": {
         "x": 12,
         "y": 4,
@@ -395,8 +402,8 @@
       },
       "targets": [
         {
-          "expr": "sum by (service) (rate({app=\"pamsignal\", event_action=\"brute_force_detected\", host=~\"$host\"}[$__interval]))",
-          "legendFormat": "{{service}}",
+          "expr": "sum by (event_action) (rate({app=\"pamsignal\", event_action=~\"brute_force_detected|login_after_failures\", host=~\"$host\"}[$__interval]))",
+          "legendFormat": "{{event_action}}",
           "refId": "A"
         }
       ],
@@ -425,7 +432,39 @@
             "mode": "palette-classic"
           },
           "unit": "cps"
-        }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "brute_force_detected"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "orange"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "login_after_failures"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "red"
+                }
+              }
+            ]
+          }
+        ]
       }
     },
     {
@@ -683,8 +722,8 @@
     {
       "id": 10,
       "type": "logs",
-      "title": "Recent brute-force alerts",
-      "description": "PAMSignal-detected brute-force events. These are pre-validated by the daemon's threshold logic.",
+      "title": "Recent detections",
+      "description": "brute_force_detected and login_after_failures entries, newest first. The line is PAMSignal's own MESSAGE: ip or actor/target, attempts or failures, window, user.",
       "gridPos": {
         "x": 0,
         "y": 28,
@@ -697,7 +736,7 @@
       },
       "targets": [
         {
-          "expr": "{app=\"pamsignal\", event_action=\"brute_force_detected\", host=~\"$host\"} | json source_ip=\"SOURCE_IP\", user_name=\"USER_NAME\" | line_format \"host={{.host}} ip={{.source_ip}} user={{.user_name}} service={{.service}}\"",
+          "expr": "{app=\"pamsignal\", event_action=~\"brute_force_detected|login_after_failures\", host=~\"$host\"} | json message=\"MESSAGE\" | line_format \"host={{.host}} {{.message}}\"",
           "queryType": "range",
           "refId": "A"
         }
@@ -834,7 +873,7 @@
         "definition": "label_values({app=\"pamsignal\"}, service)",
         "multi": true,
         "includeAll": true,
-        "allValue": ".+",
+        "allValue": ".*",
         "current": {
           "selected": false,
           "text": "All",

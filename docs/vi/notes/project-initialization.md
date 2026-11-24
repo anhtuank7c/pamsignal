@@ -17,7 +17,7 @@ Thiết lập nền tảng cho project **PAMSignal**. Đảm bảo mã nguồn �
 
 Vì project tập trung vào Linux và yêu cầu thư viện **libsystemd**, để chạy project này bạn cần sử dụng hệ điều hành Linux, chẳng hạn Ubuntu hoặc bất kỳ distro nào khác.
 
-**Tại sao chọn Meson build system?** [xem chi tiết tại đây](./phase-1-meson_guide.md)
+**Tại sao chọn Meson build system?** [xem chi tiết tại đây](./meson-build-system.md)
 
 **Tài liệu Meson** [xem chi tiết tại đây](https://mesonbuild.com/Quick-guide.html)
 
@@ -51,7 +51,7 @@ pamsignal
 
 Trình biên dịch C có nhiều tùy chọn liên quan đến tối ưu hóa mã máy [xem chi tiết tại đây](https://gcc.gnu.org/onlinedocs/gcc-15.1.0/gcc/Optimize-Options.html)
 
-Theo mặc định trong `meson.build`, tôi đã chỉ định `'buildtype=release'` làm tùy chọn mặc định. Trong Meson, kiểu build `release` tự động áp dụng mức tối ưu hóa `-O3` và loại bỏ các debug symbols.
+Theo mặc định trong `meson.build`, tôi đã chỉ định `'buildtype=release'` làm tùy chọn mặc định. Trong Meson, kiểu build `release` đặt `optimization=3` (`-O3`) và `debug=false` (không sinh thông tin debug). Nó không strip binary; việc đó do tùy chọn `strip` riêng đảm nhận (các công cụ đóng gói strip lúc cài đặt).
 
 **Tại sao chọn chế độ Release?**
 

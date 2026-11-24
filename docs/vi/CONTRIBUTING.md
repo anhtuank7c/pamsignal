@@ -2,14 +2,14 @@
 
 > [English](../../CONTRIBUTING.md) · **Tiếng Việt**
 
-Cảm ơn bạn đã quan tâm. PAMSignal là một C daemon nhỏ với trọng tâm chặt chẽ vào việc phát hiện các sự kiện PAM auth và gửi cảnh báo; phạm vi cố ý hẹp là một phần trong threat model của dự án. Vui lòng đọc [`docs/threat-model.md`](../../docs/threat-model.md) trước khi đề xuất tính năng. Đây là tài liệu tham chiếu để xác định liệu một thay đổi có tăng cường một biện pháp giảm thiểu trong phạm vi hay đưa công việc từ ngoài phạm vi vào daemon.
+Cảm ơn bạn đã quan tâm. PAMSignal là một C daemon nhỏ với trọng tâm chặt chẽ vào việc phát hiện các sự kiện PAM auth và gửi cảnh báo; phạm vi cố ý hẹp là một phần trong threat model của dự án. Vui lòng đọc [`docs/threat-model.md`](threat-model.md) trước khi đề xuất tính năng. Đây là tài liệu tham chiếu để xác định liệu một thay đổi có tăng cường một biện pháp giảm thiểu trong phạm vi hay đưa công việc từ ngoài phạm vi vào daemon.
 
 Tài liệu này bao gồm cách thực hiện đóng góp về code, tài liệu và packaging. Đối với:
 
 - **Báo cáo lỗ hổng bảo mật** → [`SECURITY.md`](SECURITY.md). Không tạo GitHub issue công khai cho các báo cáo bảo mật.
 - **Báo cáo lỗi không liên quan đến bảo mật** → [mở một bug-report issue](https://github.com/anhtuank7c/pamsignal/issues/new?template=bug_report.yml).
 - **Đề xuất tính năng** → [mở một feature-request issue](https://github.com/anhtuank7c/pamsignal/issues/new?template=feature_request.yml) **trước**, trước khi viết code, để chúng ta có thể thảo luận về phạm vi so với threat model.
-- **Đặt câu hỏi / thảo luận về cách dùng** → kiểm tra [`README.md`](../../README.md), [`docs/`](../../docs/), và các GitHub Issues hiện có. Nếu câu hỏi của bạn chưa được giải đáp, hãy mở một issue kiểu feature-request và gắn nhãn `question`.
+- **Đặt câu hỏi / thảo luận về cách dùng** → kiểm tra [`README.md`](README.md), [`docs/`](./), và các GitHub Issues hiện có. Nếu câu hỏi của bạn chưa được giải đáp, hãy mở một issue kiểu feature-request và gắn nhãn `question`.
 
 ## Bắt Đầu Nhanh
 
@@ -28,7 +28,7 @@ meson compile -C build
 meson test -C build
 ```
 
-Để được hướng dẫn build/debug sâu hơn (fuzzing, chạy ASAN local, các pattern introspection với journalctl, đóng gói thành `.deb` / `.rpm`), xem [`docs/development.md`](../../docs/development.md). Để biết chi tiết về systemd unit + sandbox, xem [`docs/deployment.md`](../../docs/deployment.md).
+Để được hướng dẫn build/debug sâu hơn (fuzzing, build ASAN/UBSAN local, chạy thủ công và kiểm thử end-to-end với journalctl, các CI workflow), xem [`docs/development.md`](development.md). Để biết chi tiết về systemd unit + sandbox, xem [`docs/deployment.md`](deployment.md).
 
 ## Quy Trình Branch + Commit
 
@@ -36,7 +36,7 @@ meson test -C build
 2. Thực hiện thay đổi của bạn. Giữ các commit nhỏ và tập trung; người review phải có thể hiểu từng commit một cách độc lập.
 3. Chạy [danh sách kiểm tra pre-commit](#danh-sách-kiểm-tra-pre-commit) bên dưới. **Mọi mục đều bắt buộc để PR được merge.**
 4. Push branch của bạn và mở PR đối với `main`. Điền vào PR template.
-5. CI chạy ASAN+UBSAN sanitizers trên mọi push đến PR; cả hai phải pass.
+5. CI (`.github/workflows/ci.yml`) chạy trên mọi pull request vào `main`: các test suite dưới ASAN+UBSAN, và bài test end-to-end `examples/who-did-what`. Cả hai job phải pass.
 
 ### Commit message
 
@@ -96,7 +96,7 @@ Mã nguồn C tuân theo các quy ước được mã hóa trong `.clang-format`
 - **Types** (struct và enum): hậu tố `_t` (ví dụ `ps_pam_event_t`, `ps_event_type_t`).
 - **Enum constants**: `UPPER_SNAKE_CASE` với tiền tố `PS_` (clang-tidy bắt buộc điều này; thêm enum không có tiền tố sẽ fail lint).
 - **Xử lý lỗi**: return code enum (`PS_OK`, `PS_ERR_*`), early return thay vì các nhánh thành công lồng nhau sâu.
-- **Logging**: `sd_journal_print()` / `sd_journal_send()`. **Không được** gọi `printf`, `syslog`, hoặc ghi vào stdout/stderr từ các code path production.
+- **Logging**: `sd_journal_print()` / `sd_journal_send()`. **Không được** gọi `printf`, `syslog`, hoặc ghi vào stdout/stderr từ các code path production. Ngoại lệ duy nhất là output CLI trong `src/main.c` (`--help`, `--version`, `--check-config`, `--test-alert` và các lỗi khi khởi động).
 
 Chính sách comment:
 
@@ -113,8 +113,9 @@ Các test suite được xây dựng bằng CMocka và nằm cạnh các module 
 |---|---|
 | `tests/test_utils.c` | parser, helpers (`sanitize_string`, `is_valid_ip`, ECS helpers) |
 | `tests/test_config.c` | config-file parsing, validation, permission checks |
-| `tests/test_notify.c` | notify dispatch path (smoke tests cho các no-channel path và cooldown) |
-| `tests/test_journal_watch.c` | brute-force tracker (#includes file source trực tiếp để drive file-static state) |
+| `tests/test_notify.c` | JSON escaping, webhook JSON, chat text compact và pretty, lọc theo notification type, cooldown (#includes `src/notify.c` trực tiếp) |
+| `tests/test_journal_watch.c` | brute-force tracker, login-after-failures, `_EXE` allowlist (#includes file source trực tiếp để drive file-static state) |
+| `tests/test_integration.c` | pipeline parse, track và format end-to-end (#includes `src/journal_watch.c` và `src/notify.c`) |
 
 Nếu một thay đổi ảnh hưởng đến hành vi parser, hãy mở rộng `tests/fuzz/parse_message_corpus/` với một input đại diện.
 
@@ -141,13 +142,13 @@ meson compile -C build-asan
 meson test -C build-asan
 ```
 
-Sau đó cập nhật [`CHANGELOG.md`](../../CHANGELOG.md) trong mục `## Unreleased`. Dùng `[x]` cho các mục đã hoàn thành trong branch của bạn và `[ ]` cho các follow-up bạn đang để lại cho sau. Nhóm các mục theo subsection phù hợp (`Features`, `Fixes`, `Security`, `Packaging`, `Documentation`, `CI`).
+Sau đó cập nhật [`CHANGELOG.md`](../../CHANGELOG.md) trong mục `## Unreleased`. Dùng `[x]` cho các mục đã hoàn thành trong branch của bạn và `[ ]` cho các follow-up bạn đang để lại cho sau. Nhóm các mục theo subsection phù hợp (`Features`, `Fixed`, `Security`, `Documentation`, `Examples`, `Tooling`, `Packaging`, `CI`).
 
 ## Code Review
 
 Một maintainer sẽ review PR của bạn. Dự kiến nhận phản hồi trong vài ngày đối với các thay đổi không nhỏ. Chúng tôi cố gắng giữ các review tập trung vào:
 
-1. **Alignment với threat model**: thay đổi có tăng cường một biện pháp phòng thủ trong phạm vi hay mở rộng daemon vào một non-goal? Xem [`docs/threat-model.md`](../../docs/threat-model.md).
+1. **Alignment với threat model**: thay đổi có tăng cường một biện pháp phòng thủ trong phạm vi hay mở rộng daemon vào một non-goal? Xem [`docs/threat-model.md`](threat-model.md).
 2. **Độ đầy đủ của test**: test suite có mã hóa thay đổi để một regression trong tương lai sẽ fail CI không?
 3. **Ổn định API**: thay đổi này có đưa vào một config key, journal field, hoặc webhook payload field mà chúng ta sẽ cần hỗ trợ qua các phiên bản không? Các surface công khai được version hóa qua SemVer; các deprecation cần một overlap period (việc retire `PAMSIGNAL_*` trong v0.3.0 là tiền lệ).
 4. **Coding style**: được bao phủ bởi clang-format / clang-tidy; chúng tôi sẽ không tranh cãi về style nếu lần chạy pre-commit của bạn sạch.

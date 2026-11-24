@@ -79,7 +79,7 @@ This is a security monitoring tool. All code changes must maintain:
 - No fixed-size string assumptions without explicit length checks
 - JSON escaping for alert payloads
 - File operations: `O_NOFOLLOW | O_EXCL` for PID file, explicit umask
-- Compiler hardening flags must remain in meson.build (`-fstack-protector-strong`, `-D_FORTIFY_SOURCE=2`, full RELRO, PIE)
+- Compiler hardening flags must remain in meson.build (`-fstack-protector-strong`, `-D_FORTIFY_SOURCE=3` with a fallback to `2`, full RELRO, PIE)
 - Alert dispatch stays isolated via fork+exec; no network code in parent process
 
 ## Pre-Commit Workflow
@@ -88,7 +88,7 @@ Before every commit, complete these checks in order:
 
 1. **Write/update unit tests**: every new function or changed behavior must have corresponding CMocka tests in `tests/`. Add tests for new parsing patterns, config keys, edge cases, and error paths. Tests go in the matching test file (e.g., `tests/test_utils.c` for `src/utils.c`).
 2. **Format code**: run `clang-format -i src/*.c include/*.h tests/*.c` (config in `.clang-format`)
-3. **Lint**: run `clang-tidy src/*.c -- $(pkg-config --cflags libsystemd) -I include` (config in `.clang-tidy`). Fix all warnings.
+3. **Lint**: run `clang-tidy -p build src/*.c` after `meson setup build`, so it sees the generated headers and build flags (config in `.clang-tidy`). Fix all warnings.
 4. **Build**: run `meson compile -C build` and confirm zero errors and zero warnings
 5. **Run tests**: run `meson test -C build -v` and confirm all tests pass
 6. **OWASP security review**: use the `/owasp-asvs` skill to audit changed files for vulnerabilities, memory leaks, buffer overflows, use-after-free, and other C-specific issues. Fix all findings before committing.
@@ -149,5 +149,5 @@ rpmbuild -ba pamsignal.spec
 
 - Alerts are fire-and-forget via fork+exec curl; child process failures cannot crash the daemon
 - SIGHUP reloads config into a temp struct first, swaps on success, keeps current on failure
-- Signal-safe flags use `atomic_bool` (`running`, `reload_requested`)
+- Signal-safe flags are `volatile sig_atomic_t` (`running`, `reload_requested`)
 - Runs as unprivileged `pamsignal` user, not root

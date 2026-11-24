@@ -14,7 +14,7 @@ Linux fleet and surface them in a single Grafana dashboard:
   journald and ships to Loki.
 - `dashboards/pamsignal-v1.json`: the dashboard, provisioning-ready (datasource UID hardcoded to `loki`, matches the bundled provisioning file).
 - `dashboards/pamsignal-v1.grafana-com.json`: same dashboard, "shared externally" format with a `${DS_LOKI}` placeholder + `__inputs`/`__requires` blocks. Upload **this** file to grafana.com or use Grafana's UI Import, which prompts you to pick your own Loki datasource.
-- `alerts.yaml`: four Grafana-native alert rules.
+- `alerts.yaml`: five Grafana-native alert rules (provisioning format).
 - `docker-compose.yml`: a single-command local stack so you can see the dashboard
   before you commit to deploying anything.
 - `verify.sh`: one-shot health check for your pipeline.
@@ -35,7 +35,8 @@ docker compose up -d
 
 Open **http://localhost:3000**: anonymous Admin, no login. The dashboard is
 under the **PAMSignal** folder. Synthetic events stream in at ~2/sec; brute-force
-bursts fire every ~25 seconds on average.
+bursts fire every ~25 seconds on average, and about one in three ends with the
+attacker logging in, which produces a `login_after_failures` detection.
 
 To tear down (including volumes):
 
@@ -115,11 +116,16 @@ sudo journalctl -u alloy -f
 **Option A: provision** (recommended for self-hosted Grafana):
 
 ```bash
+sudo mkdir -p /var/lib/grafana/dashboards
 sudo cp dashboards/pamsignal-v1.json /var/lib/grafana/dashboards/
-sudo cp ../grafana/provisioning/dashboards/pamsignal.yml \
+sudo cp provisioning/dashboards/pamsignal.yml \
         /etc/grafana/provisioning/dashboards/
 sudo systemctl restart grafana-server
 ```
+
+`pamsignal-v1.json` refers to its datasource by UID `loki`. Give your Loki
+datasource that UID (the bundled `provisioning/datasources/loki.yml` does), or use
+Option B.
 
 **Option B: import via UI**: Grafana → Dashboards → New → Import → upload
 `dashboards/pamsignal-v1.grafana-com.json` (the version with `${DS_LOKI}`
@@ -127,12 +133,13 @@ placeholders). Pick your Loki datasource when prompted.
 
 ### 5. Wire alerts
 
-Edit `alerts.yaml` to point `folder:` at the Grafana folder you want, then
-provision via `/etc/grafana/provisioning/alerting/` or import through the
-Grafana UI (Alerting → Alert rules → Import).
+`alerts.yaml` is a Grafana alerting provisioning file. Edit `folder:` to the
+Grafana folder you want and make every `datasourceUid: loki` match the UID of your
+Loki datasource, then copy it to `/etc/grafana/provisioning/alerting/` and restart
+Grafana.
 
-After importing, attach each rule to a contact point (Slack, Telegram,
-PagerDuty, email). The four rules:
+After provisioning, route the rules to a contact point (Slack, Telegram,
+PagerDuty, email) with a notification policy. The five rules:
 
 | Rule | Severity | Fires on |
 | --- | --- | --- |
@@ -140,6 +147,7 @@ PagerDuty, email). The four rules:
 | Root login over SSH | high | Any successful root SSH login in 10 min |
 | ≥10 failed logins from one IP | high | Per-IP failure spike in 5 min |
 | Host stopped reporting | medium | Was active in last 1h, silent for 10 min |
+| Login after failures | critical | Any `event_action="login_after_failures"` in 5 min |
 
 ### 6. Verify
 
@@ -200,9 +208,11 @@ graph LR
 Run `verify.sh --loki-only` first to isolate Alloy. If the probe event arrives
 in Loki with the right labels, the problem is in Alloy's relabel pass.
 
-Check `__journal_*` field names. Journald lowercases custom field names from
-`SERVICE_NAME` to `__journal_service_name`. If you see a label name mismatch,
-the relabel rule in `alloy.river` won't match.
+Check `__journal_*` field names. Alloy exposes each journal field as a
+lowercase `__journal_<field>` label, so `SERVICE_NAME` becomes
+`__journal_service_name`. If you see a label name mismatch, the relabel rule in
+`alloy.river` won't match. A remote `brute_force_detected` entry has no
+`SERVICE_NAME`, so it has no `service` label; that is expected.
 
 ### Dashboard panels empty
 
@@ -226,14 +236,16 @@ as you ran `usermod -aG systemd-journal alloy`.
 
 Loki 3.x auto-derives `service_name` for log-volume tracking. Harmless: the
 dashboard queries `service=` directly. If you want it gone, set
-`discover_log_levels: false` and `discover_service_name: false` in your
-`loki.write` block.
+`discover_service_name: []` (and `discover_log_levels: false` if you also want to
+skip the derived `detected_level`) under `limits_config` in your Loki config.
 
-### Brute-force panel shows 0 but I know there were brute-force events
+### Detections panel shows 0 but I know there were brute-force attempts
 
 PAMSignal only writes `EVENT_ACTION=brute_force_detected` when its internal
-`fail_threshold` is hit. If you've tuned that high (e.g., 50), individual hosts
-won't trigger and the panel stays at 0. Rule #3 in `alerts.yaml` is the safety
+`fail_threshold` is hit within `fail_window_sec`. If you've tuned that high
+(e.g., 50), individual hosts won't trigger and the panel stays at 0. Likewise,
+`login_after_failures` needs `success_after_fail_threshold` failures first and is
+off when that is `0`. Rule #3 in `alerts.yaml` is the safety
 net for this case: it fires on raw failed-login spikes even if PAMSignal
 hasn't escalated.
 

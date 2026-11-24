@@ -8,11 +8,11 @@ For private vulnerability reporting, see [`SECURITY.md`](../SECURITY.md). The tw
 
 ## Purpose
 
-PAMSignal observes PAM authentication events on a single host via the systemd journal and, when configured patterns occur (failed logins, brute-force thresholds), dispatches alerts over HTTPS to operator-chosen channels. The daemon's job is to be a **trustworthy detection signal** for the operator. Every defense in this document exists to preserve that property: the alert the operator receives accurately reflects what happened on the host.
+PAMSignal observes PAM authentication events on a single host via the systemd journal and, when configured patterns occur (logins, failed logins, brute-force thresholds, a success right after a run of failures), dispatches alerts over HTTPS to operator-chosen channels. The daemon's job is to be a **trustworthy detection signal** for the operator. Every defense in this document exists to preserve that property: the alert the operator receives accurately reflects what happened on the host.
 
 ## Observation scope
 
-PAMSignal observes events that flow through the host's PAM stack and into systemd's journal. That is a *specific* signal source. It captures the everyday remote-access channels operators care about: ssh, sftp, scp, rsync over ssh, sudo, su, login, xrdp + PAM, vsftpd / proftpd configured with PAM. It does **not** observe every channel through which a connection can reach the host. Knowing the boundary explicitly is part of the threat model.
+PAMSignal observes events that flow through the host's PAM stack and into systemd's journal. That is a *specific* signal source. It reads only the entries written by `sshd` / `sshd-session`, `sudo`, `su` and `login` (journal match on those `SYSLOG_IDENTIFIER`s plus the `ssh.service` / `sshd.service` units, then the `_EXE` check in [item 1](#1-log-injection-via-logger1-b)). That covers the everyday channels operators care about: ssh, sftp, scp, rsync over ssh, sudo, su and console login. Other PAM-using daemons are not read even when they authenticate through PAM. It does **not** observe every channel through which a connection can reach the host. Knowing the boundary explicitly is part of the threat model.
 
 ### Channels PAMSignal observes
 
@@ -22,11 +22,10 @@ PAMSignal observes events that flow through the host's PAM stack and into system
 | SFTP | `sshd` (subsystem) | Same auth + session entries as SSH |
 | SCP | `sshd` | Same |
 | Rsync over SSH | `sshd` | Same |
-| sudo / su | `pam_unix(sudo:auth)` / `pam_unix(su:auth)` | LOGIN_FAILED (with brute-force tracker keyed by `ruser`), SESSION_OPEN/CLOSE on success |
-| TTY / console login | `login` | SESSION_OPEN/CLOSE |
-| xrdp with PAM | xrdp + `pam_unix` | SESSION_OPEN/CLOSE if configured to use PAM |
-| vsftpd / proftpd with PAM | self + `pam_unix` | If the FTP daemon is configured to authenticate via PAM |
-| systemd-logind sessions | `systemd-logind` | SESSION_OPEN/CLOSE on every session creation |
+| sudo / su | `sudo` / `su` (`pam_unix(sudo:...)` / `pam_unix(su:...)`) | LOGIN_FAILED (journal only, no per-event chat alert; brute-force tracker keyed by `ruser`, or by IP when `rhost` is an IP), SESSION_OPEN/CLOSE on success (SESSION_OPEN carries `actor` when the logged-in account differs from the target) |
+| TTY / console login | `login` (`pam_unix(login:...)`) | LOGIN_FAILED, SESSION_OPEN/CLOSE (failures without an IP `rhost` are not counted by the brute-force tracker) |
+
+On top of these per-entry events, PAMSignal writes its own detections: BRUTE_FORCE_DETECTED and LOGIN_AFTER_FAILURES (see items [2](#2-brute-force-tracker-bypass-a-b) and [11](#11-a-guessed-password-hidden-in-a-run-of-failures-a)).
 
 ### Channels PAMSignal does NOT observe
 
@@ -46,6 +45,7 @@ These authenticate via channels journald never sees PAM auth events for. They're
 | NFS / SMB mounts | NFS/Kerberos / SMB | nfsd / smbd logs |
 | `rclone` with HTTP/S3/GCS backend | API tokens | Cloud-provider access logs |
 | Custom HTTP / REST / gRPC APIs | application-level | The application's own audit log |
+| xrdp, vsftpd / proftpd, systemd-logind and other PAM-using daemons | PAM, but logged under the daemon's own identifier | That daemon's own journal entries (e.g. `journalctl -t xrdp-sesman`) |
 
 ### Operator implication
 
@@ -116,28 +116,29 @@ Each item names the attack, the adversary class from above, the mitigation, and 
 
 **Attack.** A local unprivileged user runs `logger -t sshd "Failed password for root from 1.2.3.4 port 22 ssh2"` to forge a journal entry that looks like a real sshd auth failure. Without filtering, PAMSignal would alert on it and the brute-force tracker would count it.
 
-**Mitigation.** The `_EXE` allowlist in `src/journal_watch.c:345-381`. Every journal entry's recorded `_EXE` field (set by journald itself based on the actually-execve'd binary) must resolve to `sshd`, `sudo`, `su`, `login`, or `systemd-logind` under a system prefix (`/usr/`, `/bin/`, `/sbin/`, `/lib/`, `/lib64/`, `/opt/`). Entries with no `_EXE` (synthetic injections from `/dev/log`) are dropped. `logger`'s `_EXE` is `/usr/bin/logger`, which is not on the allowlist, so the entry is silently dropped.
+**Mitigation.** The `_EXE` allowlist, `ps_is_trusted_exe()` in `src/journal_watch.c`, applied to every parsed entry in `ps_process_entry()`. Every journal entry's recorded `_EXE` field (set by journald itself based on the actually-execve'd binary) must start with a system prefix (`/usr/`, `/bin/`, `/sbin/`, `/lib/`, `/lib64/`, `/opt/`) and have the basename `sshd`, `sshd-session` (OpenSSH 9.8+ moves per-connection auth into this binary), `sudo`, `su`, `login`, or `systemd-logind`. (`systemd-logind` is on the list, but the journal match never selects its entries, so it has no effect today.) Entries with no `_EXE` (synthetic injections from `/dev/log`) are dropped. `logger`'s `_EXE` is `/usr/bin/logger`, which is not on the allowlist, so the entry is silently dropped.
 
 ### 2. Brute-force tracker bypass (A, B)
 
 **Attack.** Send carefully timed failed-auth events that increment the per-key counter without ever crossing the threshold; or generate enough distinct attacker keys to evict the legitimate target's entry from the table.
 
 **Mitigation.**
-- `fail_window_sec` (`src/config.c:95`, default 300s, range 1–86400) bounds the time window over which attempts are aggregated. Sliding-window logic in `src/journal_watch.c` resets the count once `event->timestamp_usec - first_attempt_usec > window_usec`, so an attacker cannot spread failures across an arbitrarily long window to stay under threshold.
+- `fail_window_sec` (default 300s, range 1–86400) bounds the time window over which attempts are aggregated. `ps_track_failed_login()` in `src/journal_watch.c` resets the count once `event->timestamp_usec - first_attempt_usec > window_usec`, so an attacker cannot spread failures across an arbitrarily long window to stay under threshold.
 - Eviction picks the **oldest by `last_attempt_usec`**, not by `first_attempt_usec`. An attacker who keeps refreshing `last_attempt_usec` with new failures cannot evict their own entry; they evict another, lower-priority entry.
-- Per-key cooldown (`alert_cooldown_sec`, `src/journal_watch.c:223-232`) prevents alert flooding from a single key without losing the underlying counter.
+- Per-key cooldown (`alert_cooldown_sec`, in `ps_track_failed_login()`) prevents alert flooding from a single key without losing the underlying counter.
+- Keys: a source IP for remote failures (and for sudo/su failures whose `rhost` is an IP); the local `ruser` for pure-local sudo/su failures, so a local user guessing a sudo password is tracked too. The `pam_unix(sshd:auth)` copy of an sshd failure is not counted, so each SSH failure counts once.
 
 ### 3. Alert credentials exposure via process metadata (B, D)
 
 **Attack.** Read `/proc/<pamsignal-pid>/cmdline` or `/proc/<pamsignal-curl-child-pid>/cmdline` to harvest Telegram bot tokens, webhook URLs, custom-webhook bearer tokens, or the on-disk paths of mTLS client cert / key files.
 
-**Mitigation.** Every per-channel sender funnels through a `memfd_create()`-backed curl `-K` config file (`src/notify.c:101`) that carries the URL, the optional `webhook_auth_header` (since v0.4.0), and the optional mTLS `cert =` / `key =` / `cacert =` paths (since v0.4.0). The memfd is pinned at `fd 9` via `dup2` (which clears `O_CLOEXEC` on the destination); every other inherited descriptor is closed in the child before `execv`. The curl child's argv is byte-identical for every alert dispatch (`curl -s -S --max-time 10 --proto =https --proto-redir =https -H "Content-Type: application/json" -K /dev/fd/9 -d <body>`), regardless of which channel or which authentication mode is in use. A local unprivileged user reading `/proc/*/cmdline` cannot tell whether a token, a client cert, or both are configured, let alone harvest the values. The parent daemon's argv is `pamsignal --foreground` plus an optional `--config <path>`, with no credentials there either.
+**Mitigation.** Every per-channel sender funnels through a `memfd_create()`-backed curl `-K` config file (`build_secrets_memfd()` in `src/notify.c`) that carries the URL, the optional auth header (`webhook_auth_header` since v0.4.0, or the WhatsApp bearer token), and the optional mTLS `cert =` / `key =` / `cacert =` paths (since v0.4.0). The memfd is pinned at `fd 9` via `dup2` (which clears `O_CLOEXEC` on the destination); every other inherited descriptor is closed in the child before `execv`. The curl child's argv has the same shape for every alert dispatch (`curl -s -S --max-time 10 --proto =https --proto-redir =https -H "Content-Type: application/json" -K /dev/fd/9 -d <body>`; `--test-alert` adds `-f -o /dev/null`), regardless of which channel or which authentication mode is in use. Only `<body>` changes: it is the alert payload (user, source IP, host), which a local user can read from `/proc/*/cmdline` while curl runs, but it never contains a credential. A local unprivileged user reading `/proc/*/cmdline` cannot tell whether a token, a client cert, or both are configured, let alone harvest the values. The parent daemon's argv is `pamsignal --foreground` plus an optional `--config <path>`, with no credentials there either.
 
 ### 4. Alert dispatch hijack via `PATH` / `LD_PRELOAD` (D)
 
 **Attack.** A compromised pamsignal daemon manipulates the environment of the curl child to redirect it through an attacker-controlled binary or library.
 
-**Mitigation.** The curl child does `clearenv()` (`src/notify.c:184`), then `setenv("PATH", "/usr/bin:/bin", 1)`, then `execv("/usr/bin/curl", …)` with the absolute path so `PATH` is not consulted at all. `LD_PRELOAD` is dropped by `clearenv()`. The systemd unit also sets `Environment=PATH=/usr/bin:/bin` (`pamsignal.service.in:30`) for defense-in-depth when the daemon is launched outside the unit.
+**Mitigation.** The curl child (`fire_curl()` in `src/notify.c`) does `clearenv()`, then `setenv("PATH", "/usr/bin:/bin", 1)`, then `execv("/usr/bin/curl", …)` with the absolute path so `PATH` is not consulted at all. `LD_PRELOAD` is dropped by `clearenv()`. The systemd unit also sets `Environment=PATH=/usr/bin:/bin` (`pamsignal.service.in`) for defense-in-depth when the daemon is launched outside the unit.
 
 ### 5. TLS downgrade / cleartext webhook (E)
 
@@ -150,10 +151,10 @@ Each item names the attack, the adversary class from above, the mitigation, and 
 **Attack.** A username, hostname, or PAM-message field contains JSON-meaningful characters or control bytes, leading to malformed payloads or escape from JSON quoting.
 
 **Mitigation.**
-- `sanitize_string()` (`src/utils.c:13`) replaces all control characters (0x00–0x1F + 0x7F) with `?` on every extracted username and target_username, immediately after parsing.
-- `is_valid_ip()` (`src/utils.c:21`) requires `inet_pton` to accept the source IP; failures clear the field.
-- `json_escape()` (`src/notify.c:27`) RFC 8259 escapes `"`, `\`, all 0x00–0x1F bytes, plus the standard short escapes for `\b\f\n\r\t`. Even if `sanitize_string` ever regressed, JSON quoting holds.
-- All extraction is bounded: usernames into 64-byte buffers with the `+` truncation marker (`src/utils.c:63-77`), hostnames bounded by `event.hostname[256]`, `sscanf` uses width specifiers everywhere.
+- `sanitize_string()` (`src/utils.c`) replaces all control characters (0x00–0x1F + 0x7F) with `?` on every extracted username, target username and actor, immediately after parsing.
+- `is_valid_ip()` (`src/utils.c`) requires `inet_pton` to accept the source IP; failures clear the field.
+- `json_escape()` (`src/notify.c`) RFC 8259 escapes `"`, `\`, all 0x00–0x1F bytes, plus the standard short escapes for `\b\f\n\r\t`, and replaces bytes that are not well-formed UTF-8 with `?` (a body with invalid UTF-8 would be rejected by the chat APIs, suppressing the alert). Even if `sanitize_string` ever regressed, JSON quoting holds.
+- All extraction is bounded: usernames into 64-byte buffers with the `+` truncation marker (`extract_username()` in `src/utils.c`), hostnames bounded by `event.hostname[256]`, `sscanf` uses width specifiers everywhere.
 
 ### 7. Sandbox escape from a compromised daemon (D)
 
@@ -161,16 +162,17 @@ Each item names the attack, the adversary class from above, the mitigation, and 
 
 **Mitigation (depth, not perfect):**
 - `User=pamsignal Group=pamsignal` (no privileges to start with).
-- `CapabilityBoundingSet=` empty (`pamsignal.service.in:53`).
-- `NoNewPrivileges=yes` (`pamsignal.service.in:38`): `setuid` SUID binaries become no-ops.
-- `MemoryDenyWriteExecute=yes` (`pamsignal.service.in:46`): shellcode injection requires a separate kernel bug.
+- `CapabilityBoundingSet=` empty.
+- `NoNewPrivileges=yes`: `setuid` SUID binaries become no-ops.
+- `MemoryDenyWriteExecute=yes`: shellcode injection requires a separate kernel bug.
 - `ProtectSystem=strict`, `ProtectHome=yes`, `PrivateTmp=yes`, `PrivateDevices=yes`, `ProtectKernelTunables=yes`, `ProtectKernelModules=yes`, `ProtectKernelLogs=yes`, `ProtectControlGroups=yes`.
 - `RestrictNamespaces=yes`, `RestrictRealtime=yes`, `RestrictSUIDSGID=yes`, `LockPersonality=yes`.
-- `SystemCallFilter=@system-service ~@privileged @resources`: bpf, mount, kexec, finit_module, etc. all denied.
+- `SystemCallFilter=@system-service ~@privileged @resources`: bpf, mount, kexec, finit_module, etc. all denied. `SystemCallArchitectures=native` blocks the compat syscall ABI.
+- `RestrictAddressFamilies=AF_UNIX AF_NETLINK AF_INET AF_INET6`, `ProtectClock=yes`, `ProtectHostname=yes`, `ProtectProc=invisible`, `ProcSubset=pid`, `RemoveIPC=yes`, `DevicePolicy=closed`, `UMask=0077`.
 - `RLIMIT_NPROC` capped at 64 in `src/main.c` so a fork-bomb in the alert path cannot exhaust process slots.
 - `prctl(PR_SET_NO_NEW_PRIVS, 1)` set early in `src/main.c` even outside the unit.
 
-The systemd-analyze security score (CI-gated to ≤30 on the 0–100 internal scale; current 22) is the regression guard for these directives.
+The systemd-analyze security score is the regression guard for these directives: the release-packaging workflow (`.github/workflows/release-packages.yml`) runs `systemd-analyze security --threshold=20` on the installed unit (0–100 internal scale; the current score is 13). All directives are in `pamsignal.service.in`.
 
 ### 8. Memory-safety bugs in the C parser (A → D)
 
@@ -178,15 +180,31 @@ The systemd-analyze security score (CI-gated to ≤30 on the 0–100 internal sc
 
 **Mitigation.**
 - Compiler hardening: `-fstack-protector-strong`, `-D_FORTIFY_SOURCE=3`, `-fcf-protection=full` (Intel CET), `-fstack-clash-protection`, full RELRO, PIE, `-z noexecstack`, `-z separate-code` (`meson.build`).
-- libFuzzer harness in `tests/fuzz_parse_message.c` covering the parser's primary entry point. Run with `CC=clang meson setup -Dfuzz=enabled build-fuzz && build-fuzz/fuzz_parse_message tests/fuzz/parse_message_corpus -max_total_time=60`.
-- 98 CMocka tests across four suites, including parser edge cases (truncated usernames, control characters, IP-validation failures, multi-`user=` PAM messages, IPv6 literals).
-- clang-tidy + clang-analyzer in CI with `WarningsAsErrors` on the `clang-analyzer-security.*` checker family.
+- libFuzzer harness in `tests/fuzz_parse_message.c` covering the parser's primary entry point. Run with `CC=clang meson setup -Dfuzz=enabled build-fuzz && meson compile -C build-fuzz fuzz_parse_message && ./build-fuzz/fuzz_parse_message tests/fuzz/parse_message_corpus -max_total_time=60`.
+- CMocka suites (`test_utils`, `test_config`, `test_journal_watch`, `test_notify`, `test_integration`), including parser edge cases (truncated usernames, control characters, IP-validation failures, multi-`user=` PAM messages, IPv6 literals, client-chosen usernames that imitate other log lines). CI builds and runs them under AddressSanitizer + UndefinedBehaviorSanitizer.
+- clang-tidy with clang-analyzer (`.clang-tidy` sets `WarningsAsErrors` on the `clang-analyzer-security.*` checker family) is part of the pre-commit workflow in `CLAUDE.md`; it is not a CI job.
 
 ### 9. Alert-volume DoS from a single source IP (A)
 
 **Attack.** A scanner runs forever against one IP, generating thousands of brute-force alerts that drown the operator's chat channel.
 
-**Mitigation.** Per-source-IP cooldown in `src/journal_watch.c:223-232`. After a threshold-breach alert fires, the same IP cannot trigger another alert for `alert_cooldown_sec` seconds (default 60s), but the underlying counter and journal entries continue. This compresses sustained-attack alerts into one chat ping per cooldown period without losing observability.
+**Mitigation.** Per-key cooldown in `ps_track_failed_login()` (`src/journal_watch.c`). After a threshold-breach alert fires, the same IP (or local actor) cannot trigger another chat alert for `alert_cooldown_sec` seconds (default 60s; 0 disables the cooldown), but the underlying counter and journal entries continue. Login-after-failures alerts use the same per-key cooldown. This compresses sustained-attack alerts into one chat ping per cooldown period without losing observability.
+
+The routine per-event alerts (`login_success`, `login_failed`, `session_open`, `session_close`) are capped differently: they share **one** timer across all users and IPs (`event_cooled_down()` in `src/notify.c`). After one is sent, every other per-event alert in the next `alert_cooldown_sec` seconds goes to the journal only, for chat and the webhook alike. This bounds chat volume, but it also lets one event use up the timer for another: under steady failed-login noise, the chat alert for a successful login that lands inside the window is skipped. BRUTE_FORCE_DETECTED and LOGIN_AFTER_FAILURES do not use this timer. Operators who want every login pinged should leave `login_failed` out of `enable_notification_type` (filtered categories are not dispatched and do not use the timer), or set `alert_cooldown_sec = 0`, which also removes the per-key cooldown above.
+
+### 10. Forged events through client-chosen usernames (A)
+
+**Attack.** The username in an sshd line is chosen by the remote client before authentication and may contain spaces. A client names itself `Accepted password for root from 8.8.8.8 port 1 ssh2`, so sshd logs `Failed password for invalid user Accepted password for root from ...`; or it names itself `x from 203.0.113.9 port 1` to pin its failures on someone else's address.
+
+**Mitigation.** `ps_parse_message()` (`src/utils.c`) matches every pattern anchored at the start of the message (`skip_prefix()`), never as a substring, so the embedded text cannot be read as a successful login. For failed and invalid-user lines it takes the **last** ` from ` on the line, which is the one sshd itself wrote. The username is cut to its first space-delimited token, so it cannot carry extra `key=value` fields into pamsignal's own journal line, the chat alert, or the fail2ban filter.
+
+### 11. A guessed password hidden in a run of failures (A)
+
+**Attack.** A brute-force run finally guesses a password. The success is one ordinary login among many failures, and the operator may have muted routine login pings or listed the attacker's network in `trusted_sources`.
+
+**Mitigation.** `ps_check_login_after_failures()` (`src/journal_watch.c`) checks every remote LOGIN_SUCCESS. If the same IP produced at least `success_after_fail_threshold` failures (default 3; 0 disables) in an unbroken run whose last failure is within `fail_window_sec`, it writes a LOGIN_AFTER_FAILURES journal entry (priority `LOG_CRIT`, `EVENT_SEVERITY=9`) and sends a critical alert. The success clears the run, so one break-in gives one alert. Short of disabling the check, its chat alert is muted only by leaving `login_after_failures` out of `enable_notification_type`.
+
+`trusted_sources` mutes only the routine per-event chat alerts. Failures and successes from trusted addresses still feed the brute-force and login-after-failures trackers, so a compromised machine inside a trusted network cannot attack silently.
 
 ## Out of scope: attacks PAMSignal does not defend against
 
@@ -226,7 +244,7 @@ Since v0.4.0 the custom-webhook channel can authenticate to its receiver via eit
 
 ### NS9. Defense against admin misconfiguration
 
-If an operator sets `pamsignal.conf` to mode `0644` (world-readable) and stores credentials in it, PAMSignal will start (after warning at config-load) but the credentials are exposed. Improving defaults is welcome as a feature request; treating this as a security defect is not appropriate.
+If an operator sets `pamsignal.conf` to mode `0644` (world-readable) and stores credentials in it, PAMSignal will start without a warning (it refuses only a config that is group- or world-*writable* or owned by someone other than root or the daemon user), and the credentials are exposed. Improving defaults is welcome as a feature request; treating this as a security defect is not appropriate.
 
 ### NS10. Network-side DoS targeting the daemon's own resources
 
@@ -238,11 +256,11 @@ A trust boundary is a place in the system where untrusted-or-attacker-influenced
 
 | Boundary | Untrusted side | Validator | Source |
 |---|---|---|---|
-| Journal entry → parser | journald-recorded `MESSAGE` field | `ps_parse_message` + `_EXE` allowlist | `src/utils.c`, `src/journal_watch.c:345-381` |
-| Conf file → daemon config | file contents (root-controlled but on-disk) | `ps_config_load` + permission/ownership checks | `src/config.c:249-300` |
-| Event → JSON webhook payload | `event->username`, `event->source_ip`, `event->hostname` | `sanitize_string` + `json_escape` | `src/utils.c:13`, `src/notify.c:27` |
-| Daemon → curl child | webhook URL, bearer token, mTLS cert/key/CA paths, body | memfd-backed `--config` (URL + optional `header =` + optional `cert/key/cacert =`), fixed argv, `--proto =https`, absolute-path `execv` | `src/notify.c:101-209` |
-| Config → curl `-K` parser | string values from `pamsignal.conf` | `is_https_url` (URLs), `is_http_header` (auth header), `validate_tls_path` (cert/key/CA paths reject `"`, `\`, control chars, follow-symlinks, world-readable keys) | `src/config.c:140-330` |
+| Journal entry → parser | journald-recorded `MESSAGE` field | `ps_parse_message` (anchored patterns) + `_EXE` allowlist (`ps_is_trusted_exe`) | `src/utils.c`, `src/journal_watch.c` |
+| Conf file → daemon config | file contents (root-controlled but on-disk) | `ps_config_load` + `open_config_secure` (`O_NOFOLLOW`, regular file, not group/world-writable, owned by root or the daemon user) | `src/config.c` |
+| Event → JSON webhook payload | `event->username`, `event->actor`, `event->source_ip`, `event->hostname` | `sanitize_string` + `is_valid_ip` + `json_escape` | `src/utils.c`, `src/notify.c` |
+| Daemon → curl child | webhook URL, bearer token, mTLS cert/key/CA paths, body | memfd-backed `-K` config (`build_secrets_memfd`: URL + optional `header =` + optional `cert/key/cacert =`), fixed argv, `--proto =https`, absolute-path `execv` (`fire_curl`) | `src/notify.c` |
+| Config → curl `-K` parser | string values from `pamsignal.conf` | `is_https_url` (URLs), `is_http_header` (auth header), `validate_tls_path` (cert/key/CA paths: reject `"`, `\`, control chars and symlinks; require a regular file owned by root or the daemon user; reject group- or world-readable keys) | `src/config.c` |
 
 ## Design limitations (deliberate trade-offs)
 
@@ -253,6 +271,7 @@ These are choices the project has made *for* simplicity and a smaller attack sur
 - **No persistent state on disk.** The daemon writes nothing to `/var/lib/`. Cost: no historical brute-force memory across restarts, no offline-analysis state. Benefit: nothing to corrupt, nothing to disk-fill, nothing to leak.
 - **Single-host scope.** No clustering, no shared state, no central server. Cost: aggregation is an out-of-band SIEM concern. Benefit: single-process daemon, no network listening port, no auth between instances.
 - **Fire-and-forget alerts.** Discussed in NS6 above.
+- **One shared timer for per-event alerts.** Cost: a routine alert can be skipped because another event used the timer (see [item 9](#9-alert-volume-dos-from-a-single-source-ip-a)). Benefit: chat volume stays bounded without per-user state. The journal always has every event.
 
 These are the lines where someone proposing a feature should stop and ask whether the feature is worth the cost, and the answer is usually "no, send the operator to the custom-webhook escape hatch."
 
@@ -261,9 +280,9 @@ These are the lines where someone proposing a feature should stop and ask whethe
 A PAMSignal install is only as secure as its surrounding configuration. The threat model assumes the operator follows these:
 
 1. **Do not add untrusted users to the `pamsignal` group.** Doing so extends configuration-file read access (and therefore alert-credentials access) to those users. The package's `postinst` does not add anyone; the only member by default is the daemon.
-2. **Keep `/etc/pamsignal/pamsignal.conf` at `0640 root:pamsignal`.** The package sets this on first install. PAMSignal warns at startup if the mode is looser; it does not refuse to start, in case an operator is intentionally running with stricter perms.
+2. **Keep `/etc/pamsignal/pamsignal.conf` at `0640 root:pamsignal`.** The package sets this on first install. PAMSignal refuses to load a config that is group- or world-writable or owned by anyone other than root or the daemon user. It does not check read permissions, so a world-readable `0644` file loads without a warning (see NS9).
 3. **For high-assurance deployments, send alerts to a custom webhook you control.** Third-party chat providers (Telegram, Slack, Teams, Discord, WhatsApp) see your alert metadata. A webhook on infrastructure you control gives you durable storage, multi-host aggregation, and full control over retention. Authenticate the receiver-bound connection using `webhook_auth_header` (Bearer / API key / Splunk HEC / Datadog), or, if your environment runs a PKI, `webhook_client_cert` + `webhook_client_key` for mTLS. The two combine additively. See [Configuration → Custom webhook authentication](./configuration.md#custom-webhook-authentication).
-4. **Set `webhook_client_key` to mode `0640 root:pamsignal`** (or `0600 pamsignal:pamsignal` if you run the daemon as that user). PAMSignal refuses to start if the key is group- or world-readable. Cert and CA bundle don't have the same constraint; they're public material.
+4. **Set `webhook_client_key` to mode `0600 pamsignal:pamsignal`.** PAMSignal refuses to start if the key is group- or world-readable (so `0640 root:pamsignal` is rejected), a symlink, or owned by anyone other than root or the daemon user. Cert and CA bundle don't have the read-permission constraint; they're public material.
 5. **Rotate alert credentials periodically.** PAMSignal does not rotate credentials itself; rotation is operator responsibility. For shared-secret tokens (Telegram bot tokens, `webhook_auth_header`, etc.), update `pamsignal.conf` and `systemctl reload pamsignal`. For `webhook_client_cert` / `webhook_client_key`, replace the files in place: the cert manager (cert-manager / certbot / `systemd-creds`) handles atomic rotation; the next alert dispatch picks up the new files automatically. SIGHUP is not required for cert/key rotation since the paths in config don't change.
 6. **Don't run PAMSignal as `root`.** It refuses anyway, but the underlying expectation is that the daemon stays at the package-created `pamsignal` user. Custom unit overrides that change `User=` invalidate the threat model.
 7. **For defense-in-depth on the alert path, pair PAMSignal with a fail2ban (or equivalent) instance** that consumes the same journal entries to add firewall rules. PAMSignal observes; fail2ban acts. The two are complementary, not redundant; see `examples/fail2ban/` in this repo for a sample integration.

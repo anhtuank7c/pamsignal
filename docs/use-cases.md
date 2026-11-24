@@ -19,10 +19,10 @@ You run 1–5 personal VPSes, a homelab, or a side project. You don't want to de
 **A good setup:**
 - Install via the [Quick Start](../README.md#quick-start) one-liner.
 - Add a [Telegram](./alerts.md#telegram) or [Discord](./alerts.md) channel. It takes two minutes.
-- Set `enable_notification_type = login_success,brute_force` so you're pinged about successful logins and attacks, not every event.
+- Set `enable_notification_type = login_success,brute_force,login_after_failures` so you're pinged about successful logins and attacks, not every event. Keep `login_after_failures` in the list: it is the alert for a login that succeeds right after a run of failures, and each category you leave out is muted.
 - Optionally add [Fail2ban](../examples/fail2ban/README.md) to auto-ban brute-forcers.
 
-**What you get:** a phone buzz when you (or anyone) logs in successfully, and when a bot starts hammering you. That's 90% of the peace-of-mind for 0% of the operational weight.
+**What you get:** a phone buzz when you (or anyone) logs in successfully, when a bot starts hammering you, and a critical alert if one of those bots gets in. That's 90% of the peace-of-mind for 0% of the operational weight.
 
 ### Small team / startup ops
 
@@ -30,7 +30,8 @@ You run 5–30 servers, share an on-call rotation, and already have a Slack or T
 
 **A good setup:**
 - Roll out across the fleet with the [Ansible playbook](./ssh-hardening.md#42-the-repeatable-way-ansible), one shared `pamsignal.conf`.
-- Route alerts to a dedicated **#security-alerts** [Slack/Teams](./alerts.md) channel.
+- Route alerts to a dedicated **#security-alerts** [Slack/Teams](./alerts.md) channel. If the chat should be easy to read on a phone, set [`message_style = pretty`](./configuration.md#message-style).
+- List your office, VPN or bastion addresses in [`trusted_sources`](./configuration.md#trusted-sources) so the team's own routine logins don't ping the channel. Brute-force and login-after-failures alerts still fire for those addresses.
 - Stand up the [Grafana fleet dashboard](./grafana-getting-started.md) so anyone on-call sees the whole fleet at a glance.
 - If you already run a SIEM, also forward events there via the [custom webhook](#already-run-a-siem-elastic--wazuh--splunk--datadog).
 
@@ -51,7 +52,7 @@ provider = acme-cloud
 service_name = cust-1042-web01
 ```
 
-Every alert and webhook payload now carries `provider=acme-cloud service_name=cust-1042-web01`, so you always know *which customer and which box* an alert came from, even when they all land in one place. (See [Alerts](./alerts.md#message-format).)
+Every chat alert now carries `provider=acme-cloud service_name=cust-1042-web01` (as rows in the `pretty` style), and every webhook payload carries them as `labels.provider` / `labels.service_name`, so you always know *which customer and which box* an alert came from, even when they all land in one place. (See [Alerts](./alerts.md#message-format).) The tags are not written to the journal, so the Grafana/Loki pipeline, which reads the journal, identifies hosts by hostname instead.
 
 #### 2. Choose your alert-routing model
 
@@ -69,11 +70,11 @@ Grafana is built for multi-tenancy. Pick the isolation level that matches your b
 - **Per-customer dashboard / folder**, with the `$host` variable locked to that customer's hosts: simplest, fine when customers don't log in themselves.
 - **A Grafana Organization (or Grafana RBAC team) per tenant**: real isolation; give the customer a scoped, read-only login so they only ever see their own hosts.
 
-Because the host name and your `service_name` tag are already labels/fields, scoping a view to one customer is a filter, not a data-separation project.
+Because the bundled Alloy pipeline already makes the host name a Loki label (`host`), scoping a view to one customer is a filter, not a data-separation project. Name hosts so a customer's machines are easy to match (for example `cust-1042-*`).
 
 #### 4. Surface it in your own portal (white-label)
 
-Point the [custom webhook](./configuration.md#custom-webhook-authentication) at your control-panel backend. PAMSignal POSTs [ECS JSON](./alerts.md#custom-webhook-ecs-json) for every event; your backend stores it and renders a "**Recent logins & blocked attacks**" widget right inside the customer's existing dashboard, fully under your branding. The [Node.js](../examples/nodejs-webhook/README.md) and [Python](../examples/python-webhook/README.md) webhook examples are working receivers you can build on.
+Point the [custom webhook](./configuration.md#custom-webhook-authentication) at your control-panel backend. PAMSignal POSTs [ECS JSON](./alerts.md#custom-webhook-ecs-json) for each alert it sends; your backend stores it and renders a "**Recent logins & blocked attacks**" widget right inside the customer's existing dashboard, fully under your branding. The [Node.js](../examples/nodejs-webhook/README.md) and [Python](../examples/python-webhook/README.md) webhook examples are working receivers you can build on.
 
 #### 5. Package it as a tier
 
@@ -90,13 +91,13 @@ Be honest with customers about what this is, so it stays a feature and never a l
 
 ### Compliance-minded shops
 
-If you need to *show* who logged in and when, the [Grafana + Loki](./grafana-getting-started.md) path gives you a retained, searchable, timestamped auth trail across the fleet, and the [custom webhook](#already-run-a-siem-elastic--wazuh--splunk--datadog) feeds the same events into a SIEM of record. PAMSignal is the sensor; your retention policy turns it into an audit trail.
+If you need to *show* who logged in and when, the [Grafana + Loki](./grafana-getting-started.md) path gives you a retained, searchable, timestamped auth trail across the fleet, and the [custom webhook](#already-run-a-siem-elastic--wazuh--splunk--datadog) feeds the alerts into a SIEM of record. Loki reads the journal, so it holds every event; the webhook carries only what is alerted (see the next section). PAMSignal is the sensor; your retention policy turns it into an audit trail.
 
 ---
 
 ## Plug it into your existing stack
 
-PAMSignal is a **sensor**, not a destination. It emits in two open formats: single-line `key=value` text for chat, and nested [ECS JSON](./alerts.md#custom-webhook-ecs-json) for machines, so it feeds tools you already run rather than replacing them.
+PAMSignal is a **sensor**, not a destination. It emits in two open formats: `key=value` text for chat (one line, or a multi-line layout with [`message_style = pretty`](./configuration.md#message-style)), and nested [ECS JSON](./alerts.md#custom-webhook-ecs-json) for machines, so it feeds tools you already run rather than replacing them.
 
 | If you already run… | Wire it up with… | Result |
 |---|---|---|
@@ -110,16 +111,18 @@ PAMSignal is a **sensor**, not a destination. It emits in two open formats: sing
 
 ### Already use chat (Slack / Teams / Discord / Telegram / WhatsApp)?
 
-This is the zero-effort path. Drop the channel's credentials into `pamsignal.conf` and you're done. PAMSignal sends to every channel that has credentials set. Setup per channel is in [Alerts](./alerts.md). Narrow the noise with [`enable_notification_type`](./configuration.md#notification-type-filter).
+This is the zero-effort path. Drop the channel's credentials into `pamsignal.conf` and you're done. PAMSignal sends to every channel that has credentials set. Setup per channel is in [Alerts](./alerts.md). Narrow the noise with [`enable_notification_type`](./configuration.md#notification-type-filter) and [`trusted_sources`](./configuration.md#trusted-sources), and pick the layout with [`message_style`](./configuration.md#message-style).
 
 ### Already run a SIEM (Elastic / Wazuh / Splunk / Datadog)?
 
-Point `webhook_url` at your ingest endpoint. PAMSignal POSTs an [ECS](https://www.elastic.co/guide/en/ecs/current/index.html)-structured JSON document per event (nested `event.*`, `host.*`, `user.*`, `source.*`, `service.*`, `process.*` objects plus a `pamsignal.*` namespace), which "drops directly into Elastic SIEM and Wazuh without remapping, and is one Vector/Logstash config away from any other modern SIEM." Authenticate with a [bearer header or mTLS](./configuration.md#custom-webhook-authentication):
+Point `webhook_url` at your ingest endpoint. PAMSignal POSTs an [ECS](https://www.elastic.co/guide/en/ecs/current/index.html)-structured JSON document per event (nested `event.*`, `host.*`, `user.*`, `source.*`, `service.*`, `process.*` objects plus a `pamsignal.*` namespace, and `labels.*` when `provider` / `service_name` are set), which "drops directly into Elastic SIEM and Wazuh without remapping, and is one Vector/Logstash config away from any other modern SIEM." Authenticate with a [bearer header or mTLS](./configuration.md#custom-webhook-authentication):
 
 ```ini
 webhook_url = https://siem.example.com/ingest/pamsignal
 webhook_auth_header = Authorization: Bearer <token>
 ```
+
+The webhook sends the same alerts as chat, so it follows `enable_notification_type` and `trusted_sources`, and the routine per-event alerts share one `alert_cooldown_sec` timer (default 60 s; see [Configuration](./configuration.md#brute-force-detection)). If the SIEM must receive every login and session event, set `alert_cooldown_sec = 0`, or ship the journal entries (`SYSLOG_IDENTIFIER=pamsignal`) with your log shipper instead.
 
 The on-the-wire payload and a receiver-pattern table (Splunk HEC, Datadog, X-API-Key, Wazuh) are in [Alerts → Custom webhook](./alerts.md#custom-webhook-ecs-json). This is the integration that makes PAMSignal a *source* in a bigger detection pipeline rather than a standalone tool.
 

@@ -157,7 +157,7 @@ On your central/monitoring host, a minimal but real `docker-compose.yml`:
 ```yaml
 services:
   loki:
-    image: grafana/loki:3.2.0          # check for the current stable tag
+    image: grafana/loki:3.3.0          # check for the current stable tag
     command: -config.file=/etc/loki/local-config.yaml
     ports: ["3100:3100"]
     volumes:
@@ -165,7 +165,7 @@ services:
     restart: unless-stopped
 
   grafana:
-    image: grafana/grafana:11.3.0
+    image: grafana/grafana:11.4.0
     ports: ["3000:3000"]
     environment:
       - GF_SECURITY_ADMIN_PASSWORD=change-me-now   # set a real password
@@ -182,7 +182,7 @@ volumes:
 docker compose up -d
 ```
 
-The Loki image ships a working default config, so this comes up immediately. For real retention (the default keeps very little), adapt the bundled [`examples/grafana/config/loki-config.yml`](../examples/grafana/). It sets a 7-day retention you can raise for audit/compliance. Mount it and change the `command:` to point at it.
+The Loki image ships a working default config, so this comes up immediately. The default config does not enforce any retention, so for a deliberate retention window adapt the bundled [`examples/grafana/config/loki-config.yml`](../examples/grafana/). It sets a 7-day retention you can raise for audit/compliance. Mount it and change the `command:` to point at it.
 
 > **Security, non-negotiable for self-host:** never expose Grafana to the internet with anonymous access or the default password. Put it behind your VPN/bastion or a reverse proxy with TLS and real login. The bundled try-it stack uses anonymous admin *only* because it's local and disposable.
 
@@ -222,13 +222,13 @@ Then prove it end-to-end in Grafana: open **Explore**, pick the Loki datasource,
 
 If lines appear, the pipeline works. If not, the troubleshooting table in [`examples/grafana/README.md`](../examples/grafana/README.md#troubleshooting) walks through every failure (most common: the `systemd-journal` group, or a label-name mismatch).
 
-Under the hood, Alloy promotes exactly **four** low-cardinality fields to Loki labels (`app`, `host`, `service`, `event_action`) and leaves everything else (source IP, username, port, PID…) in the JSON body to be parsed at query time. That keeps Loki fast even across thousands of hosts; the *why* is in the [label cardinality plan](./grafana-integration.md#label-cardinality-plan).
+Under the hood, Alloy promotes exactly **four** low-cardinality fields to Loki labels (`app`, `host`, `service`, `event_action`; `alloy.river` also adds a static `job="pamsignal"`) and leaves everything else (source IP, username, port, PID…) in the JSON body to be parsed at query time. That keeps Loki fast even across thousands of hosts; the *why* is in the [label cardinality plan](./grafana-integration.md#label-cardinality-plan).
 
 ---
 
 ## Reading your dashboard
 
-This is the part that actually matters. A dashboard you can't interpret is just blinking lights. The bundled dashboard has three rows, top to bottom: a **glance** (is anything on fire?), **trends** (is it getting worse?), and **drill-downs** (who, exactly?).
+This is the part that actually matters. A dashboard you can't interpret is just blinking lights. The bundled dashboard has twelve panels in three bands, top to bottom: a **glance** (is anything on fire?), **trends** (is it getting worse?), and **drill-downs** (who, exactly?).
 
 For each panel below: **what it shows · what's normal · what's alarming · what to do.**
 
@@ -236,9 +236,9 @@ For each panel below: **what it shows · what's normal · what's alarming · wha
 
 ### Row 1: Fleet pulse (the 5-second glance)
 
-Five big single numbers, color-coded. This row answers "do I need to look closer?"
+Four stat panels, color-coded. This row answers "do I need to look closer?"
 
-**① Hosts reporting (last 1h)**
+**① Hosts reporting (1h)**
 - *Shows:* how many distinct hosts sent any event in the last hour: your fleet's heartbeat.
 - *Normal:* equals your fleet size.
 - *Alarming:* **lower than your fleet size.** A missing host means PAMSignal stopped, Alloy stopped, or the box is down.
@@ -256,74 +256,68 @@ Five big single numbers, color-coded. This row answers "do I need to look closer
 - *Alarming:* a sharp climb, or failures on hosts that shouldn't be exposed at all.
 - *Do:* check the **top source IPs** and **top attacked usernames** tables below.
 
-**④ Brute-force alerts (range)**, red when > 0
-- *Shows:* how many times PAMSignal's brute-force threshold was crossed.
-- *Normal:* **0.** PAMSignal only emits this after counting past your `fail_threshold`, so it isn't noise.
-- *Alarming:* **anything above 0.** This is the one number on the board you treat as real every time.
-- *Do:* see **Recent brute-force alerts**; if you run [Fail2ban](../examples/fail2ban/README.md), the offending IPs are likely already banned.
-
-**⑤ Privilege escalations (sudo/su, range)**
-- *Shows:* successful `sudo`/`su` sessions opening across the fleet.
-- *Normal:* matches your admin activity and known automation.
-- *Alarming:* escalations by accounts that shouldn't escalate, or on hosts nobody should be administering right now.
-- *Do:* pivot to the live log stream filtered to `service="sudo"`.
+**④ Detections (range)**, red when > 0
+- *Shows:* two numbers. **Brute force** counts `brute_force_detected` entries: PAMSignal saw `fail_threshold` failures inside `fail_window_sec` from one IP (or, for sudo/su, from one local user). **Login after failures** counts `login_after_failures` entries: a login *succeeded* from an IP that had just failed `success_after_fail_threshold` times or more.
+- *Normal:* **0** for both. PAMSignal only writes these after its own counters cross a threshold, so they aren't noise.
+- *Alarming:* **anything above 0.** Login after failures is the worst number on the board: it is the pattern of a guessed password, and `trusted_sources` does not hide it.
+- *Do:* open **Recent detections** (⑩). For a login after failures, treat the account as compromised until you have checked it. For brute force, if you run [Fail2ban](../examples/fail2ban/README.md), the offending IPs are likely already banned.
 
 ### Row 2: Trends (is it getting worse?)
 
 Three time-series. A single number tells you *now*; a trend tells you *direction*.
 
-**⑥ Login attempts/min, stacked by outcome (success vs failure)**
-- *Read it:* the ratio matters more than the height. A wall of red (failures) with little green (success) is a campaign hammering you and getting nowhere. That is usually fine, but watch it. Red turning green is the dangerous transition: someone started succeeding.
-- *Do:* if green appears from an unfamiliar IP during a red surge, treat it as a possible breach and jump to the source-IP table and the live stream.
+**⑤ Login attempts/min by outcome (success vs failure)**
+- *Read it:* the ratio matters more than the height. A wall of orange (failures) with little green (success) is a campaign hammering you and getting nowhere. That is usually fine, but watch it. Green appearing in the middle of an orange surge is the dangerous transition: someone may have started succeeding.
+- *Do:* PAMSignal flags that case itself as `login_after_failures` (panel ④). Jump to the source-IP table and the live stream.
 
-**⑦ Brute-force detections/min, stacked by service**
-- *Read it:* which service is under pressure: `sshd` (remote) vs `sudo`/`su` (local-actor). Remote spikes are the internet; local spikes mean someone *already on a host* is hammering elevation.
-- *Do:* local-actor brute force is the more serious signal; investigate that host's active sessions.
+**⑥ Detections by type**
+- *Read it:* `brute_force_detected` (orange) and `login_after_failures` (red) per minute. Orange bars are attacks being detected; any red bar is an attack that may have worked. The series is split by event type, not by service, because a remote brute-force entry carries no service field.
+- *Do:* hover a bar for the time, then read the matching rows in **Recent detections**. A brute-force row that names `actor=` and `target=` instead of `ip=` is local sudo/su brute force: someone *already on a host* is hammering elevation, which is the more serious case.
 
-**⑧ Events/min per host, stacked area, top 10 hosts**
+**⑦ Events per host (top 10)**
 - *Read it:* spot the outlier. One host suddenly dominating the chart is either under attack or misconfigured (noisy service flooding events).
 - *Do:* use the `$host` variable to isolate it.
 
 ### Row 3: Drill-downs (who, exactly?)
 
-Tables and a live log feed. This is where you go from "something's up" to "this IP, this user, this host."
+Tables and log panels. This is where you go from "something's up" to "this IP, this user, this host."
 
-**⑨ Top 10 source IPs by failed-login count**
-- *Use:* your block-list shortlist. Persistent offenders here are good `ignoreip`/ban candidates; a *trusted* IP showing lots of failures usually means a broken script or expired credential, not an attack.
+**⑧ Top source IPs by failed logins (ssh)**
+- *Use:* your block-list shortlist. Persistent offenders here are good ban candidates; a *trusted* IP showing lots of failures usually means a broken script or expired credential, not an attack.
 
-**⑩ Top 10 attacked usernames**
+**⑨ Top attacked usernames**
 - *Use:* sanity check. `root`, `admin`, `test`, `oracle`, `ubuntu` dominating is textbook bot behaviour, and expected. A *real, valid* username you use appearing here means someone knows your accounts; that's more targeted.
 
-**⑪ Recent brute-force alerts**
-- *Use:* the incident table: time, IP-or-actor, attempts, window, service, host. This is your first stop when panel ④ lights up.
+**⑩ Recent detections**
+- *Use:* the incident list. Each line is `host=<host>` followed by PAMSignal's own message, for example `BRUTE_FORCE_DETECTED ip=... attempts=... window=...s user=...`, `BRUTE_FORCE_DETECTED actor=... target=... service=sudo ...`, or `LOGIN_AFTER_FAILURES ip=... user=... failures=... window=...s auth=...`. This is your first stop when panel ④ lights up.
 
-**⑫ Recent successful root logins over SSH**
-- *Use:* the highest-signal panel on the board. If you followed [SSH hardening](./ssh-hardening.md) and set `PermitRootLogin no`, **this table should be empty.** Any row here means a direct root SSH login your hardening was supposed to prevent. Investigate immediately.
+**⑪ Recent successful root logins (ssh)**
+- *Use:* if you followed [SSH hardening](./ssh-hardening.md) and set `PermitRootLogin no`, **this panel should be empty.** Any row here means a direct root SSH login your hardening was supposed to prevent. Investigate immediately.
 
-**⑬ Live log stream**
+**⑫ Live event stream**
 - *Use:* the raw PAMSignal feed, filtered by whatever the dashboard variables are set to. Your "tail -f for the whole fleet."
 
 ### Filtering: the dashboard variables
 
-At the top of the dashboard, three dropdowns (default "All") scope every panel at once:
+At the top of the dashboard, three dropdowns (default "All") scope the panels at once:
 
 - **`$host`**: one server, or a subset (great for per-customer views; see [Use Cases](./use-cases.md#small-hosting-provider--msp)).
 - **`$service`**: `sshd`, `sudo`, `su`, `login`, `other`.
-- **`$action`**: `login_success`, `login_failure`, `brute_force_detected`, …
+- **`$action`**: `session_opened`, `session_closed`, `login_success`, `login_failure`, `brute_force_detected`, `login_after_failures`.
 
-Default time range is **last 6h**; quick-pick 1h / 6h / 24h / 7d / 30d. Just brought the stack up? Shorten to **last 5m** or panels look empty.
+Default time range is **last 6h**; quick-pick 5m / 15m / 1h / 6h / 12h / 24h / 7d / 30d. Just brought the stack up? Shorten to **last 5m** or panels look empty.
 
 ### Two worked readings
 
-**A healthy Friday-afternoon glance:** *Hosts reporting* = fleet size (green). *Successful logins* matches your team. *Failed logins* shows the usual low background hum. *Brute-force alerts* = **0**. *Privilege escalations* matches known admin work. Trends are flat. Nothing to do; close the tab.
+**A healthy Friday-afternoon glance:** *Hosts reporting* = fleet size (green). *Successful logins* matches your team. *Failed logins* shows the usual low background hum. *Detections* = **0** and **0**. Trends are flat. Nothing to do; close the tab.
 
-**A host under attack:** *Failed logins* climbing fast, *brute-force alerts* > 0 (red), panel ⑦ spiking on `sshd`. You open **Recent brute-force alerts**, see one IP at 40+ attempts, confirm it's already in your Fail2ban ban list, and glance at **⑫** to confirm no root login slipped through. Three panels, one minute, full picture.
+**A host under attack:** *Failed logins* climbing fast, *Detections* shows brute force > 0 (red), panel ⑥ has orange bars. You open **Recent detections**, see one IP at 40+ attempts, confirm it's already in your Fail2ban ban list, and check that *login after failures* is still **0** and **⑪** is empty, so nobody got in. Three panels, one minute, full picture.
 
 ---
 
 ## Alerts: getting paged from Grafana
 
-The integration ships four Grafana-native alert rules ([`examples/grafana/alerts.yaml`](../examples/grafana/)):
+The integration ships five Grafana-native alert rules ([`examples/grafana/alerts.yaml`](../examples/grafana/)):
 
 | # | Fires on | Severity | Why it's trustworthy |
 |---|---|---|---|
@@ -331,6 +325,7 @@ The integration ships four Grafana-native alert rules ([`examples/grafana/alerts
 | 2 | Successful **root** login over SSH | high | The canonical "you should care" event |
 | 3 | ≥10 failed logins from one IP in 5 min | high | Safety net if you tuned `fail_threshold` very high |
 | 4 | A host stopped reporting for >10 min | medium | Heartbeat: daemon dead or host offline |
+| 5 | Any `login_after_failures` | critical | A source that kept failing then got in: possible compromise |
 
 After importing, attach each rule to a **contact point** (Slack, Telegram, PagerDuty, email…). Step-by-step: [`examples/grafana/README.md`](../examples/grafana/README.md#5-wire-alerts).
 
@@ -361,6 +356,6 @@ After importing, attach each rule to a **contact point** (Slack, Telegram, Pager
 
 - **[`examples/grafana/README.md`](../examples/grafana/README.md)**: production deploy, `alloy.river`, `verify.sh`, full troubleshooting
 - **[Grafana Integration: Design](./grafana-integration.md)**: schema, label-cardinality plan, LogQL patterns, panel rationale
-- **[Secure SSH & Manage a Fleet](./ssh-hardening.md)**: harden the doors this dashboard watches (and why panel ⑫ should stay empty)
+- **[Secure SSH & Manage a Fleet](./ssh-hardening.md)**: harden the doors this dashboard watches (and why panel ⑪ should stay empty)
 - **[Use Cases](./use-cases.md)**: multi-tenant Grafana for hosting providers, and plugging PAMSignal into an existing SIEM
 - **[Alerts](./alerts.md)**: PAMSignal's own chat/webhook formats (ECS) that flow into this pipeline

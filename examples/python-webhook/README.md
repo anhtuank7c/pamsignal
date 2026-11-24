@@ -55,6 +55,8 @@ The server will start listening on `http://localhost:3000/webhook/pamsignal`.
 
 This Flask app strictly enforces `Authorization: Bearer <token>` to avoid leaking secrets through URL access logs. PAMSignal supports this directly via the `webhook_auth_header` config key, so no reverse proxy is required.
 
+PAMSignal only sends to HTTPS: `webhook_url` must start with `https://` (the config is rejected otherwise) and curl runs with `--proto =https`. The plain-HTTP mode above is for curl and Bruno tests. For real alerts, run the receiver with TLS (see [Mutual TLS](#mutual-tls-advanced)) or behind a TLS reverse proxy.
+
 ### Direct configuration (recommended)
 
 Edit `/etc/pamsignal/pamsignal.conf`:
@@ -68,6 +70,12 @@ Reload PAMSignal to apply the changes:
 
 ```bash
 sudo systemctl reload pamsignal
+```
+
+Then check the channel end to end. `--test-alert` sends one `test_alert` payload to every configured channel and reports `ok` or `FAILED` for each; the receiver logs a `[TEST_ALERT]` line:
+
+```bash
+sudo -u pamsignal pamsignal --test-alert
 ```
 
 The header value is passed to curl via a memfd-backed config file, so the token never appears in `/proc/<pid>/cmdline`. Set `0640 root:pamsignal` on `pamsignal.conf` to keep the value off-disk-readable for non-daemon users.
@@ -112,19 +120,48 @@ In `/etc/pamsignal/pamsignal.conf`:
 ```ini
 webhook_url = https://localhost:3000/webhook/pamsignal
 webhook_auth_header = Authorization: Bearer your_super_secret_token_here
-webhook_client_cert = /absolute/path/to/certs/client.crt
-webhook_client_key  = /absolute/path/to/certs/client.key
+webhook_client_cert = /etc/pamsignal/webhook-client.crt
+webhook_client_key  = /etc/pamsignal/webhook-client.key
 # Required because the demo CA isn't in the system trust store.
-webhook_ca_bundle   = /absolute/path/to/certs/ca.crt
+webhook_ca_bundle   = /etc/pamsignal/webhook-ca.crt
 ```
 
-Reload pamsignal (`sudo systemctl reload pamsignal`) and trigger an event; the receiver should log it. A request from any client without a valid cert (e.g. `curl https://localhost:3000/webhook/pamsignal`) will be rejected at the TLS handshake before reaching Flask.
+PAMSignal will not use the files from `./certs/` directly: it opens each path with `O_NOFOLLOW` (symlinks are rejected), each file must be owned by `root` or the daemon user, the key must not be group- or world-readable, and the unit's `ProtectHome=yes` hides `/home`. Copy them into place, with the key owned by `pamsignal` because curl runs as that user:
+
+```bash
+sudo install -m 0644 -o root -g root certs/client.crt /etc/pamsignal/webhook-client.crt
+sudo install -m 0644 -o root -g root certs/ca.crt     /etc/pamsignal/webhook-ca.crt
+sudo install -m 0600 -o pamsignal -g pamsignal certs/client.key /etc/pamsignal/webhook-client.key
+sudo -u pamsignal pamsignal --check-config
+```
+
+Reload pamsignal (`sudo systemctl reload pamsignal`) and run `sudo -u pamsignal pamsignal --test-alert`; the receiver should log a `[TEST_ALERT]` line. A request from any client without a valid cert (e.g. `curl https://localhost:3000/webhook/pamsignal`) will be rejected at the TLS handshake before reaching Flask.
 
 #### Production layout
 
-For production deployments, replace `./certs/*` with paths managed by your cert pipeline (cert-manager, certbot, `systemd-creds`, internal CA + ACME, etc.). The four env vars and the `webhook_*` config keys are unchanged. `gen-test-certs.sh` is for local/CI testing; do not ship its output to production.
+For production deployments, replace the demo files with ones managed by your cert pipeline (cert-manager, certbot, `systemd-creds`, internal CA + ACME, etc.). The four env vars and the `webhook_*` config keys are unchanged. `gen-test-certs.sh` is for local/CI testing; do not ship its output to production.
 
 mTLS combines additively with `webhook_auth_header` if the receiver wants both (mTLS for transport-layer service identity, Bearer for per-request authorization). The Flask middleware in this example checks the Bearer token regardless of the transport, so an mTLS-only deployment can simply leave `WEBHOOK_SECRET` unset (or set both for defense in depth).
+
+## What PAMSignal sends
+
+PAMSignal posts one ECS JSON object per alert. The receiver checks only that `event` and `pamsignal` are present, then logs one line per `event.action`:
+
+| `event.action` | When | Fields the log line uses |
+|---|---|---|
+| `login_success` | Successful login | `user.name`, `source.ip`, `host.hostname`, `process.pid` |
+| `login_failure` | Failed login (`sudo`/`su` failures are not sent one by one; they only count toward brute force) | `user.name`, `source.ip`, `host.hostname` |
+| `session_opened`, `session_closed` | Session start and end | `user.name`, `host.hostname` |
+| `brute_force_detected` | `fail_threshold` failures inside `fail_window_sec` | `pamsignal.attempts`, `source.ip`, `pamsignal.window_sec` |
+| `login_after_failures` | A login that succeeds right after a run of failures from the same IP | `user.name`, `source.ip`, `pamsignal.failures`, `host.hostname` |
+| `test_alert` | `pamsignal --test-alert` | `host.hostname` |
+
+Any other action is logged as `[UNKNOWN_EVENT]`. Two payload shapes matter if you extend the handler:
+
+- Session events have no `source` object. When the session was opened from another account (for example a `sudo` session started by `alice`), `pamsignal.actor` holds that account and `user.name` stays the session's user.
+- A local `sudo`/`su` brute force has no `source` object: `user.name` is the account typing the passwords and `user.target.name` the account it tried to become. The demo log line prints `source.ip`, so it shows `None` for this case.
+
+Full payload examples and the field reference are in [docs/alerts.md](../../docs/alerts.md#custom-webhook-ecs-json).
 
 ## Deploying as a Systemd Daemon
 
@@ -187,7 +224,7 @@ For production, you should run this webhook receiver as a background service so 
 
 ### Using Curl
 
-You can simulate a PAMSignal brute-force alert using `curl` to test the Flask server:
+You can simulate a PAMSignal brute-force alert using `curl` to test the Flask server. The receiver only checks that `event` and `pamsignal` exist, so a trimmed payload is enough:
 
 ```bash
 # Testing with Bearer Token header
@@ -201,7 +238,7 @@ curl -X POST http://localhost:3000/webhook/pamsignal \
      }'
 ```
 
-You should see the parsed event beautifully logged in your `journalctl` stream or Python console.
+The receiver logs `[BRUTE_FORCE] 12 failed attempts detected from IP 203.0.113.50 in 300s!` to its console (or `journalctl -u pamsignal-webhook` when run as a service).
 
 ### Using Bruno API Client
 

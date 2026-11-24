@@ -68,6 +68,10 @@ class Burst:
         self.target_user: str | None = None
         self.attempts = 0
         self.threshold = 0
+        # After the brute-force detection, some bursts "succeed": the
+        # attacker logs in (login_success) and PAMSignal follows up with
+        # login_after_failures.
+        self.phase = "attack"
 
     def trigger(self) -> None:
         self.active = True
@@ -76,72 +80,77 @@ class Burst:
         self.target_user = random.choice(USERS_ATTACK)
         self.attempts = 0
         self.threshold = random.randint(6, 12)
+        self.phase = "attack"
 
     def finish(self) -> None:
         self.active = False
 
 
 def utc_now_iso() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    # Same shape as ps_format_timestamp(): ISO 8601 with a numeric offset.
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S%z")
+
+
+FAIL_WINDOW_SEC = 300  # PAMSignal's default fail_window_sec
+
+# EVENT_ACTION -> (MESSAGE event type, EVENT_CATEGORY, EVENT_KIND,
+# EVENT_OUTCOME, EVENT_SEVERITY, PRIORITY), as written by
+# src/journal_watch.c (ps_log_event, emit_brute_force_alert,
+# ps_check_login_after_failures) and src/utils.c.
+ACTIONS = {
+    "session_opened": (
+        "SESSION_OPEN", "authentication,session", "event", "success", 3, 5,
+    ),
+    "session_closed": (
+        "SESSION_CLOSE", "authentication,session", "event", "success", 3, 5,
+    ),
+    "login_success": (
+        "LOGIN_SUCCESS", "authentication", "event", "success", 4, 5,
+    ),
+    "login_failure": (
+        "LOGIN_FAILED", "authentication", "event", "failure", 5, 5,
+    ),
+    "brute_force_detected": (
+        "BRUTE_FORCE_DETECTED",
+        "authentication,intrusion_detection",
+        "alert",
+        "unknown",
+        8,
+        4,
+    ),
+    "login_after_failures": (
+        "LOGIN_AFTER_FAILURES",
+        "authentication,intrusion_detection",
+        "alert",
+        "success",
+        9,
+        2,
+    ),
+}
 
 
 def event_body(
     *,
     action: str,
     host: str,
-    service: str,
+    service: str | None,
     user: str,
     source_ip: str | None = None,
     source_port: int | None = None,
-    target_user: str | None = None,
+    actor: str = "",
+    count: int = 0,
 ) -> dict[str, str]:
-    """Build the JSON body matching PAMSignal's journald structured fields."""
-    outcome = (
-        "success"
-        if action in ("login_success", "session_opened", "session_closed")
-        else "failure"
-        if action == "login_failure"
-        else "unknown"
-    )
+    """Build the JSON body matching PAMSignal's journald structured fields.
 
-    if action in ("session_opened", "session_closed"):
-        category = "authentication,session"
-        severity = 3
-        kind = "event"
-    elif action == "brute_force_detected":
-        category = "authentication,intrusion_detection"
-        severity = 8
-        kind = "alert"
-    elif action == "login_failure":
-        category = "authentication"
-        severity = 5
-        kind = "event"
-    else:
-        category = "authentication"
-        severity = 4
-        kind = "event"
-
-    pid = random.randint(1000, 99999)
-
-    if action in ("session_opened", "session_closed"):
-        message = (
-            f"pamsignal: {action} user={user} service={service} at {utc_now_iso()}"
-        )
-    elif action == "brute_force_detected":
-        message = (
-            f"pamsignal: BRUTE_FORCE_DETECTED ip={source_ip} attempts=7 "
-            f"window=60s user={user}"
-        )
-    else:
-        sip = source_ip or "-"
-        sport = source_port or 0
-        message = (
-            f"pamsignal: {action} user={user} from={sip} port={sport} "
-            f"service={service} auth=password at {utc_now_iso()}"
-        )
+    Each action carries the same fields the daemon writes for it: session
+    events have PAMSIGNAL_ACTOR and no SOURCE_*, remote brute-force has no
+    SERVICE_NAME / SOURCE_PORT / PROCESS_PID, login_after_failures has no
+    PROCESS_PID.
+    """
+    etype, category, kind, outcome, severity, priority = ACTIONS[action]
+    ts = utc_now_iso()
 
     body: dict[str, str] = {
-        "MESSAGE": message,
         "SYSLOG_IDENTIFIER": "pamsignal",
         "EVENT_ACTION": action,
         "EVENT_CATEGORY": category,
@@ -149,20 +158,46 @@ def event_body(
         "EVENT_OUTCOME": outcome,
         "EVENT_SEVERITY": str(severity),
         "EVENT_MODULE": "pamsignal",
-        "SERVICE_NAME": service,
         "USER_NAME": user,
         "HOST_HOSTNAME": host,
-        "PROCESS_PID": str(pid),
         "_HOSTNAME": host,
-        "PRIORITY": "4" if outcome == "failure" else "5",
+        "PRIORITY": str(priority),
     }
 
-    if source_ip is not None:
-        body["SOURCE_IP"] = source_ip
-    if source_port is not None:
-        body["SOURCE_PORT"] = str(source_port)
-    if target_user is not None:
-        body["USER_TARGET_NAME"] = target_user
+    if action in ("session_opened", "session_closed"):
+        actor_part = f" actor={actor}" if actor else ""
+        body["MESSAGE"] = (
+            f"pamsignal: {etype} user={user}{actor_part} service={service} "
+            f"at {ts}"
+        )
+        body["PAMSIGNAL_ACTOR"] = actor
+        body["SERVICE_NAME"] = service or "other"
+        body["PROCESS_PID"] = str(random.randint(1000, 99999))
+    elif action == "brute_force_detected":
+        body["MESSAGE"] = (
+            f"pamsignal: {etype} ip={source_ip} attempts={count} "
+            f"window={FAIL_WINDOW_SEC}s user={user}"
+        )
+        body["SOURCE_IP"] = source_ip or ""
+    elif action == "login_after_failures":
+        body["MESSAGE"] = (
+            f"pamsignal: {etype} ip={source_ip} user={user} failures={count} "
+            f"window={FAIL_WINDOW_SEC}s auth=password"
+        )
+        body["SOURCE_IP"] = source_ip or ""
+        body["SOURCE_PORT"] = str(source_port or 0)
+        body["SERVICE_NAME"] = service or "other"
+    else:
+        sip = source_ip or ""
+        sport = source_port or 0
+        body["MESSAGE"] = (
+            f"pamsignal: {etype} user={user} from={sip} port={sport} "
+            f"service={service} auth=password at {ts}"
+        )
+        body["SOURCE_IP"] = sip
+        body["SOURCE_PORT"] = str(sport)
+        body["SERVICE_NAME"] = service or "other"
+        body["PROCESS_PID"] = str(random.randint(1000, 99999))
 
     return body
 
@@ -202,7 +237,7 @@ def write_file(bodies: list[dict[str, str]]) -> None:
             fh.write(json.dumps(body) + "\n")
 
 
-def gen_normal_event() -> tuple[dict[str, str], str, str, str]:
+def gen_normal_event() -> tuple[dict[str, str], str, str, str | None]:
     host = random.choice(HOSTNAMES)
     service = random.choices(SERVICES, weights=SERVICE_WEIGHTS, k=1)[0]
 
@@ -229,14 +264,21 @@ def gen_normal_event() -> tuple[dict[str, str], str, str, str]:
 
     user = "root" if random.random() < 0.06 else random.choice(USERS_LEGIT)
 
-    source_ip = random.choice(LEGIT_IPS) if service == "sshd" else None
-    source_port = random.randint(20000, 65000) if source_ip else None
+    # Session events carry no source address; sshd logins do.
+    source_ip = None
+    source_port = None
+    if service == "sshd" and action in ("login_success", "login_failure"):
+        source_ip = random.choice(LEGIT_IPS)
+        source_port = random.randint(20000, 65000)
 
-    target_user = None
+    # sudo/su session: USER_NAME is the account switched to, PAMSIGNAL_ACTOR
+    # the account that logged in. A failure is logged under the actor.
+    actor = ""
     if service in ("sudo", "su") and action != "login_failure":
-        target_user = (
-            "root" if random.random() < 0.7 else random.choice(USERS_LEGIT)
-        )
+        actor = user
+        user = "root" if random.random() < 0.7 else random.choice(USERS_LEGIT)
+        if actor == user:
+            actor = ""
 
     body = event_body(
         action=action,
@@ -245,28 +287,60 @@ def gen_normal_event() -> tuple[dict[str, str], str, str, str]:
         user=user,
         source_ip=source_ip,
         source_port=source_port,
-        target_user=target_user,
+        actor=actor,
     )
     return body, action, host, service
 
 
-def gen_burst_event(burst: Burst) -> tuple[dict[str, str], str, str, str]:
-    """Emit either a failed-login attempt or the closing brute-force alert."""
+def gen_burst_event(
+    burst: Burst,
+) -> tuple[dict[str, str], str, str, str | None]:
+    """Emit a failed attempt, the brute-force alert, or the compromise pair."""
     assert burst.target_host and burst.target_user and burst.attacker_ip
-    burst.attempts += 1
     host = burst.target_host
     service = "sshd"
 
-    if burst.attempts >= burst.threshold:
+    if burst.phase == "login":
+        burst.phase = "after"
         body = event_body(
-            action="brute_force_detected",
+            action="login_success",
             host=host,
             service=service,
             user=burst.target_user,
             source_ip=burst.attacker_ip,
+            source_port=random.randint(20000, 65000),
+        )
+        return body, "login_success", host, service
+
+    if burst.phase == "after":
+        body = event_body(
+            action="login_after_failures",
+            host=host,
+            service=service,
+            user=burst.target_user,
+            source_ip=burst.attacker_ip,
+            source_port=random.randint(20000, 65000),
+            count=burst.attempts,
         )
         burst.finish()
-        return body, "brute_force_detected", host, service
+        return body, "login_after_failures", host, service
+
+    burst.attempts += 1
+    if burst.attempts >= burst.threshold:
+        # The remote brute-force entry has no SERVICE_NAME.
+        body = event_body(
+            action="brute_force_detected",
+            host=host,
+            service=None,
+            user=burst.target_user,
+            source_ip=burst.attacker_ip,
+            count=burst.attempts,
+        )
+        if random.random() < 0.3:
+            burst.phase = "login"
+        else:
+            burst.finish()
+        return body, "brute_force_detected", host, None
 
     body = event_body(
         action="login_failure",
@@ -319,12 +393,13 @@ def main() -> None:
         else:
             body, action, host, service = gen_normal_event()
 
-        labels = (
+        labels: tuple[tuple[str, str], ...] = (
             ("app", "pamsignal"),
             ("host", host),
-            ("service", service),
-            ("event_action", action),
         )
+        if service is not None:
+            labels += (("service", service),)
+        labels += (("event_action", action),)
         ts_ns = str(time.time_ns())
         line = json.dumps(body)
 

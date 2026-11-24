@@ -2,7 +2,7 @@
 
 > **English** · [Tiếng Việt](vi/configuration.md)
 
-`/etc/pamsignal/pamsignal.conf`: INI-style, zero dependencies. All values are optional; sane defaults apply if the file is missing or a key is absent.
+`/etc/pamsignal/pamsignal.conf`: one `key = value` per line. All keys are optional; defaults apply if the file is missing or a key is absent. Packages install the commented sample [`pamsignal.conf.example`](../pamsignal.conf.example) at this path.
 
 Since this file may contain alert credentials, it should have restricted permissions:
 
@@ -10,6 +10,14 @@ Since this file may contain alert credentials, it should have restricted permiss
 sudo chown root:pamsignal /etc/pamsignal/pamsignal.conf
 sudo chmod 0640 /etc/pamsignal/pamsignal.conf
 ```
+
+## File format and validation
+
+- **Syntax.** One `key = value` per line; whitespace around the key and the value is ignored. A line whose first non-blank character is `#` is a comment. There are no inline comments: a `#` after a value becomes part of the value. Values are not quoted (quotes are kept literally). If a key appears twice, the last one wins.
+- **Unknown keys** are ignored with a warning (`config:N: unknown key: ...`) in the journal, and on stderr under `--check-config`. A misspelled key therefore does not stop the daemon; read the `--check-config` output for warnings.
+- **Bad values** are errors: an out-of-range number, an unknown token, a malformed URL, token or CIDR, or a line without `=`. With any error the daemon refuses to start, and a reload keeps the current config.
+- **File checks.** The file is opened with `O_NOFOLLOW` (a symlink is refused), must be a regular file owned by root or the daemon user, and must not be group- or world-writable. Otherwise the daemon refuses to start.
+- **Missing file.** The daemon starts with the defaults (no alert channels; events go to the journal only). `--check-config` and `--test-alert` exit `1` instead, since a missing file there usually means a mistyped path.
 
 ## Full reference
 
@@ -19,6 +27,10 @@ fail_threshold = 5
 fail_window_sec = 300
 max_tracked_ips = 256
 alert_cooldown_sec = 60
+
+# Context tags (optional)
+provider = aws
+service_name = web-api
 
 # Login-after-failures detection (0 = disabled)
 success_after_fail_threshold = 3
@@ -67,9 +79,16 @@ webhook_ca_bundle   = /etc/pamsignal/webhook-ca.pem
 | Key | Default | Range | Description |
 |-----|---------|-------|-------------|
 | `fail_threshold` | `5` | 1 - 10000 | Failed attempts before triggering alert |
-| `fail_window_sec` | `300` | 1 - 86400 | Time window (seconds) for counting failures per IP |
-| `max_tracked_ips` | `256` | 1 - 100000 | Maximum IPs tracked simultaneously |
-| `alert_cooldown_sec` | `60` | 0 - 86400 | Minimum seconds between alerts for the same IP (0 = no cooldown) |
+| `fail_window_sec` | `300` | 1 - 86400 | Time window (seconds) for counting failures per IP, or per local actor for `sudo`/`su` |
+| `max_tracked_ips` | `256` | 1 - 100000 | Maximum IPs (and local actors) tracked at once; when full, the least recently active entry is replaced |
+| `alert_cooldown_sec` | `60` | 0 - 86400 | Rate limit for chat alerts (0 = no limit); see below |
+
+`alert_cooldown_sec` works in two ways:
+
+- **Brute-force and login-after-failures alerts: per source.** Repeat brute-force alerts are spaced per IP (or per local actor), login-after-failures alerts per IP.
+- **All other per-event alerts share one timer.** After one `login_success`, `login_failed`, `session_open` or `session_close` alert is sent, every other one in the next `alert_cooldown_sec` seconds, from any user or IP, goes to the journal only.
+
+The journal records every event and every detection either way. Set `0` to send every routine event to chat.
 
 ## Login-after-failures detection
 
@@ -85,6 +104,15 @@ A successful login from an IP that has just failed several times is the pattern 
 - **Remote logins only.** It is keyed by source IP; local `sudo`/`su` elevation has no IP and is not covered.
 
 A person who mistypes their own password three times and then gets it right triggers it too. Raise the threshold if that is common on your hosts.
+
+## Context tags
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `provider` | *(empty)* | Free-text tag, for example `aws` or `hetzner` (at most 63 characters) |
+| `service_name` | *(empty)* | Free-text tag, for example `web-api` (at most 63 characters) |
+
+When set, they are appended to every chat alert (`provider=aws service_name=web-api` in the compact style, `Provider` / `Service name` rows in the pretty style) and sent as `labels` in the webhook JSON. Use them to tell servers apart when several report to one channel.
 
 ## Trusted sources
 
@@ -111,9 +139,9 @@ A bare address means that single host. The prefix length must be at least 1 (`0.
 
 | Token | Triggers chat alert when… |
 |-------|---------------------------|
-| `login_success` | A successful login is detected (sshd, login) |
+| `login_success` | A successful login is detected (sshd) |
 | `login_failed` | A failed login is detected (sshd, login; sudo/su failures stay subject to the existing per-event suppression; see below) |
-| `session_open` | A PAM session opens (incl. systemd background sessions like cron) |
+| `session_open` | A PAM session opens (sshd, sudo, su, login) |
 | `session_close` | A PAM session closes |
 | `brute_force` | Either remote (IP-based) or local (sudo/su actor-based) brute-force threshold is crossed |
 | `login_after_failures` | A login succeeds from an IP with a run of recent failures (see [Login-after-failures detection](#login-after-failures-detection)) |
@@ -167,7 +195,9 @@ Run `sudo -u pamsignal pamsignal --test-alert` to see the chosen style in your c
 
 ## Alert channels
 
-Only configure the channels you use. PAMSignal sends alerts to all channels that have credentials set. Alerts are best-effort: if a channel fails, pamsignal logs a warning and continues monitoring.
+Only configure the channels you use. PAMSignal sends alerts to all channels that have credentials set. Alerts are fire-and-forget: a failed delivery is not retried and never stops monitoring. Use `--test-alert` to confirm a channel works.
+
+Values are checked at load time. `slack_webhook_url`, `teams_webhook_url`, `discord_webhook_url` and `webhook_url` must start with `https://` and contain no whitespace, quotes or shell metacharacters. `telegram_bot_token` must look like `123456:ABC...` (digits, a colon, then at least 20 letters, digits, `_` or `-`) and needs a `telegram_chat_id` (a number, negative for groups, or `@channelname`). When `whatsapp_access_token` is set, `whatsapp_phone_number_id` and `whatsapp_recipient` must be digits only.
 
 See [Alerts](./alerts.md) for message formats, setup guides, and payload reference.
 
@@ -191,7 +221,7 @@ The `webhook_url` channel supports two optional, additive authentication mechani
 |-----|------|-------------|
 | `webhook_auth_header` | Header | Single arbitrary HTTP header sent on every POST. Full `Name: value` form so any auth scheme works (Bearer, API key, Splunk HEC, Datadog, HMAC). The value is rendered into a memfd-backed curl `-K` config file, so the secret never appears in `argv` or `/proc/<pid>/cmdline`. |
 | `webhook_client_cert` | mTLS | Path to a PEM-encoded client certificate. Must be set together with `webhook_client_key`. |
-| `webhook_client_key` | mTLS | Path to the matching PEM-encoded private key. **Must not be group- or world-readable**; pamsignal refuses to start otherwise. Recommended: `0640 root:pamsignal` (or `0600 pamsignal:pamsignal` if you run the daemon as that user). |
+| `webhook_client_key` | mTLS | Path to the matching PEM-encoded private key. **Must not be group- or world-readable**; pamsignal refuses to start otherwise. Use `0600 pamsignal:pamsignal`: the daemon (user `pamsignal`) must be able to read it, and no group may. |
 | `webhook_ca_bundle` | mTLS | Optional path to a CA bundle PEM. Only needed when the receiver's CA is not in the system trust store (private CA, internal cert-manager). |
 
 **Common patterns:**
@@ -214,7 +244,7 @@ webhook_client_key  = /etc/pamsignal/webhook-client.key
 webhook_ca_bundle   = /etc/pamsignal/internal-ca.pem
 ```
 
-*Any of these patterns can be paired with `enable_notification_type` to narrow which event categories reach the webhook. See [Notification-type filter](#notification-type-filter) above for the full list of tokens (`login_success`, `login_failed`, `session_open`, `session_close`, `brute_force`, `all`).*
+*Any of these patterns can be paired with `enable_notification_type` to narrow which event categories reach the webhook. See [Notification-type filter](#notification-type-filter) above for the full list of tokens (`login_success`, `login_failed`, `session_open`, `session_close`, `brute_force`, `login_after_failures`, `all`).*
 
 **Validation enforced at config load:**
 
@@ -236,8 +266,10 @@ See [Alerts → Custom webhook (ECS JSON)](./alerts.md#custom-webhook-ecs-json) 
 | `--config PATH` | `-c PATH` | Use alternative config file path |
 | `--check-config` | `-t` | Validate the config file, print any errors, and exit |
 | `--test-alert` | `-T` | Send a test message to every configured channel and exit |
+| `--version` | `-V` | Print the version and exit |
+| `--help` | `-h` | Print a usage summary and exit |
 
-Relative paths are resolved to absolute before daemonization. An unrecognized option, or `-c` without a path, is an error: pamsignal prints a message and exits with status `2` instead of starting.
+The daemon, `--check-config` and `--test-alert` refuse to run as root; `--version` and `--help` work as any user. Relative paths are resolved to absolute before daemonization. An unrecognized option, or `-c` without a path, is an error: pamsignal prints a message and exits with status `2` instead of starting.
 
 ## Check the config and test your alerts
 
@@ -253,13 +285,17 @@ sudo -u pamsignal pamsignal --test-alert
 ```text
 pamsignal: config:2: trusted_sources must be a comma-separated list of at most 32 IPv4/IPv6 addresses or CIDR networks (prefix length 1 or more)
 pamsignal: config has 1 error(s)
+pamsignal: failed to load config: /etc/pamsignal/pamsignal.conf
 ```
 
 ```text
 pamsignal: /etc/pamsignal/pamsignal.conf: configuration OK
   alert channels: telegram slack
   trusted sources: 2
+  message style: compact
 ```
+
+Warnings such as `config:7: unknown key: fail_treshold` are printed too but do not change the exit status, so read the output, not only the exit code.
 
 `--test-alert` sends one test message per configured channel, waits for each to finish, and prints a verdict. A rejected request (wrong token, revoked webhook) is a failure, and curl's own error is shown above the verdict:
 
@@ -270,7 +306,7 @@ slack     FAILED (curl exit code 22; see the curl message above)
 pamsignal: 1 alert channel(s) failed
 ```
 
-It exits `0` only if every configured channel accepted the message. The test message ignores `enable_notification_type` and `alert_cooldown_sec`.
+It exits `0` only if every configured channel accepted the message, and `1` if any failed or none is configured. The test message uses your `message_style` and ignores `enable_notification_type` and `alert_cooldown_sec`.
 
 Both commands must run as the service user, not root: the ownership checks on the config and TLS key files are relative to the user running them, so only then does the result match what the daemon will see. Both also work with `-c PATH`.
 
@@ -280,4 +316,4 @@ Both commands must run as the service user, not root: the ownership checks on th
 sudo systemctl reload pamsignal
 ```
 
-This sends SIGHUP to the daemon. If the new config is valid, it takes effect immediately and the brute-force tracking table resets. If the config has errors, the daemon keeps the current config and logs a warning.
+This sends SIGHUP to the daemon. If the new config is valid, it takes effect immediately. The brute-force tracking table is kept (failure counts and cooldowns survive the reload); if `max_tracked_ips` shrinks, entries beyond the new size are dropped. If the config has errors, the daemon keeps the current config and logs `config reload failed, keeping current config`.

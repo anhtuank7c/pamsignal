@@ -5,28 +5,48 @@
 pamsignal.conf \- configuration file for the pamsignal PAM authentication monitor
 .SH DESCRIPTION
 .B pamsignal
-reads an optional INI-style configuration file to control brute-force
+reads an optional configuration file to control brute-force
 detection parameters and to define one or more alert channels (Telegram,
 Slack, Microsoft Teams, WhatsApp, Discord, or a generic HTTPS webhook).
 
-All keys are optional. If the file is absent or a key is omitted, built-in
-sane defaults are used. The file may contain sensitive credentials (bot
+All keys are optional. If the file is absent or a key is omitted, the
+built-in defaults are used; with no file, no alert channel is configured
+and events are only written to the journal. The file may contain sensitive credentials (bot
 tokens, webhook URLs with embedded secrets, bearer tokens, etc.) and should
 therefore be readable only by root and the
 .B pamsignal
 system user.
 
 The daemon refuses to start if the configuration file exists but is invalid
-(bad syntax, unknown keys, malformed token/URL values, or mTLS paths that
-fail ownership or permission checks).
+(a line without
+.BR = ,
+an out-of-range number, an unknown token, malformed token, URL or CIDR
+values, or mTLS paths that fail ownership or permission checks). An
+unknown key is not an error: it is ignored and a warning
+.RI ( "config:N: unknown key: NAME" )
+is logged.
 .SH FILE FORMAT
 The file uses a simple
 .B key = value
-syntax. Comments begin with
+syntax, one pair per line. A line whose first non-blank character is
 .B #
-and continue to the end of the line. Whitespace around the
-.B =
-sign is ignored. Values are not quoted.
+is a comment. There are no inline comments: a
+.B #
+after a value is part of the value. Whitespace around the key and the
+value is ignored. Values are not quoted; quote characters are kept
+literally. If a key appears more than once, the last value wins. Lines
+longer than 1023 characters are not supported.
+
+The file is opened with
+.B O_NOFOLLOW
+(a symbolic link is refused). It must be a regular file owned by root or
+by the user the daemon runs as, and must not be group- or world-writable;
+otherwise it is rejected and the daemon refuses to start.
+
+Run
+.B sudo \-u pamsignal pamsignal \-\-check\-config
+after editing to see every error and warning with its line number; see
+.BR pamsignal (8).
 
 Example locations (depends on
 .B prefix
@@ -44,25 +64,34 @@ These four keys tune the in-memory sliding-window tracker.
 
 .TP
 .B fail_threshold
-Number of failed authentication attempts (per IP or per local actor for
-sudo/su) within the window before a brute-force alert is generated.
+Number of failed authentication attempts (per source IP, or per local
+actor for sudo/su) within the window before a brute-force alert is
+generated.
 Range: 1\(en10000. Default: 5.
 
 .TP
 .B fail_window_sec
-Length of the observation window in seconds. Attempts older than this
-window are discarded. Range: 1\(en86400. Default: 300 (5 minutes).
+Length of the observation window in seconds, per source IP or local
+actor. Attempts older than this window are discarded. Range: 1\(en86400. Default: 300 (5 minutes).
 
 .TP
 .B max_tracked_ips
 Maximum number of distinct source IPs (or local actors) that are tracked
-simultaneously. When the table is full the oldest entry is evicted.
+simultaneously. When the table is full the least recently active entry
+is replaced.
 Range: 1\(en100000. Default: 256.
 
 .TP
 .B alert_cooldown_sec
-Minimum number of seconds that must elapse between brute-force alerts for
-the same key. 0 disables the cooldown. Range: 0\(en86400. Default: 60.
+Rate limit for chat alerts, in seconds. Brute-force alerts are limited
+per source (IP or local actor) and login-after-failures alerts per IP.
+All other per-event alerts
+.RB ( login_success ", " login_failed ", " session_open ", " session_close )
+share one timer: after one is sent, every other one in the next
+.B alert_cooldown_sec
+seconds, from any user or IP, goes to the journal only. The journal
+records every event either way. 0 disables the limit.
+Range: 0\(en86400. Default: 60.
 
 .SH LOGIN-AFTER-FAILURES DETECTION
 .TP
@@ -117,9 +146,9 @@ Valid tokens:
 .BR login_success , " " login_failed , " " session_open , " " session_close , " " brute_force , " " login_after_failures , " " all .
 
 Unknown tokens, empty values and empty list elements are hard errors.
-Default (or the token
-.B all
-) means every category. An explicit list must name
+The default (or the token
+.BR all )
+means every category. Tokens are case-insensitive. An explicit list must name
 .B login_after_failures
 to receive that alert.
 
@@ -155,23 +184,47 @@ first, so such text cannot inject formatting, links or mentions. A pretty
 message that would be too long is sent in the compact form instead. The custom webhook's JSON payload is the same in both styles.
 Any other value is a hard error.
 
+.SH CONTEXT TAGS
+.TP
+.B provider
+.TQ
+.B service_name
+Free-text tags (at most 63 characters each), for example
+.B aws
+and
+.BR web\-api .
+When set, they are appended to every chat alert and sent as
+.B labels
+in the custom webhook JSON, so alerts from several servers can be told
+apart. Default: empty.
+
 .SH ALERT CHANNELS
 Only the channels for which credentials are present are used. Multiple
 channels may be configured simultaneously; each receives an independent
-copy of every alert that passes the filter.
+copy of every alert that passes the filter. Delivery is fire-and-forget:
+a failed delivery is not retried and does not stop monitoring.
 
 .TP
 .B telegram_bot_token
-Telegram bot token obtained from @BotFather. Must be of the form
-.IR NNNN:alphanumeric+hyphen/underscore .
+Telegram bot token obtained from @BotFather. Must be digits, a colon,
+then at least 20 letters, digits,
+.B _
+or
+.BR \- .
+Requires
+.BR telegram_chat_id .
 
 .TP
 .B telegram_chat_id
-Numeric chat ID or @channelname.
+Numeric chat ID (negative for groups) or @channelname.
 
 .TP
 .B slack_webhook_url
-Incoming webhook URL (https://...).
+Incoming webhook URL. This and the other URL keys
+.RB ( teams_webhook_url ", " discord_webhook_url ", " webhook_url )
+must start with
+.B https://
+and must not contain whitespace, quotes or shell metacharacters.
 
 .TP
 .B teams_webhook_url
@@ -179,7 +232,13 @@ Incoming webhook URL for Microsoft Teams.
 
 .TP
 .B whatsapp_access_token
-Meta Cloud API access token.
+Meta Cloud API access token (letters, digits,
+.BR _ ", " \- ", " . ", " = ).
+When set,
+.B whatsapp_phone_number_id
+and
+.B whatsapp_recipient
+are required.
 
 .TP
 .B whatsapp_phone_number_id
@@ -220,15 +279,16 @@ are rejected at load time.
 
 .TP
 .B webhook_client_cert
-.TP
+.TQ
 .B webhook_client_key
-.TP
+.TQ
 .B webhook_ca_bundle
 Paths to PEM files for optional mutual-TLS client authentication.
 .B webhook_client_cert
 and
 .B webhook_client_key
-must both be present or both absent. The private key file must not be
+must both be present or both absent, and any of the three requires
+.BR webhook_url . The private key file must not be
 group- or world-readable; the daemon refuses to start otherwise. All
 three paths are opened with
 .B O_NOFOLLOW
@@ -242,11 +302,14 @@ Send
 ) to reload the file. The new configuration is parsed into a temporary
 structure; only on success is it swapped in. On any error the previous
 configuration (and the current brute-force tracking table) is retained
-and a warning is logged.
+and a warning is logged. After a successful reload the tracking table is
+also kept; if
+.B max_tracked_ips
+shrinks, entries beyond the new size are dropped.
 .SH SECURITY NOTES
 The configuration file is the only place where alert credentials live.
 They are never logged and are passed to the
-.B curl (1)
+.BR curl (1)
 child via a memfd-backed
 .B \-K
 file rather than via argv, so they do not appear in
@@ -263,9 +326,10 @@ shell metacharacters are rejected early.
 Default location of the configuration file (exact path depends on the
 .B sysconfdir
 used at build time).
-.TP
-.I /etc/pamsignal/pamsignal.conf.example
-Example file shipped in the source tree and in some distribution packages.
+.PP
+The source tree's
+.I pamsignal.conf.example
+is installed as this file: every key commented out with its default.
 .SH SEE ALSO
 .BR pamsignal (8),
 .BR systemd.exec (5),

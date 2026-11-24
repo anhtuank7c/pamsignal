@@ -7,6 +7,8 @@
 - **Completion Date**: 17/02/2026
 - **Update Date**: 20/02/2026
 
+> **Note (current code):** the code samples in sections 4.2, 5.2 and 6.4 are the original sketch. Today `src/journal_watch.c` calls `sd_journal_wait()` with a 1 s timeout (so it can pet the systemd watchdog and act on SIGHUP), handles every PAM event type rather than only successful logins, still parses the `MESSAGE` text (`ps_parse_message()` in `src/utils.c`), drops entries whose `_EXE` is not a trusted binary, and sends alerts through a forked `curl` child to Telegram, Slack, Teams, WhatsApp, Discord or a custom webhook. There is no email channel.
+
 ## 1. Objectives
 
 - **Event-driven**: Replace traditional log file scanning with event subscription from `libsystemd`, enabling PAMSignal to react immediately when new logs appear without wasting resources during idle periods.
@@ -139,14 +141,14 @@ When PAM authenticates a user, it generates log messages that are sent to the sy
 
 **Traditional (rsyslog):**
 ```
-Feb 17 22:30:15 server sshd[12345]: Accepted password for user from 192.168.1.100 port 54321 ssh2
-Feb 17 22:30:15 server sshd[12345]: pam_unix(sshd:session): session opened for user by (uid=0)
+Feb 17 22:30:15 server sshd[12345]: Accepted password for alice from 192.168.1.100 port 54321 ssh2
+Feb 17 22:30:15 server sshd[12345]: pam_unix(sshd:session): session opened for user alice(uid=1000) by alice(uid=0)
 ```
 
 **Modern (systemd-journald):**
 ```json
 {
-  "MESSAGE": "pam_unix(sshd:session): session opened for user by (uid=0)",
+  "MESSAGE": "pam_unix(sshd:session): session opened for user alice(uid=1000) by alice(uid=0)",
   "_PID": "12345",
   "_UID": "0",
   "_SYSTEMD_UNIT": "sshd.service",

@@ -4,7 +4,7 @@
 
 PAMSignal gửi cảnh báo best-effort đến các nền tảng nhắn tin khi phát hiện sự kiện đăng nhập hoặc pattern brute-force. Cảnh báo được gửi qua `fork()+exec(curl)`, một tiến trình con tồn tại trong thời gian ngắn, không thể ảnh hưởng đến quá trình giám sát cốt lõi.
 
-Nếu một cảnh báo thất bại (mạng bị ngắt, lỗi API, timeout), pamsignal ghi log cảnh báo và tiếp tục. Sự kiện luôn được ghi vào journal trước tiên.
+Nếu một cảnh báo thất bại (mạng bị ngắt, lỗi API, timeout), daemon vẫn chạy tiếp mà không hề biết: nó không bao giờ chờ tiến trình con curl hay đọc kết quả của nó. pamsignal chỉ ghi warning vào journal khi không thể dựng hoặc khởi chạy cảnh báo (tin nhắn quá dài, `memfd_create()` hoặc `fork()` thất bại). Hãy chạy `pamsignal --test-alert` để kiểm tra từng kênh từ đầu đến cuối. Sự kiện luôn được ghi vào journal trước tiên.
 
 ## Các kênh hỗ trợ
 
@@ -23,7 +23,7 @@ Chỉ cấu hình những kênh bạn sử dụng. PAMSignal gửi đến tất 
 
 Kể từ v0.2.0, các payload cảnh báo tuân theo quy ước [Elastic Common Schema (ECS)]:
 
-- **Các kênh chat** (Telegram / Slack / Teams / WhatsApp / Discord) nhận tin nhắn văn bản một dòng, có tiền tố severity dạng `key=value`.
+- **Các kênh chat** (Telegram / Slack / Teams / WhatsApp / Discord) nhận tin nhắn văn bản một dòng, có tiền tố severity dạng `key=value` (`message_style = compact`, mặc định) hoặc tin nhắn nhiều dòng (`message_style = pretty`, xem [Định dạng pretty](#định-dạng-pretty)).
 - **Custom webhook** nhận một JSON document với các object ECS lồng nhau (`event.*`, `host.*`, `user.*`, `source.*`, `service.*`, `process.*`) cộng với namespace `pamsignal.*` cho các trường riêng của vendor.
 
 Điều này có nghĩa là output của webhook có thể đưa thẳng vào Elastic SIEM và Wazuh mà không cần remapping, và chỉ cần một config Vector / Logstash để kết nối với bất kỳ SIEM hiện đại nào khác.
@@ -44,7 +44,7 @@ Dấu ngoặc severity có độ rộng cố định (8 ký tự) để các c�
 [CRIT]   auth.login_after_failures user=root src=203.0.113.50:40112 failures=7 window=300s host=web-01 service=sshd auth=password pid=12360 ts=2026-03-29T14:24:10+0000
 ```
 
-Dạng cuối cùng được phát ra khi một user nội bộ (`alice`) liên tục thất bại khi xác thực qua `sudo`/`su` trên host. Không có `src=` vì thao tác không có remote endpoint; ECS `user.name` mang tên actor và `user.target.name` là mục tiêu leo thang quyền. Cảnh báo `auth.login_failure` theo từng sự kiện **không** được phát cho sudo/su. Chỉ có cảnh báo brute-force tổng hợp mới được gửi, để một lần gõ sai mật khẩu không làm phiền operator. Tuy nhiên, bản ghi journal từ `pamsignal` vẫn được ghi cho mỗi lần thất bại riêng lẻ.
+Dòng brute-force có `actor=` / `target=` được phát ra khi một user nội bộ (`alice`) liên tục thất bại khi xác thực qua `sudo`/`su` trên host. Không có `src=` vì thao tác không có remote endpoint; ECS `user.name` mang tên actor và `user.target.name` là mục tiêu leo thang quyền. Cảnh báo `auth.login_failure` theo từng sự kiện **không** được phát cho sudo/su. Chỉ có cảnh báo brute-force tổng hợp mới được gửi, để một lần gõ sai mật khẩu không làm phiền operator. Tuy nhiên, bản ghi journal từ `pamsignal` vẫn được ghi cho mỗi lần thất bại riêng lẻ.
 
 Dòng `[CRIT]` là cảnh báo login-after-failures: một lần đăng nhập đã **thành công** từ một IP vừa thất bại `failures` lần, đúng với hình ảnh của một mật khẩu bị đoán trúng. Cảnh báo này được gửi thêm bên cạnh dòng `auth.login_success` thông thường, và vẫn bắn kể cả với `trusted_sources`; các lần lặp lại cho cùng một IP được giãn cách theo `alert_cooldown_sec`. Xem [Configuration → Phát hiện đăng nhập thành công sau nhiều lần thất bại](./configuration.md#phát-hiện-đăng-nhập-thành-công-sau-nhiều-lần-thất-bại).
 
@@ -52,7 +52,7 @@ Dòng `[CRIT]` là cảnh báo login-after-failures: một lần đăng nhập �
 
 ### Định dạng pretty
 
-Đặt `message_style = pretty` để thay dòng đơn ở trên bằng một tin nhắn nhiều dòng: một dòng tiêu đề, rồi mỗi trường một dòng với nhãn in đậm và giá trị dạng monospace. Các trường vẫn như cũ; chỉ cách trình bày thay đổi. Những gì từng nền tảng nhận được:
+Đặt `message_style = pretty` để thay dòng đơn ở trên bằng một tin nhắn nhiều dòng: một dòng tiêu đề, rồi mỗi trường một dòng với nhãn in đậm và giá trị dạng monospace. Dòng tiêu đề thay cho nhãn severity và tên action, còn các dòng của từng sự kiện được liệt kê trong bảng bên dưới. Những gì từng nền tảng nhận được:
 
 ```text
 Telegram (HTML parse mode)
@@ -76,7 +76,7 @@ Discord / Teams
 
 | Tiêu đề | Sự kiện | Các dòng |
 |---|---|---|
-| ✅ Login success / ❌ Login failed | `login_success`, `login_failure` | Host, User, Source, Auth, PID, Time |
+| ✅ Login success / ❌ Login failed | `login_success`, `login_failure` | Host, User, Source (chỉ với đăng nhập từ xa), Auth, PID, Time |
 | 🔓 Session opened / 🔒 Session closed | `session_opened`, `session_closed` | Host, User, Actor (nếu có), Service, PID, Time |
 | 🚨 Brute force detected | `brute_force_detected` (từ xa) | Host, Source, User, Attempts, Time |
 | 🚨 Brute force detected (local) | `brute_force_detected` (sudo/su) | Host, Actor, Target, Service, Attempts, Time |
@@ -109,17 +109,17 @@ Kiểm tra UTF-8 này cũng áp dụng cho JSON của custom webhook: một byte
 
 ### Telegram
 
-Gửi qua [Bot API `sendMessage`](https://core.telegram.org/bots/api#sendmessage). Plain text với kiểu compact; HTML parse mode với kiểu pretty.
+Gửi qua [Bot API `sendMessage`](https://core.telegram.org/bots/api#sendmessage) với `parse_mode` là `HTML` ở cả hai kiểu: dòng compact được bọc trong `<code>`, tin nhắn pretty dùng `<b>` và `<code>`.
 
 **Cài đặt:**
 1. Tạo bot với [@BotFather](https://t.me/BotFather) và sao chép token
 2. Thêm bot vào group/channel của bạn
 3. Lấy chat ID (gửi một tin nhắn, sau đó kiểm tra `https://api.telegram.org/bot<token>/getUpdates`)
-4. Đặt `telegram_bot_token` và `telegram_chat_id` trong `pamsignal.conf`
+4. Đặt `telegram_bot_token` và `telegram_chat_id` trong `pamsignal.conf`. Token phải có dạng `<chữ số>:<ít nhất 20 ký tự A-Z a-z 0-9 _ ->`; chat ID là một số (âm với group) hoặc `@channelusername`. Cả hai đều được kiểm tra khi load config.
 
 ### Slack
 
-Gửi dưới dạng tin nhắn một dòng qua [incoming webhook](https://api.slack.com/messaging/webhooks). Cùng định dạng văn bản chat.
+Gửi trong trường `text` qua [incoming webhook](https://api.slack.com/messaging/webhooks): dòng compact bọc trong backtick, hoặc tin nhắn pretty theo Slack mrkdwn.
 
 **Cài đặt:**
 1. Vào [Slack App Directory](https://api.slack.com/apps) và tạo một app
@@ -128,7 +128,7 @@ Gửi dưới dạng tin nhắn một dòng qua [incoming webhook](https://api.s
 
 ### Microsoft Teams
 
-Gửi dưới dạng plain text qua [incoming webhook connector](https://learn.microsoft.com/en-us/microsoftteams/platform/webhooks-and-connectors/how-to/add-incoming-webhook).
+Gửi trong trường `text` (dòng compact bọc trong backtick, hoặc tin nhắn pretty dạng markdown) qua [incoming webhook connector](https://learn.microsoft.com/en-us/microsoftteams/platform/webhooks-and-connectors/how-to/add-incoming-webhook).
 
 **Cài đặt:**
 1. Trong Teams channel của bạn, vào **Channel settings > Connectors > Incoming Webhook**
@@ -136,18 +136,18 @@ Gửi dưới dạng plain text qua [incoming webhook connector](https://learn.m
 
 ### WhatsApp
 
-Gửi dưới dạng plain text qua [Meta WhatsApp Cloud API](https://developers.facebook.com/docs/whatsapp/cloud-api).
+Gửi dưới dạng tin nhắn `text` qua [Meta WhatsApp Cloud API](https://developers.facebook.com/docs/whatsapp/cloud-api) (`POST https://graph.facebook.com/v21.0/<phone_number_id>/messages`, token được gửi dưới dạng Bearer header).
 
 **Cài đặt:**
 1. Tạo [Meta Business app](https://developers.facebook.com/apps/) và thêm WhatsApp
 2. Lấy **Phone Number ID** và tạo **permanent access token**
-3. Đặt `whatsapp_access_token`, `whatsapp_phone_number_id` và `whatsapp_recipient` trong `pamsignal.conf`
+3. Đặt `whatsapp_access_token`, `whatsapp_phone_number_id` và `whatsapp_recipient` trong `pamsignal.conf`. Phone number ID và recipient chỉ được chứa chữ số (định dạng quốc tế, không có `+`).
 
 > **Lưu ý:** WhatsApp Cloud API yêu cầu tài khoản Meta Business đã xác minh cho mục đích sử dụng thực tế (production).
 
 ### Discord
 
-Gửi dưới dạng plain text qua [Discord webhook](https://support.discord.com/hc/en-us/articles/228383668-Intro-to-Webhooks).
+Gửi trong trường `content` qua [Discord webhook](https://support.discord.com/hc/en-us/articles/228383668-Intro-to-Webhooks), kèm `allowed_mentions` để không mention nào được resolve.
 
 **Cài đặt:**
 1. Trong Discord channel của bạn, vào **Settings > Integrations > Webhooks > New Webhook**
@@ -157,7 +157,7 @@ Gửi dưới dạng plain text qua [Discord webhook](https://support.discord.co
 
 Gửi dưới dạng request `POST` với `Content-Type: application/json`. Tuân theo ECS nên có thể đưa vào Elastic Stack, Wazuh, hoặc bất kỳ pipeline nào hỗ trợ ECS mà không cần remapping trường.
 
-> **Muốn xây dựng receiver của riêng bạn?** Tham khảo **[Node.js Express Webhook Example](examples/nodejs-webhook.md)** sẵn sàng triển khai! Nó minh họa cách xác thực, phân tích cú pháp ECS JSON payload, và định tuyến các sự kiện PAMSignal.
+> **Muốn xây dựng receiver của riêng bạn?** Xem các receiver sẵn sàng triển khai bằng **[Node.js](examples/nodejs-webhook.md)** và **[Python](examples/python-webhook.md)**. Chúng minh họa cách xác thực, phân tích cú pháp ECS JSON payload, và định tuyến các sự kiện PAMSignal.
 
 **Sự kiện đăng nhập:**
 
@@ -191,7 +191,7 @@ Gửi dưới dạng request `POST` với `Content-Type: application/json`. Tuâ
 
 *(Lưu ý: Object `labels` chỉ được đưa vào nếu bạn đã định nghĩa `provider` hoặc `service_name` trong `pamsignal.conf`)*
 
-**Sự kiện session** (không có `source.*` vì đây không phải sự kiện mạng):
+**Sự kiện session** (không có `source.*` vì đây không phải sự kiện mạng). `pamsignal.actor` chỉ có mặt ở `session_opened` khi biết được actor (xem [Định dạng văn bản chat](#định-dạng-văn-bản-chat)):
 
 ```json
 {
@@ -209,7 +209,7 @@ Gửi dưới dạng request `POST` với `Content-Type: application/json`. Tuâ
   "user": {"name": "root"},
   "service": {"name": "sudo"},
   "process": {"pid": 12345, "user": {"id": "0"}},
-  "pamsignal": {"event_type": "SESSION_OPEN"}
+  "pamsignal": {"event_type": "SESSION_OPEN", "actor": "alice"}
 }
 ```
 
@@ -265,13 +265,64 @@ Gửi dưới dạng request `POST` với `Content-Type: application/json`. Tuâ
 }
 ```
 
+**Đăng nhập sau nhiều lần thất bại**: một lần đăng nhập từ xa thành công ngay sau một chuỗi thất bại, `event.kind=alert`, `event.outcome=success`, severity 9. Không có `process.user.id`:
+
+```json
+{
+  "@timestamp": "2026-03-29T14:24:10+0000",
+  "event": {
+    "action": "login_after_failures",
+    "category": ["authentication", "intrusion_detection"],
+    "kind": "alert",
+    "outcome": "success",
+    "severity": 9,
+    "module": "pamsignal",
+    "dataset": "pamsignal.events"
+  },
+  "host": {"hostname": "web-01"},
+  "user": {"name": "root"},
+  "service": {"name": "sshd"},
+  "source": {"ip": "203.0.113.50", "port": 40112},
+  "process": {"pid": 12360},
+  "pamsignal": {
+    "event_type": "LOGIN_AFTER_FAILURES",
+    "auth_method": "password",
+    "failures": 7,
+    "window_sec": 300
+  }
+}
+```
+
+**Test alert** (chỉ với `pamsignal --test-alert`; không phải một phát hiện):
+
+```json
+{
+  "@timestamp": "2026-03-29T14:30:00+0000",
+  "event": {
+    "action": "test_alert",
+    "category": ["configuration"],
+    "kind": "event",
+    "outcome": "success",
+    "severity": 3,
+    "module": "pamsignal",
+    "dataset": "pamsignal.events"
+  },
+  "host": {"hostname": "web-01"},
+  "pamsignal": {"event_type": "TEST_ALERT"}
+}
+```
+
+Mọi payload đều có cùng object `labels` khi `provider` hoặc `service_name` được đặt.
+
 **Chi tiết HTTP:**
 
 | Thuộc tính | Giá trị |
 |----------|-------|
 | Method | `POST` |
 | Content-Type | `application/json` |
-| Response mong đợi | `2xx` (non-2xx được ghi log như cảnh báo) |
+| Scheme | Chỉ HTTPS: `webhook_url` phải bắt đầu bằng `https://`, và curl chạy với `--proto =https --proto-redir =https` |
+| Timeout | 10 giây (`--max-time 10`) |
+| Response | Không được kiểm tra. Việc gửi là fire-and-forget nên status non-2xx không được ghi log. `pamsignal --test-alert` thì có kiểm tra (curl `-f`) và báo từng kênh là `ok` hoặc `FAILED` |
 
 **Xác thực (tùy chọn):**
 
@@ -292,7 +343,7 @@ Các pattern phổ biến:
 | Datadog Logs | `DD-API-KEY: <key>` |
 | Wazuh API | `Authorization: Bearer <jwt>` |
 
-Giá trị header được truyền cho curl qua một curl `-K` config file backed bởi memfd, nên secret không bao giờ xuất hiện trong `argv`, `/proc/<pid>/cmdline`, hay bất kỳ danh sách tiến trình nào. Chỉ hỗ trợ một header; các giá trị chứa `\r`, `\n`, `"` hoặc `\` đều bị từ chối khi load config.
+Giá trị header được truyền cho curl qua một curl `-K` config file backed bởi memfd, nên secret không bao giờ xuất hiện trong `argv`, `/proc/<pid>/cmdline`, hay bất kỳ danh sách tiến trình nào. Chỉ hỗ trợ một header. Header phải có dạng `Name: value` và cần có `webhook_url`; giá trị chứa ký tự điều khiển (kể cả `\r` và `\n`), `"` hoặc `\` đều bị từ chối khi load config.
 
 **Mutual TLS (tùy chọn, nâng cao):**
 
@@ -311,53 +362,57 @@ mTLS kết hợp cộng thêm với `webhook_auth_header`. Các operator có rec
 **Yêu cầu vận hành:**
 
 - `webhook_client_cert` và `webhook_client_key` phải được đặt cùng nhau; đặt một cái mà không có cái kia là lỗi load config.
-- `webhook_client_key` không được phép đọc bởi group hoặc other. Layout khuyến nghị: `0640 root:pamsignal` (hoặc `0600 pamsignal:pamsignal` nếu daemon chạy unprivileged), tương tự như bảo vệ trên chính `pamsignal.conf`.
-- Cả ba đường dẫn đều được mở với `O_NOFOLLOW` (symlink bị từ chối) và phải là file thường thuộc sở hữu của `root` hoặc daemon user.
+- Cả ba key đều cần có `webhook_url`.
+- `webhook_client_key` không được phép đọc bởi group hoặc other (bất kỳ bit đọc nào của group hoặc other đều là lỗi load config), và curl chạy dưới daemon user, nên key phải thuộc sở hữu của user đó: dùng `0600 pamsignal:pamsignal` (hoặc `0400`). Key `0640 root:pamsignal` sẽ bị từ chối.
+- Cả ba đường dẫn đều được mở với `O_NOFOLLOW` (symlink bị từ chối) khi load config và phải tồn tại dưới dạng file thường thuộc sở hữu của `root` hoặc daemon user.
 - Các giá trị đường dẫn chứa `\r`, `\n`, `"` hoặc `\` đều bị từ chối khi load config.
 - Khóa mã hóa (protected bằng passphrase) không được hỗ trợ. Hãy dùng quyền filesystem, `systemd-creds`, hoặc mô hình secret injection của cert manager.
 - Đường dẫn cert/key được đưa qua cùng curl config backed bởi memfd như auth header, nên chúng cũng không xuất hiện trong `argv`, giúp process listing của alert child ở mức tối thiểu.
 
 ### Các loại sự kiện
 
-| `event.action` (ECS) | `pamsignal.event_type` (legacy) | Khi nào | Severity | Token `enable_notification_type` |
+| `event.action` (ECS) | `pamsignal.event_type` | Khi nào | Severity | Token `enable_notification_type` |
 |---|---|---|---|---|
 | `session_opened` | `SESSION_OPEN` | PAM session mở ra (sshd / sudo / su / login) | 3 (info) | `session_open` |
 | `session_closed` | `SESSION_CLOSE` | PAM session đóng lại | 3 (info) | `session_close` |
 | `login_success` | `LOGIN_SUCCESS` | Xác thực SSH thành công (mật khẩu, public key hoặc keyboard-interactive) | 4 (notice) | `login_success` |
-| `login_failure` | `LOGIN_FAILED` | Xác thực SSH thất bại | 5 (warning) | `login_failed` |
+| `login_failure` | `LOGIN_FAILED` | Xác thực SSH thất bại (mật khẩu hoặc keyboard-interactive), hoặc `login` trên console thất bại | 5 (warning) | `login_failed` |
 | `login_failure` (sudo/su) | `LOGIN_FAILED` | Thao tác sudo/su thất bại, **chỉ ghi journal** (không gửi cảnh báo chat theo từng sự kiện; được tính vào ngưỡng brute-force) | 5 (warning) | `login_failed` (chặn lọc riêng vẫn được áp dụng) |
 | `brute_force_detected` | `BRUTE_FORCE_DETECTED` | Số lần thất bại từ một IP **hoặc** từ một actor nội bộ (sudo/su) vượt ngưỡng trong cửa sổ thời gian | 8 (alert) | `brute_force` |
 | `login_after_failures` | `LOGIN_AFTER_FAILURES` | Một lần đăng nhập thành công từ IP có ít nhất `success_after_fail_threshold` lần thất bại gần đây: nhiều khả năng mật khẩu đã bị đoán trúng | 9 (critical) | `login_after_failures` |
 
-Cột cuối cùng là token cần liệt kê trong `enable_notification_type` để nhận loại sự kiện đó dưới dạng cảnh báo chat. Mặc định (`all`, hoặc bỏ qua key) bật mọi loại. Bộ lọc chỉ kiểm soát việc gửi chat; `journalctl -t pamsignal` ghi lại mọi sự kiện bất kể cài đặt. Xem [Configuration → Bộ lọc loại thông báo](./configuration.md#bộ-lọc-loại-thông-báo) để biết tham chiếu đầy đủ.
+Cột cuối cùng là token cần liệt kê trong `enable_notification_type` để nhận loại sự kiện đó dưới dạng cảnh báo chat. Mặc định (`all`, hoặc bỏ qua key) bật mọi loại. Bộ lọc kiểm soát cả việc gửi chat lẫn custom webhook; `journalctl -t pamsignal` ghi lại mọi sự kiện bất kể cài đặt. Xem [Configuration → Bộ lọc loại thông báo](./configuration.md#bộ-lọc-loại-thông-báo) để biết tham chiếu đầy đủ.
 
-`pamsignal --test-alert` gửi thêm một payload không phải là phát hiện: `event.action` = `test_alert`, `pamsignal.event_type` = `TEST_ALERT`, severity 3, chỉ gồm `@timestamp`, `event.*`, `host.hostname` và `labels` (nếu có). Receiver có thể bỏ qua hoặc dùng nó để kiểm tra kết nối.
+`pamsignal --test-alert` gửi thêm một payload không phải là phát hiện: `event.action` = `test_alert`, `event.category` = `["configuration"]`, `pamsignal.event_type` = `TEST_ALERT`, severity 3, chỉ gồm `@timestamp`, `event.*`, `host.hostname` và `labels` (nếu có) (xem ví dụ ở trên). Receiver có thể bỏ qua hoặc dùng nó để kiểm tra kết nối.
 
 ### Tham chiếu trường (ECS webhook JSON)
 
 | Đường dẫn | Kiểu | Có mặt trong | Mô tả |
 |---|---|---|---|
 | `@timestamp` | string | Tất cả | ISO 8601 với timezone offset |
-| `event.action` | string | Tất cả | Một trong các giá trị trong bảng trên |
-| `event.category` | array&lt;string&gt; | Tất cả | Luôn có `"authentication"`; session thêm `"session"`, brute-force và login-after-failures thêm `"intrusion_detection"` |
-| `event.kind` | string | Tất cả | `"event"` cho quan sát, `"alert"` cho brute-force và login-after-failures |
-| `event.outcome` | string | Tất cả | `"success"`, `"failure"` hoặc `"unknown"` |
+| `event.action` | string | Tất cả | Một trong các giá trị trong bảng trên, hoặc `test_alert` |
+| `event.category` | array&lt;string&gt; | Tất cả | `"authentication"` đứng đầu; session thêm `"session"`, brute-force và login-after-failures thêm `"intrusion_detection"`. Test alert chỉ có `"configuration"` |
+| `event.kind` | string | Tất cả | `"event"` cho quan sát và test alert, `"alert"` cho brute-force và login-after-failures |
+| `event.outcome` | string | Tất cả | `"success"`, `"failure"` hoặc `"unknown"` (brute-force) |
 | `event.severity` | integer | Tất cả | 3=info, 4=notice, 5=warning, 8=alert, 9=critical |
 | `event.module` | string | Tất cả | Luôn là `"pamsignal"` |
 | `event.dataset` | string | Tất cả | Luôn là `"pamsignal.events"` |
 | `host.hostname` | string | Tất cả | Hostname của server |
-| `user.name` | string | Tất cả | Tên người dùng từ thông điệp PAM |
-| `service.name` | string | Login/Session | PAM service: `sshd`, `sudo`, `su`, `login`, `other` |
-| `source.ip` | string | Login + Brute + Login-after-failures | Remote IP (được xác thực qua `inet_pton`) |
-| `source.port` | integer | Login + Login-after-failures | Remote port |
-| `process.pid` | integer | Tất cả | Process ID: sshd session đang chạy cho `login_success`/`session_opened`, auth child (đã kết thúc) cho các trường hợp thất bại và brute-force |
+| `user.name` | string | Tất cả trừ test alert | Tên người dùng từ thông điệp PAM; với brute-force nội bộ là actor |
+| `user.target.name` | string | Brute-force nội bộ | Tài khoản mà actor cố leo thang lên |
+| `service.name` | string | Login, session, brute-force nội bộ, login-after-failures | PAM service: `sshd`, `sudo`, `su`, `login`, `other` |
+| `source.ip` | string | Login + brute-force từ xa + login-after-failures | Remote IP (được xác thực qua `inet_pton`); chuỗi rỗng khi dòng log không có IP (ví dụ `login` nội bộ thất bại) |
+| `source.port` | integer | Login + Login-after-failures | Remote port (0 khi không rõ) |
+| `process.pid` | integer | Tất cả trừ test alert | Process ID: sshd session đang chạy cho `login_success`/`session_opened`, auth child (đã kết thúc) cho các trường hợp thất bại và brute-force |
 | `process.user.id` | string | Login/Session | UID của tiến trình được PAM xử lý |
-| `pamsignal.event_type` | string | Tất cả | Legacy uppercase enum (giữ để tương thích ngược cho đến v0.2.x; bỏ trong v0.3.0) |
+| `pamsignal.event_type` | string | Tất cả | Tên sự kiện viết hoa (`SESSION_OPEN`, `LOGIN_FAILED`, `BRUTE_FORCE_DETECTED`, `LOGIN_AFTER_FAILURES`, `TEST_ALERT`, ...). Vẫn được gửi trong mọi payload |
 | `pamsignal.actor` | string | Session opened (nếu có) | Tài khoản đã đăng nhập vào phiên mà `sudo`/`su` chạy từ đó, thường là người đã chạy lệnh (xem lưu ý về `su` ở phần định dạng văn bản chat phía trên). `user.name` vẫn là user của session. Không có mặt khi trùng với `user.name` (một lần đăng nhập SSH), với đăng nhập console (`LOGIN`), hoặc khi pam_unix không ghi tên |
 | `pamsignal.auth_method` | string | Login + Login-after-failures | `password`, `publickey`, `keyboard-interactive` hoặc `unknown` |
 | `pamsignal.attempts` | integer | Brute-force | Số lần thất bại đã vượt ngưỡng |
 | `pamsignal.failures` | integer | Login-after-failures | Độ dài chuỗi lần thất bại xảy ra ngay trước lần đăng nhập thành công |
 | `pamsignal.window_sec` | integer | Brute-force + Login-after-failures | Cửa sổ thời gian đã cấu hình |
+| `labels.provider` | string | Tất cả, khi được đặt | Giá trị config `provider` |
+| `labels.service_name` | string | Tất cả, khi được đặt | Giá trị config `service_name` |
 
 ### Tương thích SIEM
 
@@ -383,16 +438,19 @@ Cần một bước mapping một lần (Vector / Logstash / Filebeat processor,
 Hầu hết SIEM production không nhận webhook trực tiếp. Luồng thông thường là:
 
 ```
-pamsignal --HTTP--> ingest layer (Vector / Fluent Bit / Logstash) --> SIEM
+pamsignal --HTTPS--> ingest layer (Vector / Fluent Bit / Logstash) --> SIEM
 ```
 
-Ví dụ cấu hình Vector nhận từ pamsignal và chuyển tiếp đến Elastic:
+pamsignal chỉ gửi tới URL `https://`, nên ingest layer phải terminate TLS bằng một certificate mà curl tin cậy (trust store của hệ thống, hoặc `webhook_ca_bundle`). Ví dụ cấu hình Vector nhận từ pamsignal và chuyển tiếp đến Elastic:
 
 ```toml
 [sources.pamsignal]
 type = "http_server"
-address = "0.0.0.0:8080"
+address = "0.0.0.0:8443"
 encoding = "json"
+tls.enabled = true
+tls.crt_file = "/etc/vector/tls/server.crt"
+tls.key_file = "/etc/vector/tls/server.key"
 
 [sinks.elastic]
 type = "elasticsearch"
@@ -409,7 +467,7 @@ Xem [Architecture: Alert isolation model](./architecture.md#mô-hình-cô-lập-
 
 1. Sự kiện **luôn được ghi vào journal trước** (bản ghi cốt lõi được lưu trữ)
 2. Tiến trình cha `fork()` một tiến trình con
-3. Tiến trình con `exec("curl", ...)` gửi HTTP request
+3. Tiến trình con `execv("/usr/bin/curl", ...)` gửi HTTPS request
 4. Tiến trình cha tiếp tục event loop ngay lập tức mà không chờ đợi
 5. Nếu tiến trình con bị crash hoặc mạng bị ngắt, tiến trình cha không bị ảnh hưởng
 6. Không có HTTP library nào tồn tại trong tiến trình cha

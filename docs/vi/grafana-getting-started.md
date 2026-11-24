@@ -157,7 +157,7 @@ Trên máy trung tâm/giám sát, một `docker-compose.yml` tối giản nhưng
 ```yaml
 services:
   loki:
-    image: grafana/loki:3.2.0          # kiểm tra tag stable mới nhất
+    image: grafana/loki:3.3.0          # kiểm tra tag stable mới nhất
     command: -config.file=/etc/loki/local-config.yaml
     ports: ["3100:3100"]
     volumes:
@@ -165,7 +165,7 @@ services:
     restart: unless-stopped
 
   grafana:
-    image: grafana/grafana:11.3.0
+    image: grafana/grafana:11.4.0
     ports: ["3000:3000"]
     environment:
       - GF_SECURITY_ADMIN_PASSWORD=change-me-now   # đặt một password thật vào
@@ -182,7 +182,7 @@ volumes:
 docker compose up -d
 ```
 
-Image Loki đã kèm sẵn một config mặc định chạy được, nên cụm này lên ngay. Muốn retention thật (mặc định giữ rất ít), hãy chỉnh lại từ file [`examples/grafana/config/loki-config.yml`](../../examples/grafana/) đi kèm. Nó đặt retention 7 ngày mà bạn có thể nâng lên cho mục đích audit/compliance. Mount nó vào rồi đổi `command:` để trỏ tới nó.
+Image Loki đã kèm sẵn một config mặc định chạy được, nên cụm này lên ngay. Config mặc định không áp dụng retention nào, nên muốn có một khoảng retention rõ ràng, hãy chỉnh lại từ file [`examples/grafana/config/loki-config.yml`](../../examples/grafana/) đi kèm. Nó đặt retention 7 ngày mà bạn có thể nâng lên cho mục đích audit/compliance. Mount nó vào rồi đổi `command:` để trỏ tới nó.
 
 > **Bảo mật, bắt buộc khi tự host:** đừng bao giờ phơi Grafana ra internet với anonymous access hay password mặc định. Hãy đặt nó sau VPN/bastion, hoặc sau một reverse proxy có TLS và đăng nhập đàng hoàng. Stack thử-tại-chỗ đi kèm dùng anonymous admin *chỉ vì* nó chạy local và dùng xong là bỏ.
 
@@ -222,13 +222,13 @@ Rồi kiểm chứng từ đầu tới cuối trong Grafana: mở **Explore**, c
 
 Có dòng hiện ra là pipeline đã thông. Nếu không, bảng xử lý sự cố trong [`examples/grafana.md`](examples/grafana.md#xử-lý-sự-cố) đi qua từng kiểu lỗi (hay gặp nhất: thiếu group `systemd-journal`, hoặc lệch tên label).
 
-Bên dưới, Alloy promote đúng **bốn** trường low-cardinality lên thành label của Loki (`app`, `host`, `service`, `event_action`) và để mọi thứ còn lại (source IP, username, port, PID…) nằm trong phần body JSON, parse lúc query. Nhờ vậy Loki vẫn nhanh kể cả với hàng nghìn host; *vì sao* thì xem [kế hoạch label cardinality](grafana-integration.md#kế-hoạch-label-cardinality).
+Bên dưới, Alloy promote đúng **bốn** trường low-cardinality lên thành label của Loki (`app`, `host`, `service`, `event_action`; `alloy.river` còn thêm một label tĩnh `job="pamsignal"`) và để mọi thứ còn lại (source IP, username, port, PID…) nằm trong phần body JSON, parse lúc query. Nhờ vậy Loki vẫn nhanh kể cả với hàng nghìn host; *vì sao* thì xem [kế hoạch label cardinality](grafana-integration.md#kế-hoạch-label-cardinality).
 
 ---
 
 ## Đọc dashboard của bạn
 
-Đây mới là phần thực sự quan trọng. Một dashboard mà bạn không hiểu thì chỉ là mấy cái đèn nhấp nháy. Dashboard đi kèm có ba hàng, từ trên xuống: một cái **nhìn lướt** (có gì đang cháy không?), **trends** (có đang tệ đi không?), và **drill-down** (cụ thể là ai?).
+Đây mới là phần thực sự quan trọng. Một dashboard mà bạn không hiểu thì chỉ là mấy cái đèn nhấp nháy. Dashboard đi kèm có mười hai panel chia thành ba dải, từ trên xuống: một cái **nhìn lướt** (có gì đang cháy không?), **trends** (có đang tệ đi không?), và **drill-down** (cụ thể là ai?).
 
 Với mỗi panel dưới đây: **hiển thị gì · bình thường là gì · đáng lo là gì · cần làm gì.**
 
@@ -236,9 +236,9 @@ Với mỗi panel dưới đây: **hiển thị gì · bình thường là gì �
 
 ### Row 1: Fleet pulse (nhìn trong 5 giây)
 
-Năm con số lớn, tô màu theo trạng thái. Hàng này trả lời câu hỏi "tôi có cần nhìn kỹ hơn không?"
+Bốn stat panel, tô màu theo trạng thái. Hàng này trả lời câu hỏi "tôi có cần nhìn kỹ hơn không?"
 
-**① Hosts reporting (1h qua)**
+**① Hosts reporting (1h)**
 - *Hiển thị:* có bao nhiêu host khác nhau đã gửi sự kiện trong 1 giờ qua, tức nhịp tim của fleet.
 - *Bình thường:* bằng đúng số host trong fleet.
 - *Đáng lo:* **thấp hơn số host của bạn.** Một host biến mất nghĩa là PAMSignal đã dừng, Alloy đã dừng, hoặc máy đã sập.
@@ -256,74 +256,68 @@ Năm con số lớn, tô màu theo trạng thái. Hàng này trả lời câu h�
 - *Đáng lo:* một cú leo dốc, hoặc thất bại trên những host lẽ ra không phơi ra ngoài.
 - *Cần làm:* xem bảng **top source IP** và **top username bị nhắm** bên dưới.
 
-**④ Brute-force alerts (trong khoảng thời gian)**, đỏ khi > 0
-- *Hiển thị:* ngưỡng brute-force của PAMSignal đã bị vượt bao nhiêu lần.
-- *Bình thường:* **0.** PAMSignal chỉ phát cái này sau khi đã đếm vượt `fail_threshold` của bạn, nên nó không phải tín hiệu rác.
-- *Đáng lo:* **bất cứ con số nào trên 0.** Đây là con số duy nhất trên bảng mà bạn coi là thật mỗi khi nó xuất hiện.
-- *Cần làm:* xem **Recent brute-force alerts**; nếu bạn chạy [Fail2ban](examples/fail2ban.md), các IP vi phạm có lẽ đã bị ban rồi.
-
-**⑤ Privilege escalations (sudo/su, trong khoảng thời gian)**
-- *Hiển thị:* số phiên `sudo`/`su` mở thành công trên cả fleet.
-- *Bình thường:* khớp với hoạt động admin và automation đã biết của bạn.
-- *Đáng lo:* leo thang quyền bởi các tài khoản lẽ ra không leo thang, hoặc trên host mà lúc này không ai nên đụng vào.
-- *Cần làm:* chuyển sang live log stream, lọc theo `service="sudo"`.
+**④ Detections (trong khoảng thời gian)**, đỏ khi > 0
+- *Hiển thị:* hai con số. **Brute force** đếm các mục `brute_force_detected`: PAMSignal thấy `fail_threshold` lần thất bại trong `fail_window_sec` từ một IP (hoặc, với sudo/su, từ một user nội bộ). **Login after failures** đếm các mục `login_after_failures`: một lần đăng nhập *thành công* từ một IP vừa thất bại `success_after_fail_threshold` lần trở lên.
+- *Bình thường:* **0** cho cả hai. PAMSignal chỉ ghi các mục này sau khi bộ đếm của chính nó vượt ngưỡng, nên chúng không phải tín hiệu rác.
+- *Đáng lo:* **bất cứ con số nào trên 0.** Login after failures là con số tệ nhất trên bảng: đó là dấu hiệu của một password bị đoán trúng, và `trusted_sources` không che được nó.
+- *Cần làm:* mở **Recent detections** (⑩). Với login after failures, hãy coi tài khoản đó đã bị chiếm cho tới khi bạn kiểm tra xong. Với brute force, nếu bạn chạy [Fail2ban](examples/fail2ban.md), các IP vi phạm có lẽ đã bị ban rồi.
 
 ### Row 2: Trends (có đang tệ đi không?)
 
 Ba biểu đồ time-series. Một con số cho biết *hiện tại*; một xu hướng cho biết *chiều hướng*.
 
-**⑥ Login attempts/min, xếp chồng theo outcome (success vs failure)**
-- *Cách đọc:* tỉ lệ quan trọng hơn độ cao. Một mảng đỏ kín đặc (failure) với chút xanh (success) là một chiến dịch đang nã vào bạn mà không ăn thua. Thường thì ổn, nhưng cứ để mắt. Đỏ chuyển sang xanh mới là bước ngoặt nguy hiểm: có người bắt đầu vào được.
-- *Cần làm:* nếu màu xanh xuất hiện từ một IP lạ ngay giữa một đợt đỏ, hãy coi đó là khả năng bị xâm nhập và nhảy ngay tới bảng source-IP và live stream.
+**⑤ Login attempts/min by outcome (success vs failure)**
+- *Cách đọc:* tỉ lệ quan trọng hơn độ cao. Một mảng cam kín đặc (failure) với chút xanh (success) là một chiến dịch đang nã vào bạn mà không ăn thua. Thường thì ổn, nhưng cứ để mắt. Màu xanh xuất hiện giữa một đợt cam mới là bước ngoặt nguy hiểm: có thể đã có người bắt đầu vào được.
+- *Cần làm:* PAMSignal tự đánh dấu trường hợp này là `login_after_failures` (panel ④). Nhảy ngay tới bảng source-IP và live stream.
 
-**⑦ Brute-force detections/min, xếp chồng theo service**
-- *Cách đọc:* service nào đang chịu áp lực: `sshd` (từ xa) so với `sudo`/`su` (actor nội bộ). Đỉnh nhọn từ xa là internet; đỉnh nhọn nội bộ nghĩa là có người *đã ở sẵn trên một host* và đang liên tục thử leo thang quyền.
-- *Cần làm:* brute-force từ actor nội bộ là tín hiệu nghiêm trọng hơn; hãy điều tra các phiên đang hoạt động trên host đó.
+**⑥ Detections by type**
+- *Cách đọc:* `brute_force_detected` (cam) và `login_after_failures` (đỏ) mỗi phút. Cột cam là các cuộc tấn công đang bị phát hiện; bất kỳ cột đỏ nào là một cuộc tấn công có thể đã thành công. Chuỗi được tách theo loại sự kiện chứ không theo service, vì mục brute-force từ xa không mang trường service.
+- *Cần làm:* rê chuột lên một cột để xem thời điểm, rồi đọc các dòng tương ứng trong **Recent detections**. Một dòng brute-force ghi `actor=` và `target=` thay vì `ip=` là brute force sudo/su nội bộ: có người *đã ở sẵn trên một host* và đang liên tục thử leo thang quyền, đây là trường hợp nghiêm trọng hơn.
 
-**⑧ Events/min per host, stacked area, top 10 host**
+**⑦ Events per host (top 10)**
 - *Cách đọc:* tìm con số lệch hẳn ra. Một host bỗng nhiên áp đảo cả biểu đồ thì hoặc đang bị tấn công, hoặc bị cấu hình sai (một service ồn ào làm ngập sự kiện).
 - *Cần làm:* dùng biến `$host` để tách riêng nó ra.
 
 ### Row 3: Drill-down (chính xác là ai?)
 
-Các bảng và một luồng log trực tiếp. Đây là nơi bạn đi từ "có gì đó không ổn" tới "đúng IP này, user này, host này".
+Các bảng và panel log. Đây là nơi bạn đi từ "có gì đó không ổn" tới "đúng IP này, user này, host này".
 
-**⑨ Top 10 source IP theo số lần đăng nhập thất bại**
-- *Dùng để:* lên danh sách rút gọn các IP cần chặn. Kẻ vi phạm dai dẳng ở đây là ứng viên tốt cho `ignoreip`/ban; còn một IP *tin cậy* mà lại nhiều thất bại thường là do một script hỏng hay credential hết hạn, chứ không phải tấn công.
+**⑧ Top source IPs by failed logins (ssh)**
+- *Dùng để:* lên danh sách rút gọn các IP cần chặn. Kẻ vi phạm dai dẳng ở đây là ứng viên tốt để ban; còn một IP *tin cậy* mà lại nhiều thất bại thường là do một script hỏng hay credential hết hạn, chứ không phải tấn công.
 
-**⑩ Top 10 username bị nhắm**
+**⑨ Top attacked usernames**
 - *Dùng để:* kiểm tra trực giác. `root`, `admin`, `test`, `oracle`, `ubuntu` áp đảo là hành vi bot kinh điển, chuyện bình thường. Một username *thật, hợp lệ* mà bạn đang dùng lại xuất hiện ở đây thì nghĩa là có người biết tài khoản của bạn; đó là kiểu tấn công có nhắm.
 
-**⑪ Recent brute-force alerts**
-- *Dùng để:* bảng sự cố: thời gian, IP-hoặc-actor, attempts, window, service, host. Đây là điểm dừng đầu tiên khi panel ④ sáng đèn.
+**⑩ Recent detections**
+- *Dùng để:* danh sách sự cố. Mỗi dòng là `host=<host>` theo sau là message gốc của PAMSignal, ví dụ `BRUTE_FORCE_DETECTED ip=... attempts=... window=...s user=...`, `BRUTE_FORCE_DETECTED actor=... target=... service=sudo ...`, hoặc `LOGIN_AFTER_FAILURES ip=... user=... failures=... window=...s auth=...`. Đây là điểm dừng đầu tiên khi panel ④ sáng đèn.
 
-**⑫ Recent successful root logins qua SSH**
-- *Dùng để:* panel có tín hiệu mạnh nhất trên bảng. Nếu bạn đã làm theo [hardening SSH](ssh-hardening.md) và đặt `PermitRootLogin no`, **bảng này phải trống.** Có dòng nào ở đây nghĩa là một lần đăng nhập root trực tiếp qua SSH mà hardening của bạn lẽ ra phải chặn. Điều tra ngay.
+**⑪ Recent successful root logins (ssh)**
+- *Dùng để:* nếu bạn đã làm theo [hardening SSH](ssh-hardening.md) và đặt `PermitRootLogin no`, **panel này phải trống.** Có dòng nào ở đây nghĩa là một lần đăng nhập root trực tiếp qua SSH mà hardening của bạn lẽ ra phải chặn. Điều tra ngay.
 
-**⑬ Live log stream**
+**⑫ Live event stream**
 - *Dùng để:* luồng PAMSignal thô, lọc theo những gì các biến của dashboard đang đặt. Là "tail -f cho cả fleet" của bạn.
 
 ### Lọc: các biến của dashboard
 
-Trên đầu dashboard, ba dropdown (mặc định "All") scope mọi panel cùng lúc:
+Trên đầu dashboard, ba dropdown (mặc định "All") scope các panel cùng lúc:
 
 - **`$host`**: một server, hoặc một nhóm con (rất hợp cho góc nhìn theo từng khách hàng; xem [Use Cases](use-cases.md#hosting-provider-nhỏ--msp)).
 - **`$service`**: `sshd`, `sudo`, `su`, `login`, `other`.
-- **`$action`**: `login_success`, `login_failure`, `brute_force_detected`, …
+- **`$action`**: `session_opened`, `session_closed`, `login_success`, `login_failure`, `brute_force_detected`, `login_after_failures`.
 
-Khoảng thời gian mặc định là **6h gần nhất**; chọn nhanh 1h / 6h / 24h / 7d / 30d. Vừa dựng stack lên? Rút xuống **5m gần nhất** kẻo các panel trông trống trơn.
+Khoảng thời gian mặc định là **6h gần nhất**; chọn nhanh 5m / 15m / 1h / 6h / 12h / 24h / 7d / 30d. Vừa dựng stack lên? Rút xuống **5m gần nhất** kẻo các panel trông trống trơn.
 
 ### Hai ví dụ đọc bảng
 
-**Một chiều thứ Sáu yên ả, nhìn lướt qua:** *Hosts reporting* = đúng số host (xanh). *Successful logins* khớp với đội của bạn. *Failed logins* chỉ rì rầm mức nền như mọi khi. *Brute-force alerts* = **0**. *Privilege escalations* khớp với công việc admin đã biết. Các trend phẳng lì. Chẳng có gì để làm, đóng tab thôi.
+**Một chiều thứ Sáu yên ả, nhìn lướt qua:** *Hosts reporting* = đúng số host (xanh). *Successful logins* khớp với đội của bạn. *Failed logins* chỉ rì rầm mức nền như mọi khi. *Detections* = **0** và **0**. Các trend phẳng lì. Chẳng có gì để làm, đóng tab thôi.
 
-**Một host đang bị tấn công:** *Failed logins* leo nhanh, *brute-force alerts* > 0 (đỏ), panel ⑦ nhọn lên ở `sshd`. Bạn mở **Recent brute-force alerts**, thấy một IP với hơn 40 attempts, xác nhận nó đã nằm trong danh sách ban của Fail2ban, rồi liếc qua **⑫** để chắc không có lần đăng nhập root nào lọt qua. Ba panel, một phút, đủ cả bức tranh.
+**Một host đang bị tấn công:** *Failed logins* leo nhanh, *Detections* cho thấy brute force > 0 (đỏ), panel ⑥ có các cột cam. Bạn mở **Recent detections**, thấy một IP với hơn 40 attempts, xác nhận nó đã nằm trong danh sách ban của Fail2ban, rồi kiểm tra *login after failures* vẫn là **0** và **⑪** vẫn trống, tức không ai vào được. Ba panel, một phút, đủ cả bức tranh.
 
 ---
 
 ## Alerts: nhận cảnh báo từ Grafana
 
-Phần tích hợp đi kèm bốn alert rule kiểu Grafana-native ([`examples/grafana/alerts.yaml`](../../examples/grafana/)):
+Phần tích hợp đi kèm năm alert rule kiểu Grafana-native ([`examples/grafana/alerts.yaml`](../../examples/grafana/)):
 
 | # | Bắn khi | Mức độ | Vì sao đáng tin |
 |---|---|---|---|
@@ -331,6 +325,7 @@ Phần tích hợp đi kèm bốn alert rule kiểu Grafana-native ([`examples/g
 | 2 | Đăng nhập **root** thành công qua SSH | high | Đúng kiểu sự kiện "bạn nên quan tâm" |
 | 3 | ≥10 lần đăng nhập thất bại từ một IP trong 5 phút | high | Lưới an toàn nếu bạn để `fail_threshold` rất cao |
 | 4 | Một host ngừng báo cáo quá 10 phút | medium | Nhịp tim: daemon chết hoặc host offline |
+| 5 | Bất kỳ `login_after_failures` nào | critical | Một nguồn thất bại liên tục rồi vào được: có thể đã bị xâm nhập |
 
 Sau khi import, gắn mỗi rule vào một **contact point** (Slack, Telegram, PagerDuty, email…). Từng bước: [`examples/grafana.md`](examples/grafana.md#5-cấu-hình-alert).
 
@@ -361,6 +356,6 @@ Sau khi import, gắn mỗi rule vào một **contact point** (Slack, Telegram, 
 
 - **[`examples/grafana.md`](examples/grafana.md)**: deploy production, `alloy.river`, `verify.sh`, xử lý sự cố đầy đủ
 - **[Grafana Integration: Design](grafana-integration.md)**: schema, kế hoạch label-cardinality, mẫu LogQL, lý do chọn từng panel
-- **[Bảo mật SSH & Quản lý Fleet](ssh-hardening.md)**: hardening các cánh cửa mà dashboard này canh chừng (và vì sao panel ⑫ nên luôn trống)
+- **[Bảo mật SSH & Quản lý Fleet](ssh-hardening.md)**: hardening các cánh cửa mà dashboard này canh chừng (và vì sao panel ⑪ nên luôn trống)
 - **[Use Cases](use-cases.md)**: Grafana multi-tenant cho hosting provider, và cắm PAMSignal vào một SIEM có sẵn
 - **[Alerts](alerts.md)**: các định dạng chat/webhook (ECS) của chính PAMSignal chảy vào pipeline này
