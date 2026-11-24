@@ -1,0 +1,4 @@
+# Shell scripts run on Linux. Keep them LF in every checkout, including
+# Windows with core.autocrlf=true, where CRLF breaks bash ("$'\r': command
+# not found") when the script is run from WSL or copied to a server.
+*.sh text eol=lf

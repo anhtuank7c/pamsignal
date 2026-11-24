@@ -13,6 +13,7 @@
 - [x] **Architecture diagrams are now draw.io SVGs instead of Mermaid.** `docs/architecture.md` (EN + VI) shows three diagrams from `docs/diagrams/`: `architecture.drawio.svg` (components, trust boundary, one event numbered from login attempt to chat alert), `event-flow.drawio.svg` (sequence diagram: parse, `_EXE` check, journal write, per-event alert, fork+exec curl, brute-force and login-after-failures trackers) and `lifecycle.drawio.svg` (startup order, watchdog, SIGHUP reload, shutdown). They replace the three C4 Mermaid diagrams, the ASCII data flow and the alert-isolation graph, which GitHub rendered cramped. Each SVG is the image and its own editable source, scales sharply at any size, and has a white background for dark mode. The C4 component descriptions moved into a module table. `docs/development.md` (EN + VI) gains an "Editing the diagrams" section with the export settings.
 
 ### Tooling
+- [x] **`.gitattributes` keeps `*.sh` LF in every checkout.** With `core.autocrlf=true` on Windows, shell scripts were checked out with CRLF and failed under bash (WSL, or when copied to a server).
 - [x] **Removed the automatic Claude Code review workflow** (`.github/workflows/claude-code-review.yml`). It ran on every pull request but, with read-only PR permissions, could not post its findings, so a green check said nothing about the code. Reviews are now run on demand instead. The `@claude` mention workflow (`claude.yml`) is unchanged.
 
 ### Security
