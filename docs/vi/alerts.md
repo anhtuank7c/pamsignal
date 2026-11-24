@@ -131,6 +131,8 @@ Gửi trong trường `text` qua [incoming webhook](https://api.slack.com/messag
 
 Gửi dưới dạng một [Adaptive Card](https://adaptivecards.io/) tới webhook **Workflows** của Teams. Microsoft đã ngừng hỗ trợ các webhook Office 365 connector (`https://<tenant>.webhook.office.com/...`), nên URL connector không còn gửi được gì; hãy tạo một webhook Workflows thay thế.
 
+> **Chưa được kiểm thử trên một Teams tenant thật.** Định dạng card đã có unit test, nhưng chưa có alert nào được gửi tới một webhook Workflows thật. Nếu bạn chạy thử, hãy báo kết quả (chạy được, hoặc lỗi mà Teams trả về) trong một issue.
+
 Với `message_style = pretty`, card chứa tin nhắn pretty (tiêu đề và nhãn in đậm, giá trị dạng monospace); nếu không, card chứa dòng compact bằng font monospace. Request body cho một alert compact:
 
 ```json
