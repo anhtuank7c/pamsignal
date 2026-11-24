@@ -189,6 +189,25 @@ static void test_format_event_json_session_open(void **state) {
     assert_non_null(strstr(buf, "\"user\":{\"name\":\"bob\"}"));
     // Session events have no source.ip
     assert_null(strstr(buf, "\"source\""));
+    // No actor parsed → no pamsignal.actor key.
+    assert_null(strstr(buf, "\"actor\""));
+}
+
+static void test_format_event_json_session_actor(void **state) {
+    (void)state;
+    ps_config_t cfg;
+    make_cfg_default(&cfg);
+    ps_pam_event_t e = make_session_open();
+    e.service = PS_SERVICE_SUDO;
+    strncpy(e.username, "root", sizeof(e.username) - 1);
+    strncpy(e.actor, "ad\"min", sizeof(e.actor) - 1);
+
+    char buf[2048];
+    format_event_json(&cfg, &e, buf, sizeof(buf));
+
+    assert_non_null(strstr(buf, "\"user\":{\"name\":\"root\"}"));
+    assert_non_null(strstr(buf, "\"pamsignal\":{\"event_type\":\"SESSION_"
+                                "OPEN\",\"actor\":\"ad\\\"min\"}"));
 }
 
 static void test_format_event_json_with_provider(void **state) {
@@ -392,6 +411,22 @@ static void test_format_event_text_session_open(void **state) {
     assert_non_null(strstr(buf, "host=dbserver"));
     // Session text should NOT have src= field
     assert_null(strstr(buf, "src="));
+    assert_null(strstr(buf, "actor="));
+}
+
+static void test_format_event_text_session_actor(void **state) {
+    (void)state;
+    ps_config_t cfg;
+    make_cfg_default(&cfg);
+    ps_pam_event_t e = make_session_open();
+    e.service = PS_SERVICE_SUDO;
+    strncpy(e.username, "root", sizeof(e.username) - 1);
+    strncpy(e.actor, "tuan", sizeof(e.actor) - 1);
+
+    char buf[1024];
+    format_event_text(&cfg, &e, buf, sizeof(buf));
+
+    assert_non_null(strstr(buf, "user=root actor=tuan host=dbserver"));
 }
 
 static void test_format_event_text_with_context(void **state) {
@@ -484,6 +519,31 @@ static void test_pretty_event_rows(void **state) {
     assert_string_equal(m.rows[6].value, "aws");
     assert_string_equal(m.rows[7].label, "Service name");
     assert_int_equal(m.row_count, 8);
+}
+
+static void test_pretty_session_actor_row(void **state) {
+    (void)state;
+    ps_config_t cfg;
+    make_cfg_default(&cfg);
+    ps_pam_event_t e = make_session_open();
+    e.service = PS_SERVICE_SUDO;
+    strncpy(e.username, "root", sizeof(e.username) - 1);
+    strncpy(e.actor, "tuan", sizeof(e.actor) - 1);
+
+    ps_pretty_msg_t m;
+    build_pretty_event(&cfg, &e, &m);
+    assert_string_equal(m.rows[1].label, "User");
+    assert_string_equal(m.rows[1].value, "root");
+    assert_string_equal(m.rows[2].label, "Actor");
+    assert_string_equal(m.rows[2].value, "tuan");
+    assert_string_equal(m.rows[3].label, "Service");
+    assert_string_equal(m.rows[4].label, "PID");
+
+    // No actor → no row.
+    e.actor[0] = '\0';
+    build_pretty_event(&cfg, &e, &m);
+    for (int i = 0; i < m.row_count; i++)
+        assert_string_not_equal(m.rows[i].label, "Actor");
 }
 
 // "2026-03-29T14:23:01+0000" is shown as "2026-03-29 14:23:01 +0000".
@@ -1226,6 +1286,7 @@ int main(void) {
         cmocka_unit_test(test_format_event_json_login_failed),
         cmocka_unit_test(test_format_event_json_login_success),
         cmocka_unit_test(test_format_event_json_session_open),
+        cmocka_unit_test(test_format_event_json_session_actor),
         cmocka_unit_test(test_format_event_json_with_provider),
         cmocka_unit_test(test_format_event_json_with_service_name),
         cmocka_unit_test(test_format_event_json_with_both_labels),
@@ -1242,6 +1303,7 @@ int main(void) {
         // format_event_text
         cmocka_unit_test(test_format_event_text_login_failed),
         cmocka_unit_test(test_format_event_text_session_open),
+        cmocka_unit_test(test_format_event_text_session_actor),
         cmocka_unit_test(test_format_event_text_with_context),
         // Public API smoke tests
         cmocka_unit_test(test_notify_event_no_channels),
@@ -1249,6 +1311,7 @@ int main(void) {
         cmocka_unit_test(test_notify_local_brute_no_channels),
         cmocka_unit_test(test_format_json_labels_worst_case_not_truncated),
         cmocka_unit_test(test_pretty_event_rows),
+        cmocka_unit_test(test_pretty_session_actor_row),
         cmocka_unit_test(test_pretty_time_is_spaced),
         cmocka_unit_test(test_pretty_session_and_local_events_have_no_source),
         cmocka_unit_test(test_render_pretty_markup_per_platform),

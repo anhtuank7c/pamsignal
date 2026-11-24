@@ -67,6 +67,100 @@ static void test_parse_session_open_sudo(void **state) {
     assert_int_equal(event.type, PS_EVENT_SESSION_OPEN);
     assert_int_equal(event.service, PS_SERVICE_SUDO);
     assert_string_equal(event.username, "root");
+    assert_string_equal(event.actor, "admin");
+}
+
+// Current pam_unix format: both sides carry "(uid=N)".
+static void test_parse_session_open_actor_with_uids(void **state) {
+    (void)state;
+    ps_pam_event_t event;
+    int ret = ps_parse_message("pam_unix(sudo:session): session opened for "
+                               "user root(uid=0) by tuan(uid=1000)",
+                               &event);
+    assert_int_equal(ret, PS_OK);
+    assert_string_equal(event.username, "root");
+    assert_string_equal(event.actor, "tuan");
+}
+
+// sshd logs "by (uid=0)": no name, so no actor.
+static void test_parse_session_open_actor_unnamed(void **state) {
+    (void)state;
+    ps_pam_event_t event;
+    int ret = ps_parse_message("pam_unix(sshd:session): session opened for "
+                               "user alice(uid=1000) by (uid=0)",
+                               &event);
+    assert_int_equal(ret, PS_OK);
+    assert_string_equal(event.username, "alice");
+    assert_string_equal(event.actor, "");
+}
+
+// Real Ubuntu 24.04 lines: pam_unix names the login account, so alice's own
+// SSH login says "by alice" — not an actor; her sudo says "by alice" for
+// root — an actor.
+static void test_parse_session_open_actor_same_as_user_dropped(void **state) {
+    (void)state;
+    ps_pam_event_t event;
+    int ret = ps_parse_message("pam_unix(sshd:session): session opened for "
+                               "user alice(uid=1001) by alice(uid=0)",
+                               &event);
+    assert_int_equal(ret, PS_OK);
+    assert_string_equal(event.username, "alice");
+    assert_string_equal(event.actor, "");
+
+    ret = ps_parse_message("pam_unix(sudo:session): session opened for "
+                           "user root(uid=0) by alice(uid=1001)",
+                           &event);
+    assert_int_equal(ret, PS_OK);
+    assert_string_equal(event.username, "root");
+    assert_string_equal(event.actor, "alice");
+}
+
+static void test_parse_session_open_no_by_has_no_actor(void **state) {
+    (void)state;
+    ps_pam_event_t event;
+    ps_parse_message("pam_unix(su:session): session opened for user www-data",
+                     &event);
+    assert_string_equal(event.actor, "");
+    ps_parse_message("pam_unix(sudo:session): session closed for user root",
+                     &event);
+    assert_string_equal(event.actor, "");
+}
+
+// " by " is only accepted directly after the user and its "(uid=N)"; a
+// malformed uid group or text in between yields no actor.
+static void test_parse_session_open_actor_positional(void **state) {
+    (void)state;
+    ps_pam_event_t event;
+    ps_parse_message("pam_unix(sudo:session): session opened for user "
+                     "root(uid=x) by eve(uid=1)",
+                     &event);
+    assert_string_equal(event.actor, "");
+    ps_parse_message("pam_unix(sudo:session): session opened for user "
+                     "root(uid=0) extra by eve(uid=1)",
+                     &event);
+    assert_string_equal(event.actor, "");
+}
+
+static void test_parse_session_open_actor_sanitized_and_bounded(void **state) {
+    (void)state;
+    ps_pam_event_t event;
+    ps_parse_message("pam_unix(sudo:session): session opened for user "
+                     "root(uid=0) by ev\x01il(uid=1)",
+                     &event);
+    assert_null(strchr(event.actor, '\x01'));
+    assert_int_equal(strlen(event.actor), 5);
+
+    char msg[256];
+    char longname[100];
+    memset(longname, 'a', sizeof(longname) - 1);
+    longname[sizeof(longname) - 1] = '\0';
+    snprintf(msg, sizeof(msg),
+             "pam_unix(sudo:session): session opened for user root(uid=0) "
+             "by %s(uid=1)",
+             longname);
+    ps_parse_message(msg, &event);
+    assert_int_equal(strlen(event.actor), sizeof(event.actor) - 1);
+    assert_int_equal(event.actor[sizeof(event.actor) - 2], '+');
 }
 
 static void test_parse_session_open_su(void **state) {
@@ -692,6 +786,12 @@ int main(void) {
         // ps_parse_message: session events
         cmocka_unit_test(test_parse_session_open_sshd),
         cmocka_unit_test(test_parse_session_open_sudo),
+        cmocka_unit_test(test_parse_session_open_actor_with_uids),
+        cmocka_unit_test(test_parse_session_open_actor_unnamed),
+        cmocka_unit_test(test_parse_session_open_actor_same_as_user_dropped),
+        cmocka_unit_test(test_parse_session_open_no_by_has_no_actor),
+        cmocka_unit_test(test_parse_session_open_actor_positional),
+        cmocka_unit_test(test_parse_session_open_actor_sanitized_and_bounded),
         cmocka_unit_test(test_parse_session_open_su),
         cmocka_unit_test(test_parse_session_open_login),
         cmocka_unit_test(test_parse_session_close),

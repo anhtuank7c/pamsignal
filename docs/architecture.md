@@ -195,6 +195,7 @@ For login / session events:
 | `SERVICE_NAME` | `sshd` | PAM service: `sshd`, `sudo`, `su`, `login`, `other` |
 | `HOST_HOSTNAME` | `web-01` | Server hostname |
 | `PROCESS_PID` | `12345` | The sshd / sudo / su PID associated with the event |
+| `PAMSIGNAL_ACTOR` | `alice` | Session events only: the account that ran `sudo`/`su`. Empty when it equals `USER_NAME` (an SSH login) or pam_unix logs no name |
 
 For brute-force events the same `EVENT_*` set applies plus, for the local-actor variant only, `USER_TARGET_NAME` (e.g. `root`) — the user the actor was trying to elevate to.
 

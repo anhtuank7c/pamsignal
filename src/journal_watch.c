@@ -441,8 +441,11 @@ static void ps_log_event(const ps_pam_event_t *event) {
 
     if (event->type == PS_EVENT_SESSION_OPEN ||
         event->type == PS_EVENT_SESSION_CLOSE) {
-        snprintf(msg, sizeof(msg), "pamsignal: %s user=%s service=%s at %s",
-                 ps_event_type_str(event->type), event->username,
+        char actor[80] = "";
+        if (event->actor[0])
+            snprintf(actor, sizeof(actor), " actor=%s", event->actor);
+        snprintf(msg, sizeof(msg), "pamsignal: %s user=%s%s service=%s at %s",
+                 ps_event_type_str(event->type), event->username, actor,
                  ps_service_str(event->service), timebuf);
 
         sd_journal_send("MESSAGE=%s", msg, "PRIORITY=%d", LOG_NOTICE,
@@ -452,9 +455,10 @@ static void ps_log_event(const ps_pam_event_t *event) {
                         ps_event_kind_str(event->type), "EVENT_OUTCOME=%s",
                         ps_event_outcome_str(event->type), "EVENT_SEVERITY=%s",
                         severity_str, "EVENT_MODULE=pamsignal", "USER_NAME=%s",
-                        event->username, "SERVICE_NAME=%s",
-                        ps_service_str(event->service), "HOST_HOSTNAME=%s",
-                        event->hostname, "PROCESS_PID=%s", pid_str, NULL);
+                        event->username, "PAMSIGNAL_ACTOR=%s", event->actor,
+                        "SERVICE_NAME=%s", ps_service_str(event->service),
+                        "HOST_HOSTNAME=%s", event->hostname, "PROCESS_PID=%s",
+                        pid_str, NULL);
     } else {
         snprintf(msg, sizeof(msg),
                  "pamsignal: %s user=%s from=%s port=%d service=%s auth=%s "
