@@ -120,7 +120,6 @@ meson test -C build-asan --print-errorlogs
 | `.github/workflows/ci.yml` | Push to `main`, pull requests to `main` | `sanitizers`: build and run all test suites with ASAN + UBSAN. `who-did-what`: `shellcheck` plus the `examples/who-did-what/tests/e2e.sh` end-to-end test on a full VM with auditd |
 | `.github/workflows/grafana-integration.yml` | Changes under `examples/grafana/` or to `docs/grafana-integration.md` | Starts the Grafana, Loki and Alloy compose stack and runs its verify script |
 | `.github/workflows/release-packages.yml` | Published release, or manual run | Checks that `meson.build`, `debian/changelog` and `pamsignal.spec` agree on the version; builds and signs the `.deb` (Ubuntu 24.04 and Focal) and `.rpm` (Fedora, EL9); tests them (see [Supported distributions](distros.md)); publishes the apt/dnf repo |
-| `.github/workflows/ppa-upload.yml` | Published release, or manual run | Builds a signed source package and uploads it to the Launchpad PPA for Ubuntu 24.04 (`noble`) |
 | `.github/workflows/claude.yml` | Issue or PR comments that mention `@claude` | On-demand Claude Code assistant; there is no automatic review on every PR |
 
 The fuzz harness does not run in CI; run it locally as shown above.
