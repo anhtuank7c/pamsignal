@@ -93,6 +93,24 @@ clang-tidy src/*.c -- $(pkg-config --cflags libsystemd) -I include
 
 File cấu hình: `.clang-format`, `.clang-tidy` trong thư mục gốc dự án.
 
+## Chỉnh sửa sơ đồ
+
+Các sơ đồ trong [architecture.md](architecture.md#sơ-đồ) nằm ở `docs/diagrams/*.drawio.svg`. Mỗi file vừa là ảnh hiển thị trong tài liệu, vừa là source draw.io của chính nó, nên không có file nào khác cần giữ đồng bộ.
+
+1. Mở file bằng [draw.io Desktop](https://github.com/jgraph/drawio-desktop/releases) hoặc extension Draw.io Integration của VS Code, rồi chỉnh sửa.
+2. Export lại tại chỗ với cùng các tuỳ chọn, để mọi sơ đồ đều nhỏ gọn, sắc nét và đọc được ở dark mode:
+
+   ```bash
+   drawio -x -f svg --theme light --embed-svg-fonts false -e -b 16 \
+       -o docs/diagrams/architecture.drawio.svg docs/diagrams/architecture.drawio.svg
+   ```
+
+   - `--embed-svg-fonts false` giữ mỗi file dưới ~100 KB. Nếu nhúng font, draw.io thêm một ảnh PNG dự phòng cho mỗi nhãn và file phình lên hơn 1 MB.
+   - `--theme light` ngăn draw.io đổi màu theo theme hệ điều hành của người đọc, vốn có thể khác với theme của GitHub.
+   - `-e` nhúng sơ đồ vào file, nhờ đó file vẫn chỉnh sửa được.
+   - Nền trắng được đặt ngay trong sơ đồ (*File → Properties → Background*), nên ảnh hiển thị như một thẻ sáng trên dark theme của GitHub.
+3. Nhãn trong sơ đồ giữ bằng tiếng Anh cho cả tài liệu tiếng Anh và tiếng Việt, nên chỉ có một bộ sơ đồ.
+
 ## Thiết lập môi trường test
 
 PAMSignal chạy dưới dạng người dùng không có đặc quyền chuyên dụng với quyền đọc journal (không phải root).

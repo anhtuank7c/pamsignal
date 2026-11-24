@@ -101,6 +101,24 @@ clang-tidy src/*.c -- $(pkg-config --cflags libsystemd) -I include
 
 Configuration files: `.clang-format`, `.clang-tidy` in the project root.
 
+## Editing the diagrams
+
+The diagrams in [architecture.md](architecture.md#diagrams) live in `docs/diagrams/*.drawio.svg`. Each file is both the image the docs show and its own draw.io source, so there is nothing separate to keep in sync.
+
+1. Open the file in [draw.io Desktop](https://github.com/jgraph/drawio-desktop/releases) or the VS Code Draw.io Integration extension, and edit it.
+2. Re-export it in place with the same settings, so every diagram stays small, sharp and readable in dark mode:
+
+   ```bash
+   drawio -x -f svg --theme light --embed-svg-fonts false -e -b 16 \
+       -o docs/diagrams/architecture.drawio.svg docs/diagrams/architecture.drawio.svg
+   ```
+
+   - `--embed-svg-fonts false` keeps each file under ~100 KB. With fonts embedded, draw.io adds a PNG fallback for every label and the file grows past 1 MB.
+   - `--theme light` stops draw.io from switching colours based on the reader's OS theme, which can differ from GitHub's.
+   - `-e` embeds the diagram, which keeps the file editable.
+   - The white background is set in the diagram itself (*File → Properties → Background*), so the image reads as a light card on GitHub's dark theme.
+3. Labels stay in English in both the English and Vietnamese docs, so there is only one set of diagrams.
+
 ## Setup test environment
 
 PAMSignal runs as a dedicated unprivileged user with journal read access (not root).
