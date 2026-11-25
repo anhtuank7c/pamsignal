@@ -33,7 +33,7 @@ The package installs `/usr/bin/pamsignal`, `/usr/lib/systemd/system/pamsignal.se
 There is no apt repository for Focal. Each release attaches a signed Focal build (`pamsignal_<version>-1_focal_amd64.deb` plus a detached `.asc`) to the [GitHub release](https://github.com/anhtuank7c/pamsignal/releases):
 
 ```bash
-VERSION=0.8.0
+VERSION=0.8.1
 curl -fLO "https://github.com/anhtuank7c/pamsignal/releases/download/v${VERSION}/pamsignal_${VERSION}-1_focal_amd64.deb"
 sudo apt install "./pamsignal_${VERSION}-1_focal_amd64.deb"
 ```

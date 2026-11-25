@@ -33,7 +33,7 @@ Package cài đặt `/usr/bin/pamsignal`, `/usr/lib/systemd/system/pamsignal.ser
 Focal không có apt repository. Mỗi bản release đính kèm một bản build Focal đã ký (`pamsignal_<version>-1_focal_amd64.deb` cùng chữ ký detached `.asc`) trên [GitHub release](https://github.com/anhtuank7c/pamsignal/releases):
 
 ```bash
-VERSION=0.8.0
+VERSION=0.8.1
 curl -fLO "https://github.com/anhtuank7c/pamsignal/releases/download/v${VERSION}/pamsignal_${VERSION}-1_focal_amd64.deb"
 sudo apt install "./pamsignal_${VERSION}-1_focal_amd64.deb"
 ```

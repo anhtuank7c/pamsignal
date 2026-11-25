@@ -1,3 +1,15 @@
+pamsignal (0.8.1-1) unstable; urgency=medium
+
+  * Feature: pretty alerts name sudo and su sessions for what they are
+    ("Sudo to root" with By / Run as rows, "Switched to root" with From /
+    Switched to, "Sudo ended", "User switch ended", "Console login").
+    Compact lines, event names and webhook JSON are unchanged.
+  * CI: the release .deb test enables sshd password auth through a
+    drop-in, so the apt/dnf repository publish runs again (it was skipped
+    for 0.8.0).
+
+ -- Tuan Nguyen <anhtuank7c@hotmail.com>  Wed, 25 Nov 2026 05:00:00 +0000
+
 pamsignal (0.8.0-1) unstable; urgency=high
 
   * SECURITY: one per-event alert could silence every other login alert

@@ -2,9 +2,12 @@
 
 ## Unreleased
 
+## 0.8.1 - 2026-11-25
+
+Patch release. Pretty alerts no longer call a `sudo` or `su` session "Session opened": they read "Sudo to root" (By / Run as) or "Switched to root" (From / Switched to), and the closing alerts "Sudo ended" / "User switch ended". Compact lines, event names and webhook JSON are unchanged. The release pipeline's `.deb` test is fixed, so this is also the first release since 0.7.1 to reach the apt and dnf repositories (0.8.0's publish was skipped).
+
 ### Features
 - [x] **Pretty alerts name `sudo` and `su` sessions for what they are.** A `sudo` session was headed "Session opened" with `User: root` above `Actor: deploy`, which reads like root logged in. It is now "🔑 Sudo to root" (or "Sudo used" for another target) with **By** and **Run as** rows, and `su` is "🔁 Switched to root" (or "User switched") with **From** and **Switched to**. Their closing alerts are "Sudo ended" and "User switch ended"; for `su -` or `sudo -i` that marks when the root shell was left, so they are kept. Console sessions are "Console login" / "Console logout"; sshd keeps "Session opened" / "Session closed". Headlines are fixed strings, never built from the username. Only the pretty style changes: compact lines, event names and webhook JSON are unchanged.
-- [ ] **Session duration on closing alerts**, by pairing open and close by PID, so short `sudo <command>` closes can be filtered while long root shells are always reported.
 
 ### CI
 - [x] **Release `.deb` test: enable sshd password auth through a drop-in.** The v0.8.0 release run failed because every test SSH login was refused before PAM was reached, so no alerts were sent and the apt/dnf repo publish was skipped. The test edited `sshd_config` directly, which a file under `sshd_config.d` can override; it now writes `sshd_config.d/00-pamsignal-test.conf` (password auth on, keyboard-interactive off), checks the effective value with `sshd -T`, and prints the ssh client and sshd output.
@@ -511,6 +514,7 @@ Packaging-only release. Binary is identical to v0.2.0; this release adds signed 
 ## To Do
 
 ### Next Up
+- [ ] **Session duration on closing alerts**, by pairing open and close by PID, so short `sudo <command>` closes can be filtered while long root shells are always reported.
 - [ ] **Test the Teams Adaptive Card on a live Teams tenant.** Create a Workflows webhook ("Send webhook alerts to a channel"), run `pamsignal --test-alert` with both `message_style` values, and check that the card is delivered and renders as documented. Until then `docs/alerts.md` (EN + VI) marks Teams as not yet tested on a real tenant.
 - [ ] Curl availability check at startup (log warning if `curl` not found)
 
