@@ -67,7 +67,7 @@ sudo dnf install pamsignal
 Focal has no apt repository; install the signed `.deb` from the [latest release](https://github.com/anhtuank7c/pamsignal/releases):
 
 ```bash
-VERSION=0.8.0
+VERSION=0.8.1
 curl -fLO "https://github.com/anhtuank7c/pamsignal/releases/download/v${VERSION}/pamsignal_${VERSION}-1_focal_amd64.deb"
 sudo apt install "./pamsignal_${VERSION}-1_focal_amd64.deb"
 ```
