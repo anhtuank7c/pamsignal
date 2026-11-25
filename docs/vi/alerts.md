@@ -77,11 +77,16 @@ Discord
 | Tiêu đề | Sự kiện | Các dòng |
 |---|---|---|
 | ✅ Login success / ❌ Login failed | `login_success`, `login_failure` | Host, User, Source (chỉ với đăng nhập từ xa), Auth, PID, Time |
-| 🔓 Session opened / 🔒 Session closed | `session_opened`, `session_closed` | Host, User, Actor (nếu có), Service, PID, Time |
+| 🔓 Session opened / 🔒 Session closed | `session_opened`, `session_closed` (sshd và các service khác) | Host, User, Actor (nếu có), Service, PID, Time |
+| 🔓 Console login / 🔒 Console logout | `session_opened`, `session_closed` (`login`) | Host, User, Service, PID, Time |
+| 🔑 Sudo to root (hoặc Sudo used) / 🔒 Sudo ended | `session_opened`, `session_closed` (`sudo`) | Host, By (nếu có), Run as, PID, Time |
+| 🔁 Switched to root (hoặc User switched) / 🔒 User switch ended | `session_opened`, `session_closed` (`su`) | Host, From (nếu có), Switched to, PID, Time |
 | 🚨 Brute force detected | `brute_force_detected` (từ xa) | Host, Source, User, Attempts, Time |
 | 🚨 Brute force detected (local) | `brute_force_detected` (sudo/su) | Host, Actor, Target, Service, Attempts, Time |
 | 🔥 Login after failed attempts | `login_after_failures` | Host, User, Source, Failures, Auth, PID, Time |
 | 🔔 PAMSignal test alert | `pamsignal --test-alert` | Host, Time |
+
+Một session `sudo` hoặc `su` không phải là một lần đăng nhập: đó là một người đã ở trên máy đang hành động dưới danh nghĩa một tài khoản khác, nên tiêu đề nói đúng điều đó thay vì "Session opened". "Sudo to root" và "Switched to root" được dùng khi tài khoản đích là `root`, "Sudo used" và "User switched" cho mọi tài khoản khác. **By** / **From** là actor (xem phần giải thích `actor=` phía trên), còn **Run as** / **Switched to** là user của session. Alert đóng của một lệnh `sudo <lệnh>` thông thường đến ngay sau khi lệnh chạy xong; với `su -`, `sudo -i` hoặc `sudo su` nó đánh dấu thời điểm người dùng rời khỏi shell root. Chỉ kiểu pretty thay đổi: dòng compact, tên sự kiện và JSON của webhook giữ nguyên cho mọi service.
 
 Các dòng `Provider` và `Service name` được thêm vào khi các tag đó được cấu hình. Teams nhận đúng các dòng đó trong một Adaptive Card: tiêu đề và nhãn in đậm, giá trị dạng monospace (xem [Microsoft Teams](#microsoft-teams)).
 

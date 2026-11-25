@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Features
+- [x] **Pretty alerts name `sudo` and `su` sessions for what they are.** A `sudo` session was headed "Session opened" with `User: root` above `Actor: deploy`, which reads like root logged in. It is now "🔑 Sudo to root" (or "Sudo used" for another target) with **By** and **Run as** rows, and `su` is "🔁 Switched to root" (or "User switched") with **From** and **Switched to**. Their closing alerts are "Sudo ended" and "User switch ended"; for `su -` or `sudo -i` that marks when the root shell was left, so they are kept. Console sessions are "Console login" / "Console logout"; sshd keeps "Session opened" / "Session closed". Headlines are fixed strings, never built from the username. Only the pretty style changes: compact lines, event names and webhook JSON are unchanged.
+- [ ] **Session duration on closing alerts**, by pairing open and close by PID, so short `sudo <command>` closes can be filtered while long root shells are always reported.
+
 ### CI
 - [x] **Release `.deb` test: enable sshd password auth through a drop-in.** The v0.8.0 release run failed because every test SSH login was refused before PAM was reached, so no alerts were sent and the apt/dnf repo publish was skipped. The test edited `sshd_config` directly, which a file under `sshd_config.d` can override; it now writes `sshd_config.d/00-pamsignal-test.conf` (password auth on, keyboard-interactive off), checks the effective value with `sshd -T`, and prints the ssh client and sshd output.
 

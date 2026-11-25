@@ -5,6 +5,7 @@
 #include <fcntl.h>
 #include <signal.h>
 #include <stdarg.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -865,10 +866,65 @@ static void pretty_add_common(ps_pretty_msg_t *m, const ps_config_t *cfg,
         pretty_add(m, "Service name", "%s", cfg->service_name);
 }
 
+// A pam_unix session from sudo or su is not a login: it is someone already on
+// the box acting as another account. Name it that way in the headline and
+// rows. The title stays a string literal (never built from the username), so
+// a hostile account name can only ever appear inside a code-span row value.
+static void build_pretty_session(const ps_pam_event_t *event,
+                                 ps_pretty_msg_t *m) {
+    bool open = event->type == PS_EVENT_SESSION_OPEN;
+    bool to_root = strcmp(event->username, "root") == 0;
+
+    switch (event->service) {
+    case PS_SERVICE_SUDO:
+        m->emoji = open ? "\xF0\x9F\x94\x91"  // key
+                        : "\xF0\x9F\x94\x92"; // closed lock
+        m->title =
+            open ? (to_root ? "Sudo to root" : "Sudo used") : "Sudo ended";
+        pretty_add(m, "Host", "%s", event->hostname);
+        if (event->actor[0])
+            pretty_add(m, "By", "%s", event->actor);
+        pretty_add(m, "Run as", "%s", event->username);
+        return;
+    case PS_SERVICE_SU:
+        m->emoji = open ? "\xF0\x9F\x94\x81"  // repeat arrows
+                        : "\xF0\x9F\x94\x92"; // closed lock
+        m->title = open ? (to_root ? "Switched to root" : "User switched")
+                        : "User switch ended";
+        pretty_add(m, "Host", "%s", event->hostname);
+        if (event->actor[0])
+            pretty_add(m, "From", "%s", event->actor);
+        pretty_add(m, "Switched to", "%s", event->username);
+        return;
+    case PS_SERVICE_LOGIN:
+        m->title = open ? "Console login" : "Console logout";
+        break;
+    case PS_SERVICE_SSHD:
+    case PS_SERVICE_OTHER:
+        m->title = open ? "Session opened" : "Session closed";
+        break;
+    }
+    m->emoji = open ? "\xF0\x9F\x94\x93"  // open lock
+                    : "\xF0\x9F\x94\x92"; // closed lock
+    pretty_add(m, "Host", "%s", event->hostname);
+    pretty_add(m, "User", "%s", event->username);
+    if (event->actor[0])
+        pretty_add(m, "Actor", "%s", event->actor);
+    pretty_add(m, "Service", "%s", ps_service_str(event->service));
+}
+
 static void build_pretty_event(const ps_config_t *cfg,
                                const ps_pam_event_t *event,
                                ps_pretty_msg_t *m) {
     memset(m, 0, sizeof(*m));
+    if (event->type == PS_EVENT_SESSION_OPEN ||
+        event->type == PS_EVENT_SESSION_CLOSE) {
+        build_pretty_session(event, m);
+        pretty_add(m, "PID", "%d", (int)event->pid);
+        pretty_add_common(m, cfg, event->timestamp_usec);
+        return;
+    }
+
     switch (event->type) {
     case PS_EVENT_LOGIN_SUCCESS:
         m->emoji = "\xE2\x9C\x85"; // check mark
@@ -879,13 +935,8 @@ static void build_pretty_event(const ps_config_t *cfg,
         m->title = "Login failed";
         break;
     case PS_EVENT_SESSION_OPEN:
-        m->emoji = "\xF0\x9F\x94\x93"; // open lock
-        m->title = "Session opened";
-        break;
     case PS_EVENT_SESSION_CLOSE:
-        m->emoji = "\xF0\x9F\x94\x92"; // closed lock
-        m->title = "Session closed";
-        break;
+        break; // handled above
     case PS_EVENT_UNKNOWN:
         m->emoji = "\xE2\x84\xB9"; // information
         m->title = "Authentication event";
@@ -902,8 +953,6 @@ static void build_pretty_event(const ps_config_t *cfg,
         pretty_add(m, "Auth", "%s (%s)", ps_auth_method_str(event->auth_method),
                    ps_service_str(event->service));
     } else {
-        if (event->actor[0])
-            pretty_add(m, "Actor", "%s", event->actor);
         pretty_add(m, "Service", "%s", ps_service_str(event->service));
     }
     pretty_add(m, "PID", "%d", (int)event->pid);
