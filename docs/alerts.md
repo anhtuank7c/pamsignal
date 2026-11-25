@@ -77,11 +77,16 @@ Discord
 | Headline | Event | Rows |
 |---|---|---|
 | ✅ Login success / ❌ Login failed | `login_success`, `login_failure` | Host, User, Source (remote logins only), Auth, PID, Time |
-| 🔓 Session opened / 🔒 Session closed | `session_opened`, `session_closed` | Host, User, Actor (when known), Service, PID, Time |
+| 🔓 Session opened / 🔒 Session closed | `session_opened`, `session_closed` (sshd and other services) | Host, User, Actor (when known), Service, PID, Time |
+| 🔓 Console login / 🔒 Console logout | `session_opened`, `session_closed` (`login`) | Host, User, Service, PID, Time |
+| 🔑 Sudo to root (or Sudo used) / 🔒 Sudo ended | `session_opened`, `session_closed` (`sudo`) | Host, By (when known), Run as, PID, Time |
+| 🔁 Switched to root (or User switched) / 🔒 User switch ended | `session_opened`, `session_closed` (`su`) | Host, From (when known), Switched to, PID, Time |
 | 🚨 Brute force detected | `brute_force_detected` (remote) | Host, Source, User, Attempts, Time |
 | 🚨 Brute force detected (local) | `brute_force_detected` (sudo/su) | Host, Actor, Target, Service, Attempts, Time |
 | 🔥 Login after failed attempts | `login_after_failures` | Host, User, Source, Failures, Auth, PID, Time |
 | 🔔 PAMSignal test alert | `pamsignal --test-alert` | Host, Time |
+
+A `sudo` or `su` session is not a login: someone already on the host is acting as another account, so its headline says that instead of "Session opened". "Sudo to root" and "Switched to root" are used when the target is `root`, "Sudo used" and "User switched" for any other account. **By** / **From** is the actor (see the `actor=` notes above) and **Run as** / **Switched to** is the session user. The closing alert of a plain `sudo <command>` arrives right after the command finishes; for `su -`, `sudo -i` or `sudo su` it marks the moment the root shell was left. Only the pretty style changes: the compact line, the event names and the webhook JSON stay the same for every service.
 
 `Provider` and `Service name` rows are appended when those tags are configured. Teams gets the same rows in an Adaptive Card: bold headline and labels, monospace values (see [Microsoft Teams](#microsoft-teams)).
 

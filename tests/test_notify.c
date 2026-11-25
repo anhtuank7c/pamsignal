@@ -521,7 +521,7 @@ static void test_pretty_event_rows(void **state) {
     assert_int_equal(m.row_count, 8);
 }
 
-static void test_pretty_session_actor_row(void **state) {
+static void test_pretty_sudo_session_rows(void **state) {
     (void)state;
     ps_config_t cfg;
     make_cfg_default(&cfg);
@@ -532,18 +532,103 @@ static void test_pretty_session_actor_row(void **state) {
 
     ps_pretty_msg_t m;
     build_pretty_event(&cfg, &e, &m);
-    assert_string_equal(m.rows[1].label, "User");
-    assert_string_equal(m.rows[1].value, "root");
-    assert_string_equal(m.rows[2].label, "Actor");
-    assert_string_equal(m.rows[2].value, "tuan");
-    assert_string_equal(m.rows[3].label, "Service");
-    assert_string_equal(m.rows[4].label, "PID");
+    assert_string_equal(m.emoji, "\xF0\x9F\x94\x91");
+    assert_string_equal(m.title, "Sudo to root");
+    assert_string_equal(m.rows[0].label, "Host");
+    assert_string_equal(m.rows[1].label, "By");
+    assert_string_equal(m.rows[1].value, "tuan");
+    assert_string_equal(m.rows[2].label, "Run as");
+    assert_string_equal(m.rows[2].value, "root");
+    assert_string_equal(m.rows[3].label, "PID");
+    for (int i = 0; i < m.row_count; i++)
+        assert_string_not_equal(m.rows[i].label, "Service");
 
     // No actor → no row.
     e.actor[0] = '\0';
     build_pretty_event(&cfg, &e, &m);
     for (int i = 0; i < m.row_count; i++)
-        assert_string_not_equal(m.rows[i].label, "Actor");
+        assert_string_not_equal(m.rows[i].label, "By");
+    assert_string_equal(m.rows[1].label, "Run as");
+
+    // Another target account keeps a neutral title.
+    strncpy(e.username, "www-data", sizeof(e.username) - 1);
+    build_pretty_event(&cfg, &e, &m);
+    assert_string_equal(m.title, "Sudo used");
+
+    e.type = PS_EVENT_SESSION_CLOSE;
+    build_pretty_event(&cfg, &e, &m);
+    assert_string_equal(m.emoji, "\xF0\x9F\x94\x92");
+    assert_string_equal(m.title, "Sudo ended");
+}
+
+static void test_pretty_su_session_rows(void **state) {
+    (void)state;
+    ps_config_t cfg;
+    make_cfg_default(&cfg);
+    ps_pam_event_t e = make_session_open();
+    e.service = PS_SERVICE_SU;
+    strncpy(e.username, "root", sizeof(e.username) - 1);
+    strncpy(e.actor, "deploy", sizeof(e.actor) - 1);
+
+    ps_pretty_msg_t m;
+    build_pretty_event(&cfg, &e, &m);
+    assert_string_equal(m.emoji, "\xF0\x9F\x94\x81");
+    assert_string_equal(m.title, "Switched to root");
+    assert_string_equal(m.rows[1].label, "From");
+    assert_string_equal(m.rows[1].value, "deploy");
+    assert_string_equal(m.rows[2].label, "Switched to");
+    assert_string_equal(m.rows[2].value, "root");
+    assert_string_equal(m.rows[3].label, "PID");
+
+    strncpy(e.username, "bob", sizeof(e.username) - 1);
+    build_pretty_event(&cfg, &e, &m);
+    assert_string_equal(m.title, "User switched");
+
+    e.type = PS_EVENT_SESSION_CLOSE;
+    e.actor[0] = '\0';
+    build_pretty_event(&cfg, &e, &m);
+    assert_string_equal(m.title, "User switch ended");
+    assert_string_equal(m.rows[1].label, "Switched to");
+}
+
+// Each service gets its own fixed headline. The headline is never built from
+// journal text, so markup in a username cannot reach it.
+static void test_pretty_session_titles_per_service(void **state) {
+    (void)state;
+    ps_config_t cfg;
+    make_cfg_default(&cfg);
+    ps_pretty_msg_t m;
+
+    ps_pam_event_t e = make_session_open(); // sshd
+    build_pretty_event(&cfg, &e, &m);
+    assert_string_equal(m.emoji, "\xF0\x9F\x94\x93");
+    assert_string_equal(m.title, "Session opened");
+    assert_string_equal(m.rows[1].label, "User");
+    assert_string_equal(m.rows[2].label, "Service");
+    e.type = PS_EVENT_SESSION_CLOSE;
+    build_pretty_event(&cfg, &e, &m);
+    assert_string_equal(m.title, "Session closed");
+
+    e = make_session_open();
+    e.service = PS_SERVICE_LOGIN;
+    build_pretty_event(&cfg, &e, &m);
+    assert_string_equal(m.title, "Console login");
+    e.type = PS_EVENT_SESSION_CLOSE;
+    build_pretty_event(&cfg, &e, &m);
+    assert_string_equal(m.title, "Console logout");
+
+    e = make_session_open();
+    e.service = PS_SERVICE_OTHER;
+    strncpy(e.actor, "alice", sizeof(e.actor) - 1);
+    build_pretty_event(&cfg, &e, &m);
+    assert_string_equal(m.title, "Session opened");
+    assert_string_equal(m.rows[2].label, "Actor");
+
+    e = make_session_open();
+    e.service = PS_SERVICE_SUDO;
+    snprintf(e.username, sizeof(e.username), "%s", "root\n*Sudo*");
+    build_pretty_event(&cfg, &e, &m);
+    assert_string_equal(m.title, "Sudo used");
 }
 
 // "2026-03-29T14:23:01+0000" is shown as "2026-03-29 14:23:01 +0000".
@@ -1697,7 +1782,9 @@ int main(void) {
         cmocka_unit_test(test_notify_local_brute_no_channels),
         cmocka_unit_test(test_format_json_labels_worst_case_not_truncated),
         cmocka_unit_test(test_pretty_event_rows),
-        cmocka_unit_test(test_pretty_session_actor_row),
+        cmocka_unit_test(test_pretty_sudo_session_rows),
+        cmocka_unit_test(test_pretty_su_session_rows),
+        cmocka_unit_test(test_pretty_session_titles_per_service),
         cmocka_unit_test(test_pretty_time_is_spaced),
         cmocka_unit_test(test_pretty_session_and_local_events_have_no_source),
         cmocka_unit_test(test_render_pretty_markup_per_platform),
